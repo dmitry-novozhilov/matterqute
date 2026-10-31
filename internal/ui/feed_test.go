@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mattermost/mattermost/server/public/model"
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
+	"github.com/mattermost/mattermost/server/public/model"
 )
 
 // Qt привязан к потоку, где создан QApplication, а go test гоняет тесты в своих
@@ -55,7 +55,7 @@ func makePosts(from, n int) []*model.Post {
 func TestFeedScrolling(t *testing.T) { onMain(func() { testFeedScrolling(t) }) }
 
 func testFeedScrolling(t *testing.T) {
-	f := NewFeed(func(id string) string { return id }, "me", false)
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
 	f.Widget().Resize(500, 300)
 	f.Widget().Show()
 	defer f.Widget().Close()

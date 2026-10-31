@@ -15,14 +15,15 @@ import (
 )
 
 type Store struct {
-	me        *model.User
-	crt       bool
-	teams     []*model.Team
-	channels  map[string]*model.Channel
-	members   map[string]*model.ChannelMember
-	users     map[string]*model.User
-	timelines map[string]*Timeline
-	threads   map[string]*model.ThreadResponse // CRT: треды, на которые подписан пользователь
+	me          *model.User
+	crt         bool
+	maxFileSize int64
+	teams       []*model.Team
+	channels    map[string]*model.Channel
+	members     map[string]*model.ChannelMember
+	users       map[string]*model.User
+	timelines   map[string]*Timeline
+	threads     map[string]*model.ThreadResponse // CRT: треды, на которые подписан пользователь
 	// Посты, уже учтённые в счётчиках: свой пост приходит дважды — ответом
 	// на CreatePost и по WebSocket.
 	applied map[string]bool
@@ -46,19 +47,24 @@ func (s *Store) Me() *model.User { return s.me }
 // непрочитанное в канале считается по корневым постам.
 func (s *Store) CRT() bool { return s.crt }
 
+// MaxFileSize — лимит сервера на загрузку файла в байтах; 0 — неизвестен.
+func (s *Store) MaxFileSize() int64 { return s.maxFileSize }
+
 // Sidebar — всё, что нужно для списка каналов; собирается по REST целиком.
 type Sidebar struct {
-	CRT      bool
-	Teams    []*model.Team
-	Channels []*model.Channel // личные и групповые приходят в ответе каждой команды — дубли допустимы
-	Members  []*model.ChannelMember
-	Users    []*model.User
-	Threads  []*model.ThreadResponse // только при CRT; DM-треды приходят в каждой команде
+	CRT         bool
+	MaxFileSize int64 // лимит сервера на загрузку файла; 0 — неизвестен
+	Teams       []*model.Team
+	Channels    []*model.Channel // личные и групповые приходят в ответе каждой команды — дубли допустимы
+	Members     []*model.ChannelMember
+	Users       []*model.User
+	Threads     []*model.ThreadResponse // только при CRT; DM-треды приходят в каждой команде
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
 func (s *Store) SetSidebar(sb *Sidebar) {
 	s.crt = sb.CRT
+	s.maxFileSize = sb.MaxFileSize
 	s.teams = sb.Teams
 	s.channels = make(map[string]*model.Channel, len(sb.Channels))
 	for _, ch := range sb.Channels {
@@ -89,6 +95,21 @@ func (s *Store) TeamFor(channelID string) string {
 		return s.teams[0].Id
 	}
 	return ""
+}
+
+// ChannelByName — открытый или приватный канал по имени (как в ~ссылке);
+// при совпадении имён в разных командах — из preferTeam.
+func (s *Store) ChannelByName(name, preferTeam string) *model.Channel {
+	var found *model.Channel
+	for _, ch := range s.channels {
+		if ch.Name == name && !ch.IsGroupOrDirect() {
+			if ch.TeamId == preferTeam {
+				return ch
+			}
+			found = ch
+		}
+	}
+	return found
 }
 
 // TeamChannels — открытые и приватные каналы команды по алфавиту.

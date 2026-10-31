@@ -3,6 +3,7 @@ package mm
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -31,15 +32,27 @@ func CRTEnabled(clientConfig map[string]string, displayPrefs model.Preferences) 
 	return pref == "on"
 }
 
-// FetchCRT спрашивает у сервера конфиг и настройки пользователя и решает про CRT.
-func (s *Session) FetchCRT(ctx context.Context) (bool, error) {
+// Settings — настройки сервера и пользователя, от которых зависит поведение клиента.
+type Settings struct {
+	CRT         bool
+	MaxFileSize int64 // байт; 0 — сервер не сказал
+}
+
+// FetchSettings читает клиентский конфиг сервера и настройки отображения пользователя.
+func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 	cfg, resp, err := s.Client.GetClientConfig(ctx, "")
 	if err != nil {
-		return false, describe(s.ServerURL, "load client config", resp, err)
+		return Settings{}, describe(s.ServerURL, "load client config", resp, err)
 	}
 	prefs, resp, err := s.Client.GetPreferencesByCategory(ctx, s.Me.Id, model.PreferenceCategoryDisplaySettings)
 	if err != nil {
-		return false, describe(s.ServerURL, fmt.Sprintf("load %s preferences", model.PreferenceCategoryDisplaySettings), resp, err)
+		return Settings{}, describe(s.ServerURL, fmt.Sprintf("load %s preferences", model.PreferenceCategoryDisplaySettings), resp, err)
 	}
-	return CRTEnabled(cfg, prefs), nil
+	st := Settings{CRT: CRTEnabled(cfg, prefs)}
+	if v := cfg["MaxFileSize"]; v != "" {
+		if st.MaxFileSize, err = strconv.ParseInt(v, 10, 64); err != nil {
+			return st, fmt.Errorf("client config of %s: MaxFileSize %q: %w", s.ServerURL, truncate(v, 50), err)
+		}
+	}
+	return st, nil
 }

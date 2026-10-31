@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mattermost/mattermost/server/public/model"
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/store"
 )
@@ -27,7 +27,7 @@ type ThreadPanel struct {
 	composer *Composer
 }
 
-func NewThreadPanel(names func(string) string, me string, onClose func()) *ThreadPanel {
+func NewThreadPanel(deps FeedDeps, onClose func()) *ThreadPanel {
 	p := &ThreadPanel{w: qt.NewQWidget2()}
 	p.title = newTextLabel(qt.RichText)
 	p.title.SetMargin(10)
@@ -39,7 +39,7 @@ func NewThreadPanel(names func(string) string, me string, onClose func()) *Threa
 	head.AddWidget2(p.title.QWidget, 1)
 	head.AddWidget(closeBtn.QWidget)
 
-	p.feed = NewFeed(names, me, true)
+	p.feed = NewFeed(deps)
 	p.composer = NewComposer()
 	p.composer.edit.SetPlaceholderText("Ответить в тред… Enter — отправить")
 
@@ -69,6 +69,7 @@ func (m *MainWindow) openThread(rootID string) {
 	m.panel.feed.Reset("Загрузка…")
 	m.panel.w.SetVisible(true)
 	m.panel.composer.SetEnabled(false)
+	m.panel.composer.SwitchTo(rootID)
 	crt := m.st.CRT()
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
@@ -120,7 +121,7 @@ func (m *MainWindow) closeThread() {
 	m.panel.w.SetVisible(false)
 }
 
-func (m *MainWindow) sendReply(text string) {
+func (m *MainWindow) sendReply(text string, fileIDs []string) {
 	t := m.thread
 	if t == nil || t.channelID == "" {
 		return
@@ -128,15 +129,14 @@ func (m *MainWindow) sendReply(text string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
-		p, _, err := m.s.Client.CreatePost(ctx, &model.Post{ChannelId: t.channelID, RootId: t.rootID, Message: text})
+		p, _, err := m.s.Client.CreatePost(ctx, &model.Post{ChannelId: t.channelID, RootId: t.rootID, Message: text, FileIds: fileIDs})
 		m.ui(func() {
 			if err != nil {
 				m.fail("send reply", fmt.Errorf("reply to thread %s: %w", t.rootID, err))
-				if m.thread == t {
-					m.panel.composer.Restore(text)
-				}
+				m.panel.composer.Restore()
 				return
 			}
+			m.panel.composer.Sent()
 			m.applyPosted(p, false)
 		})
 	}()

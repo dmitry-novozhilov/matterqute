@@ -88,7 +88,7 @@ func TestThreadsCRT(t *testing.T) {
 }
 
 func testThreadsCRT(t *testing.T, fake *mmfake.Server, s *mm.Session) {
-	m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "")
+	m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
 	defer m.Close()
 	root := openTown(t, m)
 	if root == nil {
@@ -122,7 +122,7 @@ func testThreadsCRT(t *testing.T, fake *mmfake.Server, s *mm.Session) {
 	}
 
 	// Свой ответ: в треде один раз, в канале — только счётчик у корня.
-	m.sendReply("ответ из теста")
+	m.sendReply("ответ из теста", nil)
 	waitFor(t, "own reply in thread", func() bool { return len(m.panel.feed.items) == 5 })
 	waitFor(t, "reply count 4", func() bool { p := feedPost(m.feed, root.Id); return p != nil && p.ReplyCount == 4 })
 	settleFor(200 * time.Millisecond)
@@ -164,7 +164,7 @@ func TestThreadsWithoutCRT(t *testing.T) {
 }
 
 func testThreadsWithoutCRT(t *testing.T, fake *mmfake.Server, s *mm.Session) {
-	m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "")
+	m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
 	defer m.Close()
 	root := openTown(t, m)
 	if root == nil {

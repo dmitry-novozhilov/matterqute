@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -172,7 +174,12 @@ func (a *App) openMain(s *mm.Session) {
 	if srv := a.cfg.Server(s.ServerURL); srv != nil {
 		lastChannel = srv.LastChannel
 	}
-	m := NewMainWindow(s, a.log, lastChannel)
+	cacheDir, err := config.CacheDir()
+	if err != nil {
+		a.log.Warn("cache dir, using temp", "err", err)
+		cacheDir = filepath.Join(os.TempDir(), "matterqute-cache")
+	}
+	m := NewMainWindow(s, a.log, lastChannel, cacheDir)
 	m.OnLogout = func() { a.logout(m) }
 	m.OnChannelOpened = func(id string) {
 		if srv := a.cfg.Server(s.ServerURL); srv != nil && srv.LastChannel != id {

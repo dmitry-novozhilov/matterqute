@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/mattermost/server/public/model"
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/mm"
 	"matterqute/internal/mmfake"
@@ -57,7 +57,7 @@ func TestMainWindowFeed(t *testing.T) {
 }
 
 func testMainWindowFeed(t *testing.T, s *mm.Session, fake *mmfake.Server) {
-	m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "")
+	m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
 	m.Show()
 	defer m.Close()
 
@@ -79,7 +79,7 @@ func testMainWindowFeed(t *testing.T, s *mm.Session, fake *mmfake.Server) {
 	}
 
 	// Свой пост приходит и ответом на CreatePost, и по WebSocket — в ленте он один.
-	m.send("привет из теста")
+	m.send("привет из теста", nil)
 	mine := func() int {
 		n := 0
 		for _, it := range m.feed.items {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattermost/mattermost/server/public/model"
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/emoji"
 	"matterqute/internal/markdown"
@@ -17,40 +17,58 @@ import (
 // Посты одного автора с перерывом меньше этого идут без заголовка.
 const groupMillis = 5 * 60 * 1000
 
+// Наибольший размер превью картинки в ленте.
+const previewMaxW, previewMaxH = 360, 240
+
 type postItem struct {
 	post   *model.Post
 	w      *qt.QWidget
 	lay    *qt.QVBoxLayout
 	header *qt.QLabel
 	body   *qt.QLabel
+	files  *qt.QWidget // вложения; nil, если их нет
 	footer *qt.QWidget // реакции и ответы; nil, если показывать нечего
 }
 
+// FeedDeps — что ленте нужно от окна.
+type FeedDeps struct {
+	Names         func(userID string) string
+	Me            *model.User
+	Thread        bool    // лента треда: без счётчиков ответов и пометок «в треде»
+	Assets        *Assets // nil — без картинок и кастомных эмодзи (тесты прокрутки)
+	ChannelExists func(name string) bool
+}
+
 // Feed — лента постов: QScrollArea с виджетом на пост, новые снизу.
-// Одна и та же лента служит каналу и панели треда (thread=true).
+// Одна и та же лента служит каналу и панели треда.
 type Feed struct {
+	d       FeedDeps
+	md      *markdown.Renderer
 	scroll  *qt.QScrollArea
 	bar     *qt.QScrollBar
 	content *qt.QWidget
 	list    *qt.QVBoxLayout
 	items   []*postItem
-	names   func(userID string) string
-	me      string
-	thread  bool // лента треда: без счётчиков ответов и пометок «в треде»
+	pixmaps map[string]*qt.QPixmap // уменьшенные превью по id файла
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
 	keepFromBottom int  // после подгрузки старых: сохранить расстояние до низа; -1 — не нужно
 	programmatic   bool // SetValue из кода, а не прокрутка пользователем
 	hasMore        bool
 	loadingOlder   bool
+	refreshPending bool
 
-	OnNeedOlder      func()                             // докрутили до верха, а на сервере есть ещё
-	OnOpenThread     func(rootID string)                // открыть тред поста
+	OnNeedOlder      func()                            // докрутили до верха, а на сервере есть ещё
+	OnOpenThread     func(rootID string)               // открыть тред поста
 	OnToggleReaction func(p *model.Post, emoji string) // поставить или снять свою реакцию
+	OnLink           func(url string)                  // клик по ссылке в тексте
+	OnOpenFile       func(fi *model.FileInfo)
+	OnSaveFile       func(fi *model.FileInfo)
 }
 
-func NewFeed(names func(userID string) string, me string, thread bool) *Feed {
-	f := &Feed{scroll: qt.NewQScrollArea2(), names: names, me: me, thread: thread}
+func NewFeed(d FeedDeps) *Feed {
+	f := &Feed{d: d, scroll: qt.NewQScrollArea2(), pixmaps: map[string]*qt.QPixmap{}}
+	f.md = markdown.New(markdown.Options{Me: d.Me.Username, ChannelExists: d.ChannelExists, CustomEmoji: f.customEmoji})
 	f.scroll.SetWidgetResizable(true)
 	f.scroll.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
 	f.scroll.SetFrameShape(qt.QFrame__NoFrame)
@@ -145,6 +163,32 @@ func (f *Feed) RefreshNames() {
 	}
 }
 
+// refreshSoon перерисует ленту один раз после текущих событий: догрузились
+// картинки или эмодзи (их может прийти пачка подряд).
+func (f *Feed) refreshSoon() {
+	if f.refreshPending || f.d.Assets == nil {
+		return
+	}
+	f.refreshPending = true
+	f.d.Assets.Later(func() {
+		f.refreshPending = false
+		for i := range f.items {
+			f.render(i)
+		}
+	})
+}
+
+func (f *Feed) customEmoji(name string) string {
+	if f.d.Assets == nil {
+		return ""
+	}
+	p := f.d.Assets.Emoji(name)
+	if p == "" {
+		f.d.Assets.WantEmoji(name, f.refreshSoon)
+	}
+	return p
+}
+
 func (f *Feed) index(id string) int {
 	return slices.IndexFunc(f.items, func(it *postItem) bool { return it.post.Id == id })
 }
@@ -155,7 +199,11 @@ func (f *Feed) insert(i int, p *model.Post) {
 	it.lay.SetSpacing(1)
 	it.header = newTextLabel(qt.RichText)
 	it.body = newTextLabel(qt.RichText)
-	it.body.SetOpenExternalLinks(true)
+	it.body.OnLinkActivated(func(link string) {
+		if f.OnLink != nil {
+			f.OnLink(link)
+		}
+	})
 	it.lay.AddWidget(it.header.QWidget)
 	it.lay.AddWidget(it.body.QWidget)
 	it.w.SetContextMenuPolicy(qt.CustomContextMenu)
@@ -172,8 +220,9 @@ func (f *Feed) insert(i int, p *model.Post) {
 func (f *Feed) render(i int) {
 	f.renderHeader(i)
 	p := f.items[i].post
-	f.items[i].body.SetText(postBodyHTML(p))
+	f.items[i].body.SetText(f.bodyHTML(p))
 	f.items[i].body.SetToolTip(formatTime(p.CreateAt))
+	f.renderFiles(i)
 	f.renderFooter(i)
 }
 
@@ -189,9 +238,122 @@ func (f *Feed) renderHeader(i int) {
 		return
 	}
 	it.header.SetText(fmt.Sprintf(`<b>%s</b>&nbsp;&nbsp;<span style="color:gray">%s</span>`,
-		html.EscapeString(f.names(it.post.UserId)), formatTime(it.post.CreateAt)))
+		html.EscapeString(f.d.Names(it.post.UserId)), formatTime(it.post.CreateAt)))
 	it.header.SetVisible(true)
 	it.lay.SetContentsMargins(0, 10, 0, 0)
+}
+
+func (f *Feed) bodyHTML(p *model.Post) string {
+	var b strings.Builder
+	switch {
+	case p.IsSystemMessage():
+		msg := p.Message
+		if msg == "" {
+			msg = p.Type
+		}
+		b.WriteString(`<i style="color:gray">` + html.EscapeString(msg) + `</i>`)
+	default:
+		b.WriteString(f.md.Render(p.Message))
+		b.WriteString(f.md.Attachments(p.Attachments()))
+	}
+	if p.EditAt > 0 {
+		b.WriteString(` <span style="color:gray">(изменено)</span>`)
+	}
+	return b.String()
+}
+
+// renderFiles пересобирает вложения: картинки — превью, остальное — строкой с кнопками.
+func (f *Feed) renderFiles(i int) {
+	it := f.items[i]
+	if it.files != nil {
+		it.lay.RemoveWidget(it.files)
+		it.files.DeleteLater()
+		it.files = nil
+	}
+	if it.post.Metadata == nil || len(it.post.Metadata.Files) == 0 {
+		return
+	}
+	it.files = qt.NewQWidget2()
+	lay := qt.NewQVBoxLayout(it.files)
+	lay.SetContentsMargins(0, 4, 0, 0)
+	lay.SetSpacing(4)
+	for _, fi := range it.post.Metadata.Files {
+		if isImage(fi) {
+			lay.AddWidget3(f.imageButton(fi), 0, qt.AlignLeft)
+		} else {
+			lay.AddWidget(f.fileRow(fi))
+		}
+	}
+	it.lay.InsertWidget(2, it.files) // после заголовка и текста, до реакций
+}
+
+// imageButton — превью картинки; место под него резервируется сразу, чтобы
+// лента не прыгала, когда превью догрузится. Клик — открыть целиком.
+func (f *Feed) imageButton(fi *model.FileInfo) *qt.QWidget {
+	w, h := fitSize(fi.Width, fi.Height, previewMaxW, previewMaxH)
+	b := qt.NewQPushButton2()
+	b.SetFlat(true)
+	b.SetFixedSize2(w+6, h+6)
+	b.SetToolTip(fmt.Sprintf("%s (%s) — открыть", fi.Name, formatSize(fi.Size)))
+	if pm := f.preview(fi, w, h); pm != nil {
+		b.SetIcon(qt.NewQIcon2(pm))
+		b.SetIconSize(qt.NewQSize2(pm.Width(), pm.Height()))
+	} else {
+		b.SetText("🖼 " + fi.Name)
+	}
+	b.OnClicked(func() { f.openFile(fi) })
+	return b.QWidget
+}
+
+// preview — уменьшенное превью из кэша; nil — ещё не загружено (загрузка запущена).
+func (f *Feed) preview(fi *model.FileInfo, w, h int) *qt.QPixmap {
+	if pm := f.pixmaps[fi.Id]; pm != nil {
+		return pm
+	}
+	if f.d.Assets == nil {
+		return nil
+	}
+	path := f.d.Assets.Preview(fi.Id)
+	if path == "" {
+		f.d.Assets.WantPreview(fi.Id, f.refreshSoon)
+		return nil
+	}
+	pm := qt.NewQPixmap4(path)
+	if pm.IsNull() {
+		return nil
+	}
+	pm = pm.Scaled3(w, h, qt.KeepAspectRatio, qt.SmoothTransformation)
+	f.pixmaps[fi.Id] = pm
+	return pm
+}
+
+func (f *Feed) fileRow(fi *model.FileInfo) *qt.QWidget {
+	row := qt.NewQWidget2()
+	lay := qt.NewQHBoxLayout(row)
+	lay.SetContentsMargins(0, 0, 0, 0)
+	label := newTextLabel(qt.RichText)
+	label.SetText(fmt.Sprintf(`📎 %s <span style="color:gray">(%s)</span>`, html.EscapeString(fi.Name), formatSize(fi.Size)))
+	lay.AddWidget(label.QWidget)
+	if canOpen(fi) {
+		open := qt.NewQPushButton3("Открыть")
+		open.OnClicked(func() { f.openFile(fi) })
+		lay.AddWidget(open.QWidget)
+	}
+	save := qt.NewQPushButton3("Сохранить…")
+	save.OnClicked(func() {
+		if f.OnSaveFile != nil {
+			f.OnSaveFile(fi)
+		}
+	})
+	lay.AddWidget(save.QWidget)
+	lay.AddStretch()
+	return row
+}
+
+func (f *Feed) openFile(fi *model.FileInfo) {
+	if f.OnOpenFile != nil {
+		f.OnOpenFile(fi)
+	}
 }
 
 // renderFooter пересобирает строку под постом: реакции, «+», ответы.
@@ -204,8 +366,8 @@ func (f *Feed) renderFooter(i int) {
 		it.footer = nil
 	}
 	groups := groupReactions(p)
-	showReplies := !f.thread && p.RootId == "" && p.ReplyCount > 0
-	inThread := !f.thread && p.RootId != ""
+	showReplies := !f.d.Thread && p.RootId == "" && p.ReplyCount > 0
+	inThread := !f.d.Thread && p.RootId != ""
 	if len(groups) == 0 && !showReplies && !inThread {
 		return
 	}
@@ -215,11 +377,19 @@ func (f *Feed) renderFooter(i int) {
 	row.SetContentsMargins(0, 2, 0, 0)
 	row.SetSpacing(4)
 	for _, g := range groups {
-		b := qt.NewQPushButton3(fmt.Sprintf("%s %d", emoji.Display(g.name), len(g.users)))
-		b.SetStyleSheet(reactionStyle(slices.Contains(g.users, f.me)))
+		b := qt.NewQPushButton2()
+		if _, ok := emoji.Char(g.name); ok {
+			b.SetText(fmt.Sprintf("%s %d", emoji.Display(g.name), len(g.users)))
+		} else if path := f.customEmoji(g.name); path != "" {
+			b.SetIcon(qt.NewQIcon4(path))
+			b.SetText(fmt.Sprint(len(g.users)))
+		} else {
+			b.SetText(fmt.Sprintf(":%s: %d", g.name, len(g.users)))
+		}
+		b.SetStyleSheet(reactionStyle(slices.Contains(g.users, f.d.Me.Id)))
 		names := make([]string, len(g.users))
 		for k, u := range g.users {
-			names[k] = f.names(u)
+			names[k] = f.d.Names(u)
 		}
 		b.SetToolTip(":" + g.name + ": — " + strings.Join(names, ", "))
 		name := g.name
@@ -293,7 +463,7 @@ func (f *Feed) contextMenu(it *postItem, pos *qt.QPoint) {
 	p := it.post
 	menu := qt.NewQMenu2()
 	if !p.IsSystemMessage() {
-		if !f.thread {
+		if !f.d.Thread {
 			reply := menu.QWidget.AddActionWithText("Ответить в треде")
 			reply.OnTriggered(func() { f.openThread(threadRoot(p)) })
 		}
@@ -347,31 +517,6 @@ func continues(prev, p *model.Post) bool {
 	return prev != nil && prev.UserId == p.UserId &&
 		p.CreateAt-prev.CreateAt < groupMillis &&
 		!prev.IsSystemMessage() && !p.IsSystemMessage()
-}
-
-func postBodyHTML(p *model.Post) string {
-	var b strings.Builder
-	switch {
-	case p.IsSystemMessage():
-		msg := p.Message
-		if msg == "" {
-			msg = p.Type
-		}
-		b.WriteString(`<i style="color:gray">` + markdown.Render(msg) + `</i>`)
-	default:
-		b.WriteString(markdown.Render(p.Message))
-	}
-	if p.Metadata != nil && len(p.Metadata.Files) > 0 {
-		for _, fi := range p.Metadata.Files {
-			fmt.Fprintf(&b, `<br>📎 %s <span style="color:gray">(%s)</span>`, html.EscapeString(fi.Name), formatSize(fi.Size))
-		}
-	} else if len(p.FileIds) > 0 {
-		fmt.Fprintf(&b, `<br>📎 файлов: %d`, len(p.FileIds))
-	}
-	if p.EditAt > 0 {
-		b.WriteString(` <span style="color:gray">(изменено)</span>`)
-	}
-	return b.String()
 }
 
 func formatTime(millis int64) string {

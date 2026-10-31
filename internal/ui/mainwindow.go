@@ -7,10 +7,11 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/mattermost/mattermost/server/public/model"
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
+	"github.com/mattermost/mattermost/server/public/model"
 
+	"matterqute/internal/cache"
 	"matterqute/internal/markdown"
 	"matterqute/internal/mm"
 	"matterqute/internal/store"
@@ -45,6 +46,7 @@ type MainWindow struct {
 	panel       *ThreadPanel
 	thread      *threadView // открытый в панели тред; nil — панель закрыта
 	conn        *qt.QLabel
+	assets      *Assets
 
 	current        string // открытый канал или threadsID
 	initialChannel string // открыть после первой загрузки сайдбара
@@ -56,7 +58,8 @@ type MainWindow struct {
 	OnChannelOpened func(id string)
 }
 
-func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel string) *MainWindow {
+// cacheDir — общий каталог кэша; у каждого сервера в нём свой подкаталог.
+func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir string) *MainWindow {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &MainWindow{
 		w:      qt.NewQMainWindow2(),
@@ -69,6 +72,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel string) *Main
 
 		initialChannel: initialChannel,
 	}
+	m.assets = NewAssets(cache.New(cacheDir, s.ServerURL, s.Client), ctx, m.ui, m.log)
 	m.w.SetWindowTitle(fmt.Sprintf("matterqute — %s", strings.TrimPrefix(strings.TrimPrefix(s.ServerURL, "https://"), "http://")))
 	m.w.Resize(1100, 720)
 	m.w.SetAttribute(qt.WA_DeleteOnClose)
@@ -107,17 +111,21 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel string) *Main
 	})
 
 	m.title = newTextLabel(qt.RichText)
-	m.title.SetOpenExternalLinks(true)
+	m.title.OnLinkActivated(m.handleLink)
 	m.title.SetMargin(10)
 	m.title.SetText("Выберите канал")
 
-	m.feed = NewFeed(m.st.Username, s.Me.Id, false)
+	deps := FeedDeps{Names: m.st.Username, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists}
+	m.feed = NewFeed(deps)
 	m.feed.OnNeedOlder = m.loadOlder
 	m.feed.OnOpenThread = m.openThread
-	m.feed.OnToggleReaction = m.toggleReaction
+	m.wireFeed(m.feed)
 
 	m.composer = NewComposer()
 	m.composer.OnSend = m.send
+	m.composer.OnUpload = func(id int, name, path string, data []byte) {
+		m.upload(m.composer, m.current, id, name, path, data)
+	}
 	m.composer.SetEnabled(false)
 
 	m.channelPage = qt.NewQWidget2()
@@ -149,9 +157,15 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel string) *Main
 	m.center.AddWidget(m.channelPage)
 	m.center.AddWidget(m.threadsPage)
 
-	m.panel = NewThreadPanel(m.st.Username, s.Me.Id, m.closeThread)
-	m.panel.feed.OnToggleReaction = m.toggleReaction
+	deps.Thread = true
+	m.panel = NewThreadPanel(deps, m.closeThread)
+	m.wireFeed(m.panel.feed)
 	m.panel.composer.OnSend = m.sendReply
+	m.panel.composer.OnUpload = func(id int, name, path string, data []byte) {
+		if t := m.thread; t != nil {
+			m.upload(m.panel.composer, t.channelID, id, name, path, data)
+		}
+	}
 
 	split := qt.NewQSplitter2()
 	split.AddWidget(m.sidebar.QWidget)
@@ -273,9 +287,12 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 		return nil, fmt.Errorf("load teams of %s: %w", me.Username, err)
 	}
 	sb := &store.Sidebar{Teams: teams}
-	if sb.CRT, err = m.s.FetchCRT(ctx); err != nil {
-		m.log.Warn("detect collapsed threads, assume off", "err", err)
+	// При ошибке часть настроек может быть прочитана, остальное — по умолчанию (без CRT).
+	settings, err := m.s.FetchSettings(ctx)
+	if err != nil {
+		m.log.Warn("load server settings", "err", err)
 	}
+	sb.CRT, sb.MaxFileSize = settings.CRT, settings.MaxFileSize
 	peers := map[string]bool{}
 	for _, t := range teams {
 		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")
@@ -427,6 +444,7 @@ func (m *MainWindow) openChannel(id string) {
 	}
 	m.current = id
 	m.center.SetCurrentWidget(m.channelPage)
+	m.composer.SwitchTo(id)
 	m.title.SetText(channelTitleHTML(ch, m.st.Title(ch)))
 	m.composer.SetEnabled(true)
 	m.composer.Focus()
@@ -449,10 +467,10 @@ func (m *MainWindow) openChannel(id string) {
 func channelTitleHTML(ch *model.Channel, title string) string {
 	s := "<b>" + html.EscapeString(channelPrefix(ch)+title) + "</b>"
 	if ch.Purpose != "" {
-		s += `<br><span style="color:gray">` + markdown.Render(ch.Purpose) + "</span>"
+		s += `<div style="color:gray">` + markdown.Render(ch.Purpose) + "</div>"
 	}
 	if ch.Header != "" {
-		s += "<br>" + markdown.Render(ch.Header)
+		s += markdown.Render(ch.Header)
 	}
 	return s
 }
@@ -553,23 +571,22 @@ func (m *MainWindow) markViewed(id, prev string) {
 	}()
 }
 
-func (m *MainWindow) send(text string) {
+func (m *MainWindow) send(text string, fileIDs []string) {
 	id := m.current
-	if id == "" {
+	if m.st.Channel(id) == nil {
 		return
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
-		p, _, err := m.s.Client.CreatePost(ctx, &model.Post{ChannelId: id, Message: text})
+		p, _, err := m.s.Client.CreatePost(ctx, &model.Post{ChannelId: id, Message: text, FileIds: fileIDs})
 		m.ui(func() {
 			if err != nil {
 				m.fail("send", fmt.Errorf("send to channel %s: %w", id, err))
-				if m.current == id {
-					m.composer.Restore(text)
-				}
+				m.composer.Restore()
 				return
 			}
+			m.composer.Sent()
 			// Тот же пост придёт и по WebSocket — applyPosted не задублирует.
 			m.applyPosted(p, false)
 		})
@@ -620,6 +637,7 @@ func (m *MainWindow) OnConnected() {
 		// События за время обрыва потеряны: перечитываем всё, что показываем.
 		m.st.DropTimelines()
 		m.reloadSidebar()
+		m.assets.Retry()
 		if t := m.thread; t != nil {
 			m.openThread(t.rootID)
 		}

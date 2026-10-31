@@ -38,6 +38,15 @@ func Dir() (string, error) {
 	return filepath.Join(base, appName), nil
 }
 
+// CacheDir — каталог кэша (картинки, вложения), ~/.cache/matterqute на Linux.
+func CacheDir() (string, error) {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("cache dir: %w", err)
+	}
+	return filepath.Join(base, appName), nil
+}
+
 // Load читает config.json из dir; если файла нет — пустой конфиг.
 func Load(dir string) (*Config, error) {
 	c := &Config{path: filepath.Join(dir, "config.json")}

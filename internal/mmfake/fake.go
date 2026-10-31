@@ -6,6 +6,7 @@ package mmfake
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -31,15 +32,18 @@ type Server struct {
 	// CollapsedThreads — режим CRT в конфиге сервера; менять до первых запросов.
 	CollapsedThreads string
 
-	mu       sync.Mutex
-	users    map[string]*model.User // по id
-	mfa      map[string]bool        // по username
-	sessions map[string]string      // token → user id
-	teams    []*model.Team
-	channels map[string]*model.Channel
-	members  map[string]map[string]*model.ChannelMember // user id → channel id →
+	mu        sync.Mutex
+	users     map[string]*model.User // по id
+	mfa       map[string]bool        // по username
+	sessions  map[string]string      // token → user id
+	teams     []*model.Team
+	channels  map[string]*model.Channel
+	members   map[string]map[string]*model.ChannelMember // user id → channel id →
 	posts     map[string][]*model.Post                   // по каналу, от старых к новым
 	followers map[string]map[string]*threadMember        // корень треда → user id →
+	files     map[string]*storedFile
+	emoji     []*model.Emoji
+	emojiData map[string][]byte // id эмодзи → картинка
 	conns     map[*wsConn]bool
 }
 
@@ -69,6 +73,8 @@ func New(log *slog.Logger) *Server {
 
 		CollapsedThreads: model.CollapsedThreadsAlwaysOn,
 		followers:        map[string]map[string]*threadMember{},
+		files:            map[string]*storedFile{},
+		emojiData:        map[string][]byte{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -88,6 +94,12 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/threads/{thid}/read/{ts}", s.auth(s.threadRead))
 	s.mux.HandleFunc("POST /api/v4/reactions", s.auth(s.saveReaction))
 	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/posts/{pid}/reactions/{emoji}", s.auth(s.deleteReaction))
+	s.mux.HandleFunc("POST /api/v4/files", s.auth(s.uploadFile))
+	s.mux.HandleFunc("GET /api/v4/files/{fid}", s.auth(s.getFile))
+	s.mux.HandleFunc("GET /api/v4/files/{fid}/preview", s.auth(s.getFile))
+	s.mux.HandleFunc("GET /api/v4/files/{fid}/thumbnail", s.auth(s.getFile))
+	// /emoji/name/{name} и /emoji/{id}/image: ServeMux считает их конфликтующими.
+	s.mux.HandleFunc("GET /api/v4/emoji/{a}/{b}", s.auth(s.emojiRoute))
 	s.mux.HandleFunc("GET /api/v4/websocket", s.websocket)
 	return s
 }
@@ -151,6 +163,28 @@ func (s *Server) seed() {
 	}
 	s.seedPost(town, dave, now.Add(-time.Minute), "").Type = model.PostTypeJoinChannel
 	s.posts[town.Id][len(s.posts[town.Id])-1].Message = "dave joined the channel."
+
+	// Разметка, картинка и файл — в backend, алерт с вложением — в alerts.
+	e := &model.Emoji{Id: model.NewId(), Name: "partyparrot"}
+	s.emoji = append(s.emoji, e)
+	s.emojiData[e.Id] = circlePNG(32, color.RGBA{230, 60, 140, 255})
+	s.seedPost(backend, carol, now.Add(-40*time.Minute), "### Релиз 2.4 :partyparrot:\n"+
+		"Что вошло:\n- [x] **новый** кэш сессий\n- [ ] ~~старый~~ API — *в следующем*\n\n"+
+		"| сервис | p99 |\n|---|---|\n| api | 120 мс |\n| ws | 35 мс |\n\n"+
+		"Конфиг:\n```yaml\ncache:\n  ttl: 30s\n  size: 10000\n```\n"+
+		"> не забудьте `make migrate`\n\n@alice глянь ~town-square :+1:")
+	img := s.seedPost(backend, bob, now.Add(-35*time.Minute), "Схема нового кэша")
+	img.FileIds = model.StringArray{s.addFile(bob.Id, backend.Id, "схема.png", gradientPNG(640, 360)).Id}
+	s.attachFiles(img)
+	doc := s.seedPost(backend, dave, now.Add(-30*time.Minute), "Отчёт по нагрузке")
+	doc.FileIds = model.StringArray{s.addFile(dave.Id, backend.Id, "load-report.pdf", []byte("%PDF-1.4\n% fake report\n")).Id}
+	s.attachFiles(doc)
+	alert := s.seedPost(alerts, bob, now.Add(-90*time.Minute), "")
+	alert.AddProp(model.PostPropsAttachments, []*model.MessageAttachment{{
+		Color: "danger", Title: "[FIRING:1] DiskSpaceLow", TitleLink: "https://grafana.example.com/alerting/1",
+		Text: "Свободно **3%** на `/var/lib/postgresql`", Footer: "Grafana v11",
+		Fields: []*model.MessageAttachmentField{{Title: "host", Value: "db-2", Short: true}, {Title: "severity", Value: "critical", Short: true}},
+	}})
 	s.markAllRead()
 
 	// Тред в town-square: alice участвует, последний ответ dave она не видела.
@@ -432,6 +466,13 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request, me *model.Us
 		return
 	}
 	p.UserId = me.Id
+	for _, id := range p.FileIds {
+		if f := s.files[id]; f == nil || f.info.CreatorId != me.Id || f.info.PostId != "" {
+			s.mu.Unlock()
+			s.fail(w, http.StatusBadRequest, "api.post.create_post.file_ids.app_error")
+			return
+		}
+	}
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusCreated)
 	s.json(w, s.Post(&p))
@@ -444,6 +485,7 @@ func (s *Server) Post(p *model.Post) *model.Post {
 	p.Id = model.NewId()
 	p.CreateAt = model.GetMillis()
 	p.UpdateAt = p.CreateAt
+	s.attachFiles(p)
 	s.addPost(p)
 	mentioned := s.mentionedIn(p)
 	for _, id := range mentioned {

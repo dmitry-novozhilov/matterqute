@@ -18,6 +18,8 @@ type Server struct {
 	LoginID  string `json:"login_id"` // что вводили в поле логина, чтобы подставить при повторном входе
 	UserID   string `json:"user_id"`
 	Username string `json:"username"`
+	// Канал, открытый последним: с него начинаем при следующем запуске.
+	LastChannel string `json:"last_channel,omitempty"`
 }
 
 type Config struct {

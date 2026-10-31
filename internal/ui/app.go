@@ -156,7 +156,11 @@ func (a *App) remember(s *mm.Session, loginID string) {
 	if err := a.tokens.Set(s.ServerURL, s.Token()); err != nil {
 		a.log.Error("save token", "err", err)
 	}
-	a.cfg.Upsert(config.Server{URL: s.ServerURL, LoginID: loginID, UserID: s.Me.Id, Username: s.Me.Username})
+	srv := config.Server{URL: s.ServerURL, LoginID: loginID, UserID: s.Me.Id, Username: s.Me.Username}
+	if old := a.cfg.Server(s.ServerURL); old != nil && old.UserID == s.Me.Id {
+		srv.LastChannel = old.LastChannel
+	}
+	a.cfg.Upsert(srv)
 	if err := a.cfg.Save(); err != nil {
 		a.log.Error("save config", "err", err)
 	}
@@ -164,8 +168,20 @@ func (a *App) remember(s *mm.Session, loginID string) {
 
 func (a *App) openMain(s *mm.Session) {
 	a.log.Info("signed in", "server", s.ServerURL, "user", s.Me.Username)
-	m := NewMainWindow(s, a.log)
+	lastChannel := ""
+	if srv := a.cfg.Server(s.ServerURL); srv != nil {
+		lastChannel = srv.LastChannel
+	}
+	m := NewMainWindow(s, a.log, lastChannel)
 	m.OnLogout = func() { a.logout(m) }
+	m.OnChannelOpened = func(id string) {
+		if srv := a.cfg.Server(s.ServerURL); srv != nil && srv.LastChannel != id {
+			srv.LastChannel = id
+			if err := a.cfg.Save(); err != nil {
+				a.log.Error("save config", "err", err)
+			}
+		}
+	}
 	a.main = m
 	m.Show()
 	a.closeLogin()

@@ -1,11 +1,14 @@
 // Package mmfake — минимальный фейковый сервер Mattermost для разработки UI
-// и тестов: вход (с MFA), команды, каналы, пользователи и WebSocket с hello.
+// и тестов: вход (с MFA), команды, каналы, членства, посты и WebSocket.
 package mmfake
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +32,22 @@ type Server struct {
 	mfa      map[string]bool        // по username
 	sessions map[string]string      // token → user id
 	teams    []*model.Team
-	channels map[string][]*model.Channel // по id команды
+	channels map[string]*model.Channel
+	members  map[string]map[string]*model.ChannelMember // user id → channel id →
+	posts    map[string][]*model.Post                   // по каналу, от старых к новым
+	conns    map[*wsConn]bool
+}
+
+type wsConn struct {
+	userID string
+	mu     sync.Mutex
+	c      *websocket.Conn
+}
+
+func (c *wsConn) write(v []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.c.WriteMessage(websocket.TextMessage, v)
 }
 
 func New(log *slog.Logger) *Server {
@@ -39,7 +57,10 @@ func New(log *slog.Logger) *Server {
 		users:    map[string]*model.User{},
 		mfa:      map[string]bool{"bob": true},
 		sessions: map[string]string{},
-		channels: map[string][]*model.Channel{},
+		channels: map[string]*model.Channel{},
+		members:  map[string]map[string]*model.ChannelMember{},
+		posts:    map[string][]*model.Post{},
+		conns:    map[*wsConn]bool{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -47,13 +68,17 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("GET /api/v4/users/me", s.auth(s.me))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams", s.auth(s.userTeams))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/channels", s.auth(s.teamChannels))
+	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/channels/members", s.auth(s.teamMembers))
 	s.mux.HandleFunc("POST /api/v4/users/ids", s.auth(s.usersByIDs))
+	s.mux.HandleFunc("GET /api/v4/channels/{cid}/posts", s.auth(s.channelPosts))
+	s.mux.HandleFunc("POST /api/v4/channels/members/{uid}/view", s.auth(s.viewChannel))
+	s.mux.HandleFunc("POST /api/v4/posts", s.auth(s.createPost))
 	s.mux.HandleFunc("GET /api/v4/websocket", s.websocket)
 	return s
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.log.Debug("request", "method", r.Method, "path", r.URL.Path)
+	s.log.Debug("request", "method", r.Method, "path", r.URL.Path, "query", r.URL.RawQuery)
 	s.mux.ServeHTTP(w, r)
 }
 
@@ -62,31 +87,101 @@ func (s *Server) seed() {
 		u := &model.User{Id: model.NewId(), Username: name, Email: name + "@example.com"}
 		s.users[u.Id] = u
 	}
-	alice, bob, carol := s.byName("alice"), s.byName("bob"), s.byName("carol")
+	alice, bob, carol, dave := s.byName("alice"), s.byName("bob"), s.byName("carol"), s.byName("dave")
+	everyone := []*model.User{alice, bob, carol, dave}
 
 	dev := &model.Team{Id: model.NewId(), Name: "dev", DisplayName: "Разработка"}
 	ops := &model.Team{Id: model.NewId(), Name: "ops", DisplayName: "Эксплуатация"}
 	s.teams = []*model.Team{dev, ops}
 
 	ch := func(team *model.Team, typ model.ChannelType, name, display, purpose string) *model.Channel {
-		return &model.Channel{Id: model.NewId(), TeamId: team.Id, Type: typ, Name: name, DisplayName: display, Purpose: purpose}
+		c := &model.Channel{Id: model.NewId(), TeamId: team.Id, Type: typ, Name: name, DisplayName: display, Purpose: purpose}
+		s.addChannel(c, everyone)
+		return c
 	}
 	dm := func(a, b *model.User) *model.Channel {
-		return &model.Channel{Id: model.NewId(), Type: model.ChannelTypeDirect, Name: model.GetDMNameFromIds(a.Id, b.Id)}
+		c := &model.Channel{Id: model.NewId(), Type: model.ChannelTypeDirect, Name: model.GetDMNameFromIds(a.Id, b.Id)}
+		s.addChannel(c, []*model.User{a, b})
+		return c
 	}
-	direct := []*model.Channel{
-		dm(alice, bob), dm(alice, carol), dm(alice, alice),
-		{Id: model.NewId(), Type: model.ChannelTypeGroup, Name: model.NewId(), DisplayName: "alice, bob, carol"},
+	town := ch(dev, model.ChannelTypeOpen, "town-square", "Town Square", "Общий канал команды")
+	backend := ch(dev, model.ChannelTypeOpen, "backend", "backend", "Сервисы и API")
+	ch(dev, model.ChannelTypePrivate, "releases", "Релизы", "Планирование релизов")
+	ch(ops, model.ChannelTypeOpen, "town-square", "Town Square", "")
+	alerts := ch(ops, model.ChannelTypeOpen, "alerts", "alerts", "Алерты из Grafana")
+	withBob := dm(alice, bob)
+	dm(alice, carol)
+	dm(alice, alice)
+	gm := &model.Channel{Id: model.NewId(), Type: model.ChannelTypeGroup, Name: model.NewId(), DisplayName: "alice, bob, carol"}
+	s.addChannel(gm, []*model.User{alice, bob, carol})
+
+	// История: 150 постов в town-square для проверки подгрузки, всё прочитано.
+	now := time.Now()
+	start := now.Add(-150 * 7 * time.Minute)
+	lines := []string{
+		"Доброе утро!",
+		"Кто-нибудь смотрел вчерашний релиз?",
+		"Да, всё ок, графики ровные.\nНо p99 на /api/v4/posts подрос, гляньте https://grafana.example.com/d/abc?from=now-1d.",
+		"Ок, посмотрю после обеда.",
+		"Напоминаю: в 15:00 созвон по планированию.",
 	}
-	s.channels[dev.Id] = append([]*model.Channel{
-		ch(dev, model.ChannelTypeOpen, "town-square", "Town Square", "Общий канал команды"),
-		ch(dev, model.ChannelTypeOpen, "backend", "backend", "Сервисы и API"),
-		ch(dev, model.ChannelTypePrivate, "releases", "Релизы", "Планирование релизов"),
-	}, direct...)
-	s.channels[ops.Id] = append([]*model.Channel{
-		ch(ops, model.ChannelTypeOpen, "town-square", "Town Square", ""),
-		ch(ops, model.ChannelTypeOpen, "alerts", "alerts", "Алерты из Grafana"),
-	}, direct...)
+	for i := range 150 {
+		u := everyone[i%len(everyone)]
+		at := start.Add(time.Duration(i) * 7 * time.Minute)
+		if i%10 == 3 {
+			at = start.Add(time.Duration(i-1)*7*time.Minute + time.Minute) // продолжение того же автора
+			u = everyone[(i-1)%len(everyone)]
+		}
+		s.seedPost(town, u, at, fmt.Sprintf("%s (#%d)", lines[i%len(lines)], i+1))
+	}
+	s.seedPost(town, dave, now.Add(-time.Minute), "").Type = model.PostTypeJoinChannel
+	s.posts[town.Id][len(s.posts[town.Id])-1].Message = "dave joined the channel."
+	s.markAllRead()
+
+	// Непрочитанное у alice: в backend — просто новые, в личке с bob — упоминание.
+	s.seedPost(backend, carol, now.Add(-20*time.Minute), "Задеплоил новую версию сервиса нотификаций.")
+	s.seedPost(backend, dave, now.Add(-10*time.Minute), "Ловлю 502 на staging, кто-то трогал nginx?")
+	s.seedPost(withBob, bob, now.Add(-5*time.Minute), "@alice глянь, пожалуйста, мой MR, когда будет минутка")
+	s.members[alice.Id][withBob.Id].MentionCount = 1
+	s.seedPost(alerts, bob, now.Add(-2*time.Hour), "[FIRING] DiskSpaceLow on db-2")
+	s.members[alice.Id][alerts.Id].MsgCount = s.channels[alerts.Id].TotalMsgCount
+}
+
+func (s *Server) addChannel(c *model.Channel, users []*model.User) {
+	s.channels[c.Id] = c
+	for _, u := range users {
+		if s.members[u.Id] == nil {
+			s.members[u.Id] = map[string]*model.ChannelMember{}
+		}
+		s.members[u.Id][c.Id] = &model.ChannelMember{ChannelId: c.Id, UserId: u.Id, NotifyProps: model.GetDefaultChannelNotifyProps()}
+	}
+}
+
+func (s *Server) seedPost(c *model.Channel, u *model.User, at time.Time, msg string) *model.Post {
+	p := &model.Post{Id: model.NewId(), ChannelId: c.Id, UserId: u.Id, Message: msg, CreateAt: at.UnixMilli(), UpdateAt: at.UnixMilli()}
+	s.addPost(p)
+	return p
+}
+
+func (s *Server) addPost(p *model.Post) {
+	s.posts[p.ChannelId] = append(s.posts[p.ChannelId], p)
+	c := s.channels[p.ChannelId]
+	c.TotalMsgCount++
+	if p.RootId == "" {
+		c.TotalMsgCountRoot++
+	}
+	c.LastPostAt = max(c.LastPostAt, p.CreateAt)
+	if m := s.members[p.UserId][p.ChannelId]; m != nil {
+		m.MsgCount, m.MsgCountRoot, m.LastViewedAt = c.TotalMsgCount, c.TotalMsgCountRoot, p.CreateAt
+	}
+}
+
+func (s *Server) markAllRead() {
+	for _, byChannel := range s.members {
+		for id, m := range byChannel {
+			m.MsgCount, m.MsgCountRoot = s.channels[id].TotalMsgCount, s.channels[id].TotalMsgCountRoot
+		}
+	}
 }
 
 func (s *Server) byName(name string) *model.User {
@@ -165,15 +260,31 @@ func (s *Server) userTeams(w http.ResponseWriter, _ *http.Request, _ *model.User
 	s.json(w, s.teams)
 }
 
-func (s *Server) teamChannels(w http.ResponseWriter, r *http.Request, _ *model.User) {
+// myChannels — каналы команды, где me участник, плюс личные и групповые.
+func (s *Server) myChannels(teamID string, me *model.User) []*model.Channel {
+	var out []*model.Channel
+	for id, c := range s.channels {
+		if s.members[me.Id][id] != nil && (c.TeamId == teamID || c.IsGroupOrDirect()) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func (s *Server) teamChannels(w http.ResponseWriter, r *http.Request, me *model.User) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	chs, ok := s.channels[r.PathValue("tid")]
-	if !ok {
-		s.fail(w, http.StatusNotFound, "app.team.get.find.app_error")
-		return
+	s.json(w, s.myChannels(r.PathValue("tid"), me))
+}
+
+func (s *Server) teamMembers(w http.ResponseWriter, r *http.Request, me *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []model.ChannelMember{}
+	for _, c := range s.myChannels(r.PathValue("tid"), me) {
+		out = append(out, *s.members[me.Id][c.Id])
 	}
-	s.json(w, chs)
+	s.json(w, out)
 }
 
 func (s *Server) usersByIDs(w http.ResponseWriter, r *http.Request, _ *model.User) {
@@ -191,6 +302,134 @@ func (s *Server) usersByIDs(w http.ResponseWriter, r *http.Request, _ *model.Use
 		}
 	}
 	s.json(w, out)
+}
+
+// channelPosts: page/per_page от самых новых; before=<post id> — страница старше этого поста.
+func (s *Server) channelPosts(w http.ResponseWriter, r *http.Request, me *model.User) {
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	perPage, err := strconv.Atoi(q.Get("per_page"))
+	if err != nil || perPage <= 0 {
+		perPage = 60
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cid := r.PathValue("cid")
+	if s.members[me.Id][cid] == nil {
+		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
+		return
+	}
+	posts := s.posts[cid]
+	end := len(posts)
+	if before := q.Get("before"); before != "" {
+		end = slices.IndexFunc(posts, func(p *model.Post) bool { return p.Id == before })
+		if end < 0 {
+			s.fail(w, http.StatusNotFound, "app.post.get.app_error")
+			return
+		}
+	}
+	end -= page * perPage
+	list := model.NewPostList()
+	for i := end - 1; i >= 0 && i >= end-perPage; i-- {
+		list.AddPost(posts[i])
+		list.AddOrder(posts[i].Id)
+	}
+	s.json(w, list)
+}
+
+func (s *Server) viewChannel(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var view model.ChannelView
+	if err := json.NewDecoder(r.Body).Decode(&view); err != nil {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, c := s.members[me.Id][view.ChannelId], s.channels[view.ChannelId]
+	if m == nil || c == nil {
+		s.fail(w, http.StatusNotFound, "app.channel.get_member.missing.app_error")
+		return
+	}
+	m.MsgCount, m.MsgCountRoot, m.MentionCount = c.TotalMsgCount, c.TotalMsgCountRoot, 0
+	m.LastViewedAt = model.GetMillis()
+	s.json(w, &model.ChannelViewResponse{Status: "OK", LastViewedAtTimes: map[string]int64{c.Id: m.LastViewedAt}})
+}
+
+func (s *Server) createPost(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var p model.Post
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	if s.members[me.Id][p.ChannelId] == nil {
+		s.mu.Unlock()
+		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
+		return
+	}
+	p.UserId = me.Id
+	s.mu.Unlock()
+	w.WriteHeader(http.StatusCreated)
+	s.json(w, s.Post(&p))
+}
+
+// Post публикует пост от имени p.UserId и рассылает posted по WebSocket.
+func (s *Server) Post(p *model.Post) *model.Post {
+	s.mu.Lock()
+	p.Id = model.NewId()
+	p.CreateAt = model.GetMillis()
+	p.UpdateAt = p.CreateAt
+	s.addPost(p)
+	var mentioned []string
+	for id, u := range s.users {
+		if id != p.UserId && s.members[id][p.ChannelId] != nil && strings.Contains(p.Message, "@"+u.Username) {
+			s.members[id][p.ChannelId].MentionCount++
+			mentioned = append(mentioned, id)
+		}
+	}
+	targets := s.connsIn(p.ChannelId)
+	s.mu.Unlock()
+
+	postJSON, _ := json.Marshal(p)
+	for _, c := range targets {
+		ev := model.NewWebSocketEvent(model.WebsocketEventPosted, "", p.ChannelId, "", nil, "")
+		ev.Add("post", string(postJSON))
+		if slices.Contains(mentioned, c.userID) {
+			ev.Add("mentions", model.ArrayToJSON([]string{c.userID}))
+		}
+		data, _ := ev.ToJSON()
+		if err := c.write(data); err != nil {
+			s.log.Warn("websocket write", "user", c.userID, "err", err)
+		}
+	}
+	return p
+}
+
+// Chatter раз в interval пишет от bob в Town Square команды dev — для проверки realtime.
+func (s *Server) Chatter(interval time.Duration) {
+	s.mu.Lock()
+	bob := s.byName("bob")
+	var town *model.Channel
+	for _, c := range s.channels {
+		if c.Name == "town-square" && c.TeamId == s.teams[0].Id {
+			town = c
+		}
+	}
+	s.mu.Unlock()
+	for i := 1; ; i++ {
+		time.Sleep(interval)
+		s.Post(&model.Post{ChannelId: town.Id, UserId: bob.Id, Message: fmt.Sprintf("Сообщение из chatter #%d", i)})
+	}
+}
+
+func (s *Server) connsIn(channelID string) []*wsConn {
+	var out []*wsConn
+	for c := range s.conns {
+		if s.members[c.userID][channelID] != nil {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
@@ -218,11 +457,22 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 			Error: model.NewAppError("mmfake", "api.web_socket_router.not_authenticated.app_error", nil, "", http.StatusUnauthorized)})
 		return
 	}
-	conn.WriteJSON(model.NewWebSocketResponse("OK", req.Seq, nil))
+	wc := &wsConn{userID: uid, c: conn}
+	resp, _ := model.NewWebSocketResponse("OK", req.Seq, nil).ToJSON()
+	wc.write(resp)
 	hello := model.NewWebSocketEvent(model.WebsocketEventHello, "", "", uid, nil, "")
 	hello.Add("server_version", "mmfake")
 	data, _ := hello.ToJSON()
-	conn.WriteMessage(websocket.TextMessage, data)
+	wc.write(data)
+
+	s.mu.Lock()
+	s.conns[wc] = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.conns, wc)
+		s.mu.Unlock()
+	}()
 
 	done := make(chan struct{})
 	go func() {
@@ -240,7 +490,10 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 		case <-done:
 			return
 		case <-ping.C:
-			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+			wc.mu.Lock()
+			err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second))
+			wc.mu.Unlock()
+			if err != nil {
 				return
 			}
 		}

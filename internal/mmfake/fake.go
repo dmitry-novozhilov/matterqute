@@ -1,5 +1,6 @@
 // Package mmfake — минимальный фейковый сервер Mattermost для разработки UI
-// и тестов: вход (с MFA), команды, каналы, членства, посты и WebSocket.
+// и тестов: вход (с MFA), команды, каналы, членства, посты, треды, реакции
+// и WebSocket.
 package mmfake
 
 import (
@@ -27,6 +28,9 @@ type Server struct {
 	log *slog.Logger
 	mux *http.ServeMux
 
+	// CollapsedThreads — режим CRT в конфиге сервера; менять до первых запросов.
+	CollapsedThreads string
+
 	mu       sync.Mutex
 	users    map[string]*model.User // по id
 	mfa      map[string]bool        // по username
@@ -34,8 +38,9 @@ type Server struct {
 	teams    []*model.Team
 	channels map[string]*model.Channel
 	members  map[string]map[string]*model.ChannelMember // user id → channel id →
-	posts    map[string][]*model.Post                   // по каналу, от старых к новым
-	conns    map[*wsConn]bool
+	posts     map[string][]*model.Post                   // по каналу, от старых к новым
+	followers map[string]map[string]*threadMember        // корень треда → user id →
+	conns     map[*wsConn]bool
 }
 
 type wsConn struct {
@@ -61,6 +66,9 @@ func New(log *slog.Logger) *Server {
 		members:  map[string]map[string]*model.ChannelMember{},
 		posts:    map[string][]*model.Post{},
 		conns:    map[*wsConn]bool{},
+
+		CollapsedThreads: model.CollapsedThreadsAlwaysOn,
+		followers:        map[string]map[string]*threadMember{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -73,6 +81,13 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("GET /api/v4/channels/{cid}/posts", s.auth(s.channelPosts))
 	s.mux.HandleFunc("POST /api/v4/channels/members/{uid}/view", s.auth(s.viewChannel))
 	s.mux.HandleFunc("POST /api/v4/posts", s.auth(s.createPost))
+	s.mux.HandleFunc("GET /api/v4/posts/{pid}/thread", s.auth(s.postThread))
+	s.mux.HandleFunc("GET /api/v4/config/client", s.auth(s.clientConfig))
+	s.mux.HandleFunc("GET /api/v4/users/{uid}/preferences/{category}", s.auth(s.preferences))
+	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/threads", s.auth(s.userThreads))
+	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/threads/{thid}/read/{ts}", s.auth(s.threadRead))
+	s.mux.HandleFunc("POST /api/v4/reactions", s.auth(s.saveReaction))
+	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/posts/{pid}/reactions/{emoji}", s.auth(s.deleteReaction))
 	s.mux.HandleFunc("GET /api/v4/websocket", s.websocket)
 	return s
 }
@@ -138,6 +153,19 @@ func (s *Server) seed() {
 	s.posts[town.Id][len(s.posts[town.Id])-1].Message = "dave joined the channel."
 	s.markAllRead()
 
+	// Тред в town-square: alice участвует, последний ответ dave она не видела.
+	// Ответы не делают канал непрочитанным при CRT, поэтому без markAllRead.
+	root := s.posts[town.Id][len(s.posts[town.Id])-3]
+	s.seedReply(root, bob, now.Add(-50*time.Second), "Посмотрел, на staging то же самое.")
+	s.seedReply(root, alice, now.Add(-40*time.Second), "Ок, заведу задачу.")
+	s.seedReply(root, dave, now.Add(-30*time.Second), "@alice приложи туда логи nginx, пожалуйста")
+	for _, r := range []struct {
+		u    *model.User
+		name string
+	}{{bob, "+1"}, {alice, "+1"}, {carol, "tada"}} {
+		s.react(root, &model.Reaction{UserId: r.u.Id, PostId: root.Id, EmojiName: r.name, ChannelId: town.Id}, true)
+	}
+
 	// Непрочитанное у alice: в backend — просто новые, в личке с bob — упоминание.
 	s.seedPost(backend, carol, now.Add(-20*time.Minute), "Задеплоил новую версию сервиса нотификаций.")
 	s.seedPost(backend, dave, now.Add(-10*time.Minute), "Ловлю 502 на staging, кто-то трогал nginx?")
@@ -145,6 +173,34 @@ func (s *Server) seed() {
 	s.members[alice.Id][withBob.Id].MentionCount = 1
 	s.seedPost(alerts, bob, now.Add(-2*time.Hour), "[FIRING] DiskSpaceLow on db-2")
 	s.members[alice.Id][alerts.Id].MsgCount = s.channels[alerts.Id].TotalMsgCount
+}
+
+// seedReply — ответ в тред при заполнении: счётчики и подписки как у живого.
+func (s *Server) seedReply(root *model.Post, u *model.User, at time.Time, msg string) {
+	p := &model.Post{Id: model.NewId(), ChannelId: root.ChannelId, RootId: root.Id, UserId: u.Id, Message: msg, CreateAt: at.UnixMilli(), UpdateAt: at.UnixMilli()}
+	s.addPost(p)
+	s.addReply(p, s.mentionedIn(p))
+}
+
+// mentionedIn — участники канала, упомянутые в посте через @username.
+func (s *Server) mentionedIn(p *model.Post) []string {
+	var out []string
+	for id, u := range s.users {
+		if id != p.UserId && s.members[id][p.ChannelId] != nil && strings.Contains(p.Message, "@"+u.Username) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// UserID — id пользователя по имени, для тестов.
+func (s *Server) UserID(name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if u := s.byName(name); u != nil {
+		return u.Id
+	}
+	return ""
 }
 
 func (s *Server) addChannel(c *model.Channel, users []*model.User) {
@@ -320,6 +376,9 @@ func (s *Server) channelPosts(w http.ResponseWriter, r *http.Request, me *model.
 		return
 	}
 	posts := s.posts[cid]
+	if q.Get("collapsedThreads") == "true" {
+		posts = slices.DeleteFunc(slices.Clone(posts), func(p *model.Post) bool { return p.RootId != "" })
+	}
 	end := len(posts)
 	if before := q.Get("before"); before != "" {
 		end = slices.IndexFunc(posts, func(p *model.Post) bool { return p.Id == before })
@@ -367,6 +426,11 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request, me *model.Us
 		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
 		return
 	}
+	if p.RootId != "" && s.post(p.RootId) == nil {
+		s.mu.Unlock()
+		s.fail(w, http.StatusBadRequest, "api.post.create_post.root_id.app_error")
+		return
+	}
 	p.UserId = me.Id
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusCreated)
@@ -376,22 +440,26 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request, me *model.Us
 // Post публикует пост от имени p.UserId и рассылает posted по WebSocket.
 func (s *Server) Post(p *model.Post) *model.Post {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	p.Id = model.NewId()
 	p.CreateAt = model.GetMillis()
 	p.UpdateAt = p.CreateAt
 	s.addPost(p)
-	var mentioned []string
-	for id, u := range s.users {
-		if id != p.UserId && s.members[id][p.ChannelId] != nil && strings.Contains(p.Message, "@"+u.Username) {
-			s.members[id][p.ChannelId].MentionCount++
-			mentioned = append(mentioned, id)
+	mentioned := s.mentionedIn(p)
+	for _, id := range mentioned {
+		m := s.members[id][p.ChannelId]
+		m.MentionCount++
+		if p.RootId == "" {
+			m.MentionCountRoot++
 		}
 	}
-	targets := s.connsIn(p.ChannelId)
-	s.mu.Unlock()
+	var followers []string
+	if p.RootId != "" {
+		followers = s.addReply(p, mentioned)
+	}
 
 	postJSON, _ := json.Marshal(p)
-	for _, c := range targets {
+	for _, c := range s.connsIn(p.ChannelId) {
 		ev := model.NewWebSocketEvent(model.WebsocketEventPosted, "", p.ChannelId, "", nil, "")
 		ev.Add("post", string(postJSON))
 		if slices.Contains(mentioned, c.userID) {
@@ -401,6 +469,9 @@ func (s *Server) Post(p *model.Post) *model.Post {
 		if err := c.write(data); err != nil {
 			s.log.Warn("websocket write", "user", c.userID, "err", err)
 		}
+	}
+	for _, id := range followers {
+		s.sendThreadUpdated(p.RootId, id)
 	}
 	return p
 }

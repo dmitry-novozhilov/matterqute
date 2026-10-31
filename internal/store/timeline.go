@@ -44,6 +44,7 @@ func (t *Timeline) Prepend(older []*model.Post, hasMore bool) []*model.Post {
 // Возвращает позицию и признак новой вставки.
 func (t *Timeline) Upsert(p *model.Post) (int, bool) {
 	if i := t.index(p.Id); i >= 0 {
+		keepReplies(t.Posts[i], p)
 		t.Posts[i] = p
 		return i, false
 	}
@@ -62,8 +63,18 @@ func (t *Timeline) Replace(p *model.Post) bool {
 	if i < 0 {
 		return false
 	}
+	keepReplies(t.Posts[i], p)
 	t.Posts[i] = p
 	return true
+}
+
+// keepReplies переносит счётчик ответов со старой версии поста: в событии
+// post_edited его может не быть, а уменьшаться от правки он не может.
+func keepReplies(old, p *model.Post) {
+	if p.ReplyCount < old.ReplyCount {
+		p.ReplyCount = old.ReplyCount
+	}
+	p.LastReplyAt = max(p.LastReplyAt, old.LastReplyAt)
 }
 
 func (t *Timeline) Remove(id string) bool {
@@ -73,6 +84,14 @@ func (t *Timeline) Remove(id string) bool {
 	}
 	t.Posts = slices.Delete(t.Posts, i, i+1)
 	return true
+}
+
+// Get — загруженный пост по id или nil.
+func (t *Timeline) Get(id string) *model.Post {
+	if i := t.index(id); i >= 0 {
+		return t.Posts[i]
+	}
+	return nil
 }
 
 func (t *Timeline) Oldest() *model.Post {

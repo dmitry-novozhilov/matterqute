@@ -55,7 +55,7 @@ func makePosts(from, n int) []*model.Post {
 func TestFeedScrolling(t *testing.T) { onMain(func() { testFeedScrolling(t) }) }
 
 func testFeedScrolling(t *testing.T) {
-	f := NewFeed(func(id string) string { return id })
+	f := NewFeed(func(id string) string { return id }, "me", false)
 	f.Widget().Resize(500, 300)
 	f.Widget().Show()
 	defer f.Widget().Close()

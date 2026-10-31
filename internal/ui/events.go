@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -31,8 +32,11 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 			return nil, err
 		}
 		return func() {
-			if m.st.ApplyEdited(p) && p.ChannelId == m.current {
+			if m.st.ApplyEdited(p) && p.ChannelId == m.current && m.feed.Has(p.Id) {
 				m.feed.Upsert(p)
+			}
+			if t := m.thread; t != nil && t.tl.Replace(p) && t.tl.Loaded {
+				m.panel.feed.Upsert(p)
 			}
 		}, nil
 
@@ -45,7 +49,64 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 			if m.st.ApplyDeleted(p) && p.ChannelId == m.current {
 				m.feed.Remove(p.Id)
 			}
+			if t := m.thread; t != nil {
+				if p.Id == t.rootID {
+					m.closeThread()
+				} else if t.tl.Remove(p.Id) {
+					m.panel.feed.Remove(p.Id)
+				}
+			}
 		}, nil
+
+	case model.WebsocketEventReactionAdded, model.WebsocketEventReactionRemoved:
+		raw, ok := data["reaction"].(string)
+		if !ok {
+			return nil, fmt.Errorf("reaction: want JSON string, got %T", data["reaction"])
+		}
+		var r model.Reaction
+		if err := json.Unmarshal([]byte(raw), &r); err != nil {
+			return nil, fmt.Errorf("reaction %s: %w", truncate(raw, 200), err)
+		}
+		added := ev.EventType() == model.WebsocketEventReactionAdded
+		channel := ev.GetBroadcast().ChannelId
+		return func() { m.applyReaction(channel, &r, added) }, nil
+
+	case model.WebsocketEventThreadUpdated:
+		raw, ok := data["thread"].(string)
+		if !ok {
+			return nil, fmt.Errorf("thread: want JSON string, got %T", data["thread"])
+		}
+		var t model.ThreadResponse
+		if err := json.Unmarshal([]byte(raw), &t); err != nil {
+			return nil, fmt.Errorf("thread %s: %w", truncate(raw, 200), err)
+		}
+		return func() {
+			m.st.ApplyThread(&t)
+			m.withUsers(threadPostAuthors([]*model.ThreadResponse{&t}), m.refreshThreads)
+		}, nil
+
+	case model.WebsocketEventThreadReadChanged:
+		id, _ := data["thread_id"].(string)
+		if id == "" {
+			// Все треды команды отмечены прочитанными в другом клиенте.
+			return m.reloadSidebar, nil
+		}
+		replies, _ := data["unread_replies"].(float64)
+		mentions, _ := data["unread_mentions"].(float64)
+		return func() {
+			if m.st.ApplyThreadRead(id, int64(replies), int64(mentions)) {
+				m.refreshThreads()
+			}
+		}, nil
+
+	case model.WebsocketEventThreadFollowChanged:
+		return m.reloadSidebar, nil
+
+	case model.WebsocketEventPreferencesChanged:
+		// Пользователь мог включить или выключить свёрнутые треды.
+		if raw, _ := data["preferences"].(string); strings.Contains(raw, model.PreferenceNameCollapsedThreadsEnabled) {
+			return m.reloadSidebar, nil
+		}
 
 	case model.WebsocketEventMultipleChannelsViewed:
 		// Прочитано в другом клиенте.

@@ -138,10 +138,19 @@ func TestContinues(t *testing.T) {
 	late := &model.Post{UserId: "u1", CreateAt: groupMillis}
 	other := &model.Post{UserId: "u2", CreateAt: 1}
 	system := &model.Post{UserId: "u1", CreateAt: 1, Type: model.PostTypeJoinChannel}
+	// Вебхуки u1: пишут от его имени, но автор — интеграция.
+	hook := func(name string) *model.Post {
+		p := &model.Post{UserId: "u1", CreateAt: 2}
+		p.AddProp(model.PostPropsFromWebhook, "true")
+		p.AddProp(model.PostPropsOverrideUsername, name)
+		return p
+	}
+	grafana, grafana2, ci := hook("Grafana"), hook("Grafana"), hook("CI")
 	for _, c := range []struct {
 		prev, p *model.Post
 		want    bool
-	}{{nil, a, false}, {a, same, true}, {a, late, false}, {a, other, false}, {a, system, false}} {
+	}{{nil, a, false}, {a, same, true}, {a, late, false}, {a, other, false}, {a, system, false},
+		{a, grafana, false}, {grafana, same, false}, {grafana, grafana2, true}, {grafana, ci, false}} {
 		if got := continues(c.prev, c.p); got != c.want {
 			t.Errorf("continues(%+v, %+v) = %v, want %v", c.prev, c.p, got, c.want)
 		}

@@ -78,6 +78,17 @@ func (a *Assets) WantAvatar(u *model.User, done func()) {
 	})
 }
 
+// Icon — иконка интеграции (override_icon_url) на диске или "".
+func (a *Assets) Icon(rawURL string) string { return a.c.IconPath(rawURL) }
+
+// WantIcon догружает иконку интеграции; done — когда она на диске.
+func (a *Assets) WantIcon(rawURL string, done func()) {
+	a.want("icon:"+rawURL, done, func(ctx context.Context) error {
+		_, err := a.c.FetchIcon(ctx, rawURL)
+		return err
+	})
+}
+
 // Download качает вложение целиком; done получает путь на диске.
 func (a *Assets) Download(fi *model.FileInfo, done func(path string, err error)) {
 	go func() {

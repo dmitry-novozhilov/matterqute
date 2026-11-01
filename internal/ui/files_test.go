@@ -25,7 +25,7 @@ func TestFilesAndMarkdown(t *testing.T) {
 	onMain(func() { testFilesAndMarkdown(t, fake, s, upload) })
 }
 
-func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload string) {
+func testFilesAndMarkdown(t *testing.T, fake *mmfake.Server, s *mm.Session, upload string) {
 	m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
 	defer m.Close()
 	m.Show()
@@ -149,6 +149,78 @@ func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload 
 		return false
 	})
 	shot(t, m, "bot-attachment")
+
+	// Пост вебхука Grafana записан от bob, создателя вебхука: имя, аватар и
+	// карточка — интеграции, а bob — только ссылкой из её карточки.
+	var alert *postItem
+	for _, it := range m.feed.items {
+		if it.post.GetProp(model.PostPropsFromWebhook) == "true" {
+			alert = it
+		}
+	}
+	bob := m.st.UserByName("bob")
+	if alert == nil || bob == nil || alert.post.UserId != bob.Id {
+		t.Errorf("seeded Grafana webhook post from bob not found (post %v, bob %v)", alert != nil, bob != nil)
+		return
+	}
+	// Соседний обычный пост bob — не продолжение поста Grafana: у него свой заголовок.
+	if i := m.feed.index(alert.post.Id); i+1 < len(m.feed.items) && m.feed.items[i+1].post.UserId == bob.Id && !m.feed.startsGroup(i+1) {
+		t.Error("bob's own post is grouped under the Grafana header")
+	}
+	for _, bad := range []string{markdown.UserLinkScheme + "bob", "avatar:" + bob.Id} {
+		if strings.Contains(alert.html, bad) {
+			t.Errorf("Grafana post links to its creator (%s):\n%s", bad, alert.html)
+		}
+	}
+	if !strings.Contains(alert.html, hookLink+alert.post.Id) || !strings.Contains(alert.html, "avatar-hook:") || !strings.Contains(alert.html, ">Grafana</a>") {
+		t.Errorf("Grafana post lacks integration name, avatar or link:\n%s", alert.html)
+	}
+	m.feed.onAnchor(hookLink + alert.post.Id)
+	var card *qt.QWidget
+	if !waitFor(t, "integration card", func() bool { card = qt.QApplication_ActivePopupWidget(); return card != nil }) {
+		return
+	}
+	shotWidget(t, card, "integration-card")
+	var name string
+	var from *qt.QLabel
+	for _, o := range descendants(card.QObject) {
+		switch {
+		case o.ObjectName() == "userName":
+			name = qt.UnsafeNewQLabel(o.UnsafePointer()).Text()
+		case o.ObjectName() == "userRole":
+			from = qt.UnsafeNewQLabel(o.UnsafePointer())
+		case o.Inherits("QPushButton"):
+			t.Errorf("integration card has a button %q: there is nobody to write to", qt.UnsafeNewQPushButton(o.UnsafePointer()).Text())
+		}
+	}
+	if name != "Grafana" || from == nil || !strings.Contains(from.Text(), "@bob") {
+		t.Errorf("integration card: name %q, creator line %v", name, from != nil)
+		return
+	}
+	from.LinkActivated("creator")
+	waitFor(t, "creator card", func() bool {
+		card = qt.QApplication_ActivePopupWidget()
+		if card == nil {
+			return false
+		}
+		for _, o := range descendants(card.QObject) {
+			if o.ObjectName() == "userName" && qt.UnsafeNewQLabel(o.UnsafePointer()).Text() == displayName(bob) {
+				return true
+			}
+		}
+		return false
+	})
+	card.Close()
+
+	// Иконка интеграции качается со стороннего адреса и встаёт вместо инициалов.
+	iconURL := s.ServerURL + "/static/integration.png"
+	hook := &model.Post{ChannelId: alerts.Id, UserId: bob.Id, Message: "[RESOLVED] DiskSpaceLow"}
+	hook.AddProp(model.PostPropsFromWebhook, "true")
+	hook.AddProp(model.PostPropsOverrideUsername, "Grafana")
+	hook.AddProp(model.PostPropsOverrideIconURL, iconURL)
+	fake.Post(hook)
+	waitFor(t, "integration icon on disk", func() bool { return m.assets.Icon(iconURL) != "" })
+	shot(t, m, "integration-icon")
 }
 
 func TestFitSizeAndCanOpen(t *testing.T) {

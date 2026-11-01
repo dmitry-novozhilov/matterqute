@@ -7,6 +7,8 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"matterqute/internal/store"
 )
 
 // initials — две буквы для аватара без фото: имя и фамилия, иначе начало имени пользователя.
@@ -62,6 +64,28 @@ func avatarPixmap(a *Assets, u *model.User, name string, bot bool, size int, loa
 			a.WantAvatar(u, loaded)
 		}
 	}
+	return roundAvatar(photo, u, name, bot, size)
+}
+
+// integrationAvatar — аватар поста интеграции: её иконка (пока не загрузилась
+// или если её нет — инициалы её имени цветом ботов), а фото создателя — только
+// если интеграция просит его сама (use_user_icon).
+func integrationAvatar(a *Assets, in store.Integration, creator *model.User, name string, size int, loaded func()) *qt.QPixmap {
+	if in.CreatorIcon {
+		return avatarPixmap(a, creator, name, true, size, loaded)
+	}
+	photo := ""
+	if a != nil && in.IconURL != "" {
+		if photo = a.Icon(in.IconURL); photo == "" && loaded != nil {
+			a.WantIcon(in.IconURL, loaded)
+		}
+	}
+	return roundAvatar(photo, nil, name, true, size)
+}
+
+// roundAvatar рисует круглый аватар: картинка photo, если она есть и читается,
+// иначе инициалы на цвете из хэша имени.
+func roundAvatar(photo string, u *model.User, name string, bot bool, size int) *qt.QPixmap {
 	key := fmt.Sprintf("%s|%s|%t|%d|%s", name, initials(u, name), bot, size, photo)
 	if u != nil {
 		key = u.Id + "|" + key

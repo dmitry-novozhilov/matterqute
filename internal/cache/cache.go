@@ -11,7 +11,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -147,6 +149,64 @@ func (c *Cache) FetchAvatar(ctx context.Context, userID string, version int64) (
 			return "", fmt.Errorf("get profile image of %s from %s: %w", userID, c.server, err)
 		}
 		return c.save(filepath.Join(c.dir, "avatars", fmt.Sprintf("%s-%d", userID, version))+imageExt(data), data)
+	})
+}
+
+// maxIconSize — предел для иконки интеграции: это аватар, а не вложение.
+const maxIconSize = 1 << 20
+
+// IconPath — иконка интеграции (override_icon_url поста вебхука) на диске или "".
+func (c *Cache) IconPath(rawURL string) string {
+	return existing(c.iconBase(rawURL), imageExts)
+}
+
+func (c *Cache) iconBase(rawURL string) string {
+	sum := sha256.Sum256([]byte(rawURL))
+	return filepath.Join(c.dir, "icons", hex.EncodeToString(sum[:16]))
+}
+
+// FetchIcon качает иконку интеграции. Адрес задал автор вебхука, и он на чужом
+// сервере, поэтому запрос — без токена Mattermost, как у веб-клиента без прокси
+// картинок. Ответ не картинку, слишком большой или 4xx — ErrNotFound: повторять
+// без толку.
+func (c *Cache) FetchIcon(ctx context.Context, rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Errorf("integration icon url %q: want http(s): %w", truncate(rawURL, 200), ErrNotFound)
+	}
+	return c.do("icon:"+rawURL, func() (string, error) {
+		if p := c.IconPath(rawURL); p != "" {
+			return p, nil
+		}
+		fail := func(format string, args ...any) (string, error) {
+			return "", fmt.Errorf("get integration icon %s: "+format, append([]any{truncate(rawURL, 200)}, args...)...)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		if err != nil {
+			return fail("%w", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return fail("%w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return fail("HTTP %d: %w", resp.StatusCode, ErrNotFound)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return fail("HTTP %d", resp.StatusCode)
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, maxIconSize+1))
+		if err != nil {
+			return fail("%w", err)
+		}
+		if len(data) > maxIconSize {
+			return fail("larger than %d bytes: %w", maxIconSize, ErrNotFound)
+		}
+		if ct := http.DetectContentType(data); !strings.HasPrefix(ct, "image/") {
+			return fail("content is %s, not an image: %w", ct, ErrNotFound)
+		}
+		return c.save(c.iconBase(rawURL)+imageExt(data), data)
 	})
 }
 

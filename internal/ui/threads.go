@@ -320,7 +320,11 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 		if ch := m.st.Channel(root.ChannelId); ch != nil {
 			head = channelPrefix(ch) + m.st.Title(ch) + " · "
 		}
-		head += m.st.Username(root.UserId)
+		if in, ok := store.PostIntegration(root); ok && in.Name != "" {
+			head += in.Name
+		} else {
+			head += m.st.Username(root.UserId)
+		}
 		msg = firstLine(root.Message, 200)
 	}
 	timeW := text(time.UnixMilli(t.LastReplyAt).Format("15:04"), x, y+10, w, 16, mono, pal.Tx2, qt.AlignRight)

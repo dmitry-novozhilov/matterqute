@@ -1,11 +1,15 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
 	"image/color"
+	"image/png"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -125,5 +129,41 @@ func TestSafeName(t *testing.T) {
 	long := strings.Repeat("я", 150) + ".tar.gz"
 	if got := SafeName(long, "f"); len(got) > 200 || !strings.HasSuffix(got, ".gz") {
 		t.Errorf("SafeName(long) = %d bytes %q", len(got), got[len(got)-10:])
+	}
+}
+
+func TestIcon(t *testing.T) {
+	var buf bytes.Buffer
+	png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 16, 16)))
+	icon := buf.Bytes()
+	var auth sync.Map
+	ext := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth.Store(r.URL.Path, r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/icon.png":
+			w.Write(icon)
+		case "/page":
+			w.Write([]byte("<html>not an icon</html>"))
+		case "/big":
+			w.Write(append(icon, make([]byte, maxIconSize)...))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ext.Close()
+	c, _, _ := newCache(t)
+	ctx := context.Background()
+
+	path, err := c.FetchIcon(ctx, ext.URL+"/icon.png")
+	if err != nil || path != c.IconPath(ext.URL+"/icon.png") || !strings.HasSuffix(path, ".png") {
+		t.Errorf("FetchIcon = %q, %v; IconPath = %q", path, err, c.IconPath(ext.URL+"/icon.png"))
+	}
+	if a, _ := auth.Load("/icon.png"); a != "" {
+		t.Errorf("Mattermost token sent to the integration's host: %q", a)
+	}
+	for _, u := range []string{ext.URL + "/page", ext.URL + "/big", ext.URL + "/missing", "file:///etc/passwd", "/relative.png"} {
+		if p, err := c.FetchIcon(ctx, u); !errors.Is(err, ErrNotFound) || p != "" || c.IconPath(u) != "" {
+			t.Errorf("FetchIcon(%s) = %q, %v; want ErrNotFound and nothing on disk", u, p, err)
+		}
 	}
 }

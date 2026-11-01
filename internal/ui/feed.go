@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"html"
 	"math"
@@ -15,6 +17,7 @@ import (
 
 	"matterqute/internal/emoji"
 	"matterqute/internal/markdown"
+	"matterqute/internal/store"
 )
 
 // Посты одного автора с перерывом меньше этого идут без заголовка.
@@ -37,6 +40,7 @@ const (
 	saveLink      = "mm-save:"       // mm-save:<файл>
 	imageLink     = "mm-img:"        // mm-img:<файл> — картинка целиком
 	retryLink     = "mm-retry:"      // повторить загрузку ленты
+	hookLink      = "mm-hook:"       // mm-hook:<post> — карточка интеграции, написавшей пост
 )
 
 type postItem struct {
@@ -94,6 +98,7 @@ type Feed struct {
 	OnOpenThread     func(rootID string)               // открыть тред поста
 	OnToggleReaction func(p *model.Post, emoji string) // поставить или снять свою реакцию
 	OnLink           func(url string)                  // клик по ссылке в тексте
+	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
 	OnOpenFile       func(fi *model.FileInfo)
 	OnSaveFile       func(fi *model.FileInfo)
 	OnRetry          func() // «Повторить» в заглушке ошибки
@@ -526,9 +531,7 @@ func (f *Feed) postHTML(i int) string {
 	}
 	avatar := ""
 	if group && !p.IsSystemMessage() {
-		avatar = fmt.Sprintf(`<a href="%s%s"><img src="%s" width="32" height="32"></a>`,
-			markdown.UserLinkScheme, url.PathEscape(strings.ToLower(f.d.Names(p.UserId))),
-			f.avatarSrc(f.d.Users(p.UserId), p.UserId, f.authorName(p), f.isBot(p)))
+		avatar = fmt.Sprintf(`<a href="%s"><img src="%s" width="32" height="32"></a>`, f.authorLink(p), f.authorAvatar(p))
 	}
 	fmt.Fprintf(&b, `<table width="100%%" cellspacing="0" cellpadding="0"%s><tr>`+
 		`<td width="%d" valign="top" style="padding-top:%dpx;padding-left:16px;padding-bottom:4px">%s</td>`+
@@ -570,12 +573,42 @@ func (f *Feed) isBot(p *model.Post) bool {
 	return p.GetProp("from_bot") == "true" || p.GetProp("from_webhook") == "true"
 }
 
-// authorName — имя для показа: у вебхуков бывает своё (override_username).
+// authorName — имя для показа: у интеграций своё (override_username), а
+// user_id у их постов — создатель вебхука.
 func (f *Feed) authorName(p *model.Post) string {
-	if name, ok := p.GetProp("override_username").(string); ok && name != "" && p.GetProp("from_webhook") == "true" {
-		return name
+	if in, ok := store.PostIntegration(p); ok && in.Name != "" {
+		return in.Name
 	}
 	return f.d.Names(p.UserId)
+}
+
+// authorLink — клик по имени или аватару: карточка автора, а у поста
+// интеграции — карточка интеграции, не её создателя.
+func (f *Feed) authorLink(p *model.Post) string {
+	if _, ok := store.PostIntegration(p); ok {
+		return hookLink + p.Id
+	}
+	return markdown.UserLinkScheme + url.PathEscape(strings.ToLower(f.d.Names(p.UserId)))
+}
+
+func (f *Feed) authorAvatar(p *model.Post) string {
+	in, ok := store.PostIntegration(p)
+	if !ok {
+		return f.avatarSrc(f.d.Users(p.UserId), p.UserId, f.authorName(p), f.isBot(p))
+	}
+	name := f.authorName(p)
+	// Имя и адрес иконки — чужой текст: в имя ресурса только хэш (ASCII, QUrl его не тронет).
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s\x00%s\x00%t\x00%s", p.UserId, name, in.CreatorIcon, in.IconURL))
+	src := "avatar-hook:" + hex.EncodeToString(sum[:12])
+	if _, ok := f.resources[src]; ok {
+		return src
+	}
+	reload := func() {
+		f.addResource(src, integrationAvatar(f.d.Assets, in, f.d.Users(p.UserId), name, 32, nil), 32, 32)
+		f.view.Viewport().Update()
+	}
+	f.addResource(src, integrationAvatar(f.d.Assets, in, f.d.Users(p.UserId), name, 32, reload), 32, 32)
+	return src
 }
 
 func (f *Feed) authorHTML(p *model.Post) string {
@@ -584,8 +617,8 @@ func (f *Feed) authorHTML(p *model.Post) string {
 	if f.isBot(p) {
 		bot = fmt.Sprintf(`&nbsp;<span style="font-size:11px;font-weight:600;background-color:%s;color:%s">&nbsp;БОТ&nbsp;</span>`, pal.Surf2, pal.Tx2)
 	}
-	return fmt.Sprintf(`<p style="margin:0"><a href="%s%s" style="color:%s;font-weight:600;text-decoration:none">%s</a>%s&nbsp;&nbsp;<span style="font-family:'PT Mono';font-size:12px;color:%s" title="%s">%s</span></p>`,
-		markdown.UserLinkScheme, url.PathEscape(strings.ToLower(f.d.Names(p.UserId))), pal.Tx, html.EscapeString(f.authorName(p)), bot,
+	return fmt.Sprintf(`<p style="margin:0"><a href="%s" style="color:%s;font-weight:600;text-decoration:none">%s</a>%s&nbsp;&nbsp;<span style="font-family:'PT Mono';font-size:12px;color:%s" title="%s">%s</span></p>`,
+		f.authorLink(p), pal.Tx, html.EscapeString(f.authorName(p)), bot,
 		pal.Tx2, formatTime(p.CreateAt), time.UnixMilli(p.CreateAt).Format("15:04"))
 }
 
@@ -597,7 +630,7 @@ func (f *Feed) replyHTML(p *model.Post) string {
 	pal := Pal()
 	about := ""
 	if root := f.post(p.RootId); root != nil {
-		about = fmt.Sprintf(` <b>%s:</b> %s`, html.EscapeString(f.d.Names(root.UserId)), html.EscapeString(firstLine(root.Message, 60)))
+		about = fmt.Sprintf(` <b>%s:</b> %s`, html.EscapeString(f.authorName(root)), html.EscapeString(firstLine(root.Message, 60)))
 	}
 	return fmt.Sprintf(`<p style="margin:0"><a href="%s%s" style="font-size:12px;color:%s;text-decoration:none">↳ Ответ в треде%s</a></p>`,
 		threadLink, p.RootId, pal.Tx2, about)
@@ -1030,6 +1063,10 @@ func (f *Feed) onAnchor(link string) {
 		if f.OnRetry != nil {
 			f.OnRetry()
 		}
+	case strings.HasPrefix(link, hookLink):
+		if p := f.post(strings.TrimPrefix(link, hookLink)); p != nil && f.OnIntegration != nil {
+			f.OnIntegration(p)
+		}
 	default:
 		if f.OnLink != nil {
 			f.OnLink(link)
@@ -1152,9 +1189,17 @@ func pluralReplies(n int64) string {
 // continues — пост продолжает предыдущий: тот же автор в тот же день, без
 // долгого перерыва, оба не системные.
 func continues(prev, p *model.Post) bool {
-	return prev != nil && prev.UserId == p.UserId &&
+	return prev != nil && prev.UserId == p.UserId && sameAuthor(prev, p) &&
 		p.CreateAt-prev.CreateAt < groupMillis && sameDay(prev.CreateAt, p.CreateAt) &&
 		!prev.IsSystemMessage() && !p.IsSystemMessage()
+}
+
+// sameAuthor — у постов одного user_id разные авторы, если один из них от
+// интеграции: вебхук пишет от имени своего создателя.
+func sameAuthor(a, b *model.Post) bool {
+	ia, oka := store.PostIntegration(a)
+	ib, okb := store.PostIntegration(b)
+	return oka == okb && ia == ib
 }
 
 func sameDay(a, b int64) bool {

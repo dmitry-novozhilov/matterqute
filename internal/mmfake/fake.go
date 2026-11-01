@@ -107,6 +107,11 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("GET /api/v4/users/{a}/{b}", s.auth(s.userRoute))
 	s.mux.HandleFunc("POST /api/v4/channels/direct", s.auth(s.createDirect))
 	s.mux.HandleFunc("GET /api/v4/websocket", s.websocket)
+	// Иконка интеграции на «чужом» сервере: без авторизации, как у Grafana.
+	s.mux.HandleFunc("GET /static/integration.png", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(circlePNG(64, color.RGBA{244, 104, 0, 255}))
+	})
 	return s
 }
 
@@ -194,7 +199,11 @@ func (s *Server) seed() {
 	spin := s.seedPost(backend, bob, now.Add(-25*time.Minute), "Деплой идёт")
 	spin.FileIds = model.StringArray{s.addFile(bob.Id, backend.Id, "deploy.gif", spinnerGIF(160, 90)).Id}
 	s.attachFiles(spin)
+	// Вебхук Grafana, созданный bob: Mattermost пишет пост от имени bob, а имя
+	// интеграции кладёт в props (на сервере разрешена подмена имени).
 	alert := s.seedPost(alerts, bob, now.Add(-90*time.Minute), "")
+	alert.AddProp(model.PostPropsFromWebhook, "true")
+	alert.AddProp(model.PostPropsOverrideUsername, "Grafana")
 	alert.AddProp(model.PostPropsAttachments, []*model.MessageAttachment{{
 		Color: "danger", Title: "[FIRING:1] DiskSpaceLow", TitleLink: "https://grafana.example.com/alerting/1",
 		Text: "Свободно **3%** на `/var/lib/postgresql`", Footer: "Grafana v11",

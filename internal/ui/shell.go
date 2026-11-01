@@ -33,12 +33,19 @@ type Shell struct {
 	themeActs  map[ThemeMode]*qt.QAction
 	serverMenu *qt.QMenu
 
+	// HideOnClose — крестик прячет окно в трей, а не завершает приложение:
+	// иначе уведомления перестанут приходить. Включается, когда трей есть.
+	HideOnClose bool
+	quitting    bool
+	quitApp     func() // QCoreApplication::quit; в тестах — подделка
+
 	OnLogout func()
-	OnClose  func() // окно закрывается (и приложение выходит): сохранить, что нужно
+	OnClose  func() // окно закрывается или прячется в трей: сохранить, что нужно
 }
 
 func NewShell() *Shell {
-	s := &Shell{w: qt.NewQMainWindow2(), stack: qt.NewQStackedWidget2(), themeActs: map[ThemeMode]*qt.QAction{}}
+	s := &Shell{w: qt.NewQMainWindow2(), stack: qt.NewQStackedWidget2(), themeActs: map[ThemeMode]*qt.QAction{},
+		quitApp: qt.QCoreApplication_Quit}
 	s.w.SetWindowTitle("matterqute")
 	s.w.SetWindowIcon(appIcon())
 	s.w.Resize(1280, 800)
@@ -55,13 +62,15 @@ func NewShell() *Shell {
 	file.AddSeparator()
 	quit := file.QWidget.AddActionWithText("Выход")
 	quit.SetShortcut(qt.NewQKeySequence2("Ctrl+Q"))
-	// Через закрытие окна, а не QCoreApplication::quit: иначе не будет
-	// closeEvent и положение окна не сохранится. Последнее окно закрылось —
-	// Qt выходит сам.
-	quit.OnTriggered(func() { s.w.Close() })
+	quit.OnTriggered(s.Quit)
 	s.w.OnCloseEvent(func(super func(*qt.QCloseEvent), e *qt.QCloseEvent) {
 		if s.OnClose != nil {
 			s.OnClose()
+		}
+		if s.HideOnClose && !s.quitting {
+			e.Ignore()
+			s.w.Hide()
+			return
 		}
 		super(e)
 	})
@@ -211,7 +220,18 @@ func (s *Shell) RestoreGeometry(g []byte) {
 	}
 }
 
-// Raise — окно поверх остальных и в фокусе, даже если было свёрнуто.
+// Quit завершает приложение. Видимое окно сначала закрывается — так
+// срабатывает closeEvent и сохраняется его положение; спрятанное в трей уже
+// сохранено, когда пряталось.
+func (s *Shell) Quit() {
+	s.quitting = true
+	if s.w.IsVisible() {
+		s.w.Close()
+	}
+	s.quitApp()
+}
+
+// Raise — окно поверх остальных и в фокусе, даже если было свёрнуто или в трее.
 func (s *Shell) Raise() {
 	s.w.SetWindowState(s.w.WindowState()&^qt.WindowMinimized | qt.WindowActive)
 	s.w.Show()

@@ -236,3 +236,22 @@ func TestThreads(t *testing.T) {
 		t.Error("deleted thread still present")
 	}
 }
+
+func TestMentions(t *testing.T) {
+	s := New(&model.User{Id: "me"})
+	s.SetSidebar(&Sidebar{
+		CRT: true,
+		Channels: []*model.Channel{
+			{Id: "a", Type: model.ChannelTypeOpen, TotalMsgCountRoot: 5},
+			{Id: "d", Type: model.ChannelTypeDirect, TotalMsgCountRoot: 3},
+		},
+		Members: []*model.ChannelMember{
+			{ChannelId: "a", MentionCountRoot: 2, MentionCount: 7},
+			{ChannelId: "d", MentionCountRoot: 3},
+		},
+		Threads: []*model.ThreadResponse{{PostId: "t", UnreadMentions: 1, Post: &model.Post{Id: "t", ChannelId: "a"}}},
+	})
+	if got := s.Mentions(); got != 6 {
+		t.Errorf("Mentions with CRT = %d, want 2+3 root mentions + 1 in thread = 6", got)
+	}
+}

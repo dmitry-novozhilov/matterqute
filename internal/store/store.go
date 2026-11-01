@@ -425,6 +425,21 @@ func (s *Store) ApplyThreadRead(id string, unreadReplies, unreadMentions int64) 
 	return true
 }
 
+// Mentions — сколько упоминаний ждёт пользователя: по каналам (в личках сервер
+// считает упоминанием каждое сообщение) и, при CRT, по тредам.
+func (s *Store) Mentions() int64 {
+	var n int64
+	for id := range s.channels {
+		_, m := s.Unread(id)
+		n += m
+	}
+	if s.crt {
+		_, m := s.ThreadsUnread()
+		n += m
+	}
+	return n
+}
+
 // ThreadsUnread — есть ли непрочитанные треды и сколько в них упоминаний.
 func (s *Store) ThreadsUnread() (unread bool, mentions int64) {
 	for _, t := range s.threads {

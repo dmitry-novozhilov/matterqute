@@ -26,10 +26,17 @@ func TestNotifications(t *testing.T) {
 		m.notifier = notes
 		raised := 0
 		m.OnRaise = func() { raised++ }
+		var mentions []int64
+		m.OnMentions = func(n int64) { mentions = append(mentions, n) }
 		root := openTown(t, m)
 		if root == nil {
 			return
 		}
+		// Трей узнаёт число упоминаний сразу после загрузки и при каждом изменении.
+		if len(mentions) == 0 || mentions[len(mentions)-1] != m.st.Mentions() || m.st.Mentions() == 0 {
+			t.Errorf("mentions reported %v, store has %d (seeded: DM from bob and @alice in a thread)", mentions, m.st.Mentions())
+		}
+		before := m.st.Mentions()
 		bob := m.st.UserByName("bob")
 		backend := channelByName(m, "dev", "backend")
 		last := func() notify.Notification { return notes.shown[len(notes.shown)-1] }
@@ -45,11 +52,13 @@ func TestNotifications(t *testing.T) {
 		if n := last(); n.Title != "bob в #backend" || n.Body != "Деплой готов 👍" || n.Replaces != 0 {
 			t.Errorf("first notification %+v", n)
 		}
-		// Следующий пост там же заменяет уведомление, а не копит их.
-		post(&model.Post{ChannelId: backend.Id, UserId: bob.Id, Message: "и ещё"}, 2)
+		// Следующий пост там же заменяет уведомление, а не копит их; упоминание
+		// прибавляется к счётчику трея.
+		post(&model.Post{ChannelId: backend.Id, UserId: bob.Id, Message: "@alice глянь"}, 2)
 		if n := last(); n.Replaces != 1 {
 			t.Errorf("second post in backend: Replaces = %d, want 1", n.Replaces)
 		}
+		waitFor(t, "mention counted for the tray", func() bool { return len(mentions) > 0 && mentions[len(mentions)-1] == before+1 })
 
 		// Ответ в треде, на который alice подписана: канал открыт, но тред — нет.
 		if !post(&model.Post{ChannelId: root.ChannelId, RootId: root.Id, UserId: bob.Id, Message: "в треде"}, 3) {

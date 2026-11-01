@@ -109,6 +109,7 @@ func (m *MainWindow) fillSidebar() {
 	if toSelect != nil {
 		m.sidebar.SetCurrentItem(toSelect)
 	}
+	m.updateMentions()
 }
 
 // defaultChannel — канал при первом запуске: Town Square первой команды,
@@ -131,6 +132,17 @@ func (m *MainWindow) defaultChannel() string {
 // refreshItem перерисовывает строку канала (непрочитанное, упоминания, статус).
 func (m *MainWindow) refreshItem(string) {
 	m.sidebar.Viewport().Update()
+	m.updateMentions()
+}
+
+// updateMentions — счётчик для трея: упоминания и непрочитанные лички.
+func (m *MainWindow) updateMentions() {
+	if n := m.st.Mentions(); n != m.mentions {
+		m.mentions = n
+		if m.OnMentions != nil {
+			m.OnMentions(n)
+		}
+	}
 }
 
 func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, it *qt.QTreeWidgetItem) {

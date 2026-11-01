@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/markdown"
@@ -53,6 +54,7 @@ func (m *MainWindow) maybeNotify(e store.NewPost) {
 			return
 		}
 		m.notes[key] = id
+		qt.QApplication_Alert(m.w) // значок окна на панели задач просит внимания
 	})
 }
 

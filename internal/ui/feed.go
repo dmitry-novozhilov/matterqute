@@ -1192,15 +1192,7 @@ func HasReaction(p *model.Post, user, name string) bool {
 	})
 }
 
-func pluralReplies(n int64) string {
-	switch {
-	case n%10 == 1 && n%100 != 11:
-		return fmt.Sprintf("%d ответ", n)
-	case n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14):
-		return fmt.Sprintf("%d ответа", n)
-	}
-	return fmt.Sprintf("%d ответов", n)
-}
+func pluralReplies(n int64) string { return plural(n, "ответ", "ответа", "ответов") }
 
 // continues — пост продолжает предыдущий: тот же автор в тот же день, без
 // долгого перерыва, оба не системные.

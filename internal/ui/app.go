@@ -24,6 +24,7 @@ type App struct {
 	log    *slog.Logger
 
 	shell    *Shell
+	tray     *Tray // nil — трея нет
 	login    *LoginView
 	main     *MainWindow
 	notifier Notifier // nil — без уведомлений
@@ -43,6 +44,11 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		a.cfg.Theme = string(mode)
 		a.saveConfig()
 	}
+	if a.tray = NewTray(); a.tray != nil {
+		a.shell.HideOnClose = true
+		a.tray.OnOpen = a.shell.Raise
+		a.tray.OnQuit = a.shell.Quit
+	}
 	a.shell.OnClose = func() {
 		a.cfg.Window.Geometry = a.shell.Geometry()
 		if a.main != nil {
@@ -51,6 +57,12 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		a.saveConfig()
 	}
 	return a
+}
+
+func (a *App) setMentions(n int64) {
+	if a.tray != nil {
+		a.tray.SetMentions(n)
+	}
 }
 
 func (a *App) saveConfig() {
@@ -227,6 +239,7 @@ func (a *App) openMain(s *mm.Session) {
 	}
 	m.notifier = a.notifier
 	m.OnRaise = a.shell.Raise
+	m.OnMentions = a.setMentions
 	m.OnConnection = a.shell.SetConnection
 	m.OnMessage = a.shell.ShowMessage
 	m.OnChannelOpened = func(id string) {
@@ -259,6 +272,7 @@ func (a *App) logout(m *MainWindow) {
 		loginID = srv.LoginID
 	}
 	a.main = nil
+	a.setMentions(0)
 	m.Close()
 	a.shell.RemovePage(m.Widget())
 	a.showLogin(s.ServerURL, loginID)

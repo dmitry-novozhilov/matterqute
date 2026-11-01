@@ -163,20 +163,19 @@ func dotPixmap(color string, size int) *qt.QPixmap {
 // зелёной решёткой на зелёной плитке (docs/design_handoff_matterqute/design/app-icon.dc.html).
 func appIconPixmap(size int) *qt.QPixmap {
 	const tile, glyph = "#008a67", "#fcfbf9"
-	s := float64(size * resourceDPR)
 	img := qt.NewQImage3(size*resourceDPR, size*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+	img.SetDevicePixelRatio(resourceDPR)
 	img.Fill2(qt.Transparent)
 	p := qt.NewQPainter2(img.QPaintDevice)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
+	p.SetRenderHint(qt.QPainter__TextAntialiasing)
+	// Макет (AppIcon, «hash») — на поле 192: плитка, облачко, «#» цвета плитки.
+	k := float64(size) / 192
 	p.SetPenWithStyle(qt.NoPen)
 	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(tile)))
-	p.DrawRoundedRect(qt.NewQRectF4(0, 0, s, s), s*0.22, s*0.22)
-	// Облачко: скруглённый прямоугольник с хвостиком снизу слева.
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(glyph)))
-	p.DrawRoundedRect(qt.NewQRectF4(s*0.18, s*0.2, s*0.64, s*0.5), s*0.2, s*0.2)
-	p.DrawEllipse(qt.NewQRectF4(s*0.2, s*0.52, s*0.22, s*0.24))
-	hash := iconPixmap("hash", tile, size)
-	p.DrawPixmap(qt.NewQRectF4(s*0.31, s*0.26, s*0.38, s*0.38), hash, qt.NewQRectF4(0, 0, float64(size*resourceDPR), float64(size*resourceDPR)))
+	p.DrawRoundedRect(qt.NewQRectF4(0, 0, float64(size), float64(size)), 44*k, 44*k)
+	drawBubble(p, 34*k, 38*k, 124*k, 108*k, 54*k, 12*k, glyph)
+	drawHash(p, 34*k, 38*k, 124*k, 108*k, 72*k, tile)
 	p.End()
 	pm := qt.QPixmap_FromImage(img)
 	pm.SetDevicePixelRatio(resourceDPR)

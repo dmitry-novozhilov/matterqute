@@ -52,6 +52,7 @@ type MainWindow struct {
 	assets      *Assets
 	notifier    Notifier          // nil — уведомлений нет (нет шины или сервера уведомлений)
 	notes       map[string]uint32 // показанное уведомление по каналу или треду: следующее его заменит
+	mentions    int64             // последнее отданное в OnMentions; -1 — ещё не отдавали
 	retryNow    chan struct{}
 	unsubscribe func()
 
@@ -68,6 +69,7 @@ type MainWindow struct {
 	OnMessage        func(text string)         // короткое сообщение в строке состояния окна
 	OnColumnsChanged func(sidebar, thread int) // пользователь передвинул разделитель
 	OnRaise          func()                    // показать окно поверх остальных (клик по уведомлению)
+	OnMentions       func(n int64)             // изменилось число ждущих упоминаний (трей)
 }
 
 // Ширины колонок по дизайну: сайдбар 240 (от 180 до 360), тред 380 (от 280).
@@ -90,6 +92,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		cancel:   cancel,
 		items:    map[string]*qt.QTreeWidgetItem{},
 		notes:    map[string]uint32{},
+		mentions: -1,
 		retryNow: make(chan struct{}, 1),
 
 		initialChannel: initialChannel,

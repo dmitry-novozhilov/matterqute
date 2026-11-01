@@ -26,10 +26,14 @@ type Assets struct {
 
 	waiting map[string][]func()
 	failed  map[string]error // не грузим повторно до Retry
+
+	anims   map[string]*emojiAnim // анимированные кастомные эмодзи
+	nextSub int
 }
 
 func NewAssets(c *cache.Cache, ctx context.Context, ui func(func()), log *slog.Logger) *Assets {
-	return &Assets{c: c, ctx: ctx, ui: ui, log: log, waiting: map[string][]func(){}, failed: map[string]error{}}
+	return &Assets{c: c, ctx: ctx, ui: ui, log: log, waiting: map[string][]func(){}, failed: map[string]error{},
+		anims: map[string]*emojiAnim{}}
 }
 
 // Emoji — картинка кастомного эмодзи на диске или "".

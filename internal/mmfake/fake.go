@@ -196,7 +196,7 @@ func (s *Server) seed() {
 	// Разметка, картинка и файл — в backend, алерт с вложением — в alerts.
 	e := &model.Emoji{Id: model.NewId(), Name: "partyparrot"}
 	s.emoji = append(s.emoji, e)
-	s.emojiData[e.Id] = circlePNG(32, color.RGBA{230, 60, 140, 255})
+	s.emojiData[e.Id] = partyGIF(32) // анимированное, как настоящий partyparrot
 	s.seedPost(backend, carol, now.Add(-40*time.Minute), "### Релиз 2.4 :partyparrot:\n"+
 		"Что вошло:\n- [x] **новый** кэш сессий\n- [ ] ~~старый~~ API — *в следующем*\n\n"+
 		"| сервис | p99 |\n|---|---|\n| api | 120 мс |\n| ws | 35 мс |\n\n"+
@@ -235,7 +235,7 @@ func (s *Server) seed() {
 	for _, r := range []struct {
 		u    *model.User
 		name string
-	}{{bob, "+1"}, {alice, "+1"}, {carol, "tada"}} {
+	}{{bob, "+1"}, {alice, "+1"}, {carol, "tada"}, {dave, "partyparrot"}} {
 		s.react(root, &model.Reaction{UserId: r.u.Id, PostId: root.Id, EmojiName: r.name, ChannelId: town.Id}, true)
 	}
 

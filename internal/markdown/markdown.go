@@ -39,8 +39,10 @@ type Options struct {
 	Me string // username: его упоминания подсвечиваются
 	// ChannelExists — есть ли канал с таким именем; ~имя становится ссылкой только тогда.
 	ChannelExists func(name string) bool
-	// CustomEmoji — путь к картинке кастомного эмодзи на диске, "" — нет (или ещё
-	// не загружена: вызывающий сам решает, догружать ли и перерисовывать).
+	// CustomEmoji — картинка кастомного эмодзи: путь к файлу на диске или имя
+	// ресурса документа (без «/» в начале — например, «emoji:имя» для
+	// анимированных: кадры подменяет вызывающий); "" — нет (или ещё не загружена:
+	// вызывающий сам решает, догружать ли и перерисовывать).
 	CustomEmoji func(name string) string
 	// Palette — цвета темы для упоминаний, кода, цитат, таблиц; пусто — светлая.
 	Palette theme.Palette
@@ -239,12 +241,14 @@ func (r *qtRenderer) emoji(name string) string {
 	if r.o.CustomEmoji == nil {
 		return ""
 	}
-	path := r.o.CustomEmoji(name)
-	if path == "" {
+	src := r.o.CustomEmoji(name)
+	if src == "" {
 		return ""
 	}
-	return `<img src="` + html.EscapeString((&url.URL{Scheme: "file", Path: path}).String()) +
-		`" width="20" height="20" title=":` + html.EscapeString(name) + `:">`
+	if strings.HasPrefix(src, "/") {
+		src = (&url.URL{Scheme: "file", Path: src}).String()
+	}
+	return `<img src="` + html.EscapeString(src) + `" width="20" height="20" title=":` + html.EscapeString(name) + `:">`
 }
 
 func isWordByte(b byte) bool {

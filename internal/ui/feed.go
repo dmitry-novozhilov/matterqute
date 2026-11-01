@@ -62,7 +62,13 @@ type FeedDeps struct {
 }
 
 // pill — картинки реакции: обычная и при наведении.
-type pill struct{ normal, hover *qt.QPixmap }
+// pill — плашка реакции: обычная и под курсором. render рисует её заново —
+// для анимированного эмодзи на каждом кадре.
+type pill struct {
+	normal, hover *qt.QPixmap
+	emoji         string
+	render        func() (normal, hover *qt.QPixmap)
+}
 
 // Feed — лента постов одним документом (QTextBrowser): выделение и копирование
 // идут через любые сообщения, как в браузере. Каждый пост — свой QTextFrame,
@@ -89,6 +95,7 @@ type Feed struct {
 	refit       *qt.QTimer              // отложенная перерисовка картинок после ресайза
 	spin        *spinner                // крутилка заглушки «Загружаем сообщения…»
 	videos      map[string]*inlineVideo // ролики, которые играют в ленте, по id файла
+	animSubs    map[string]func()       // подписки на кадры анимированных эмодзи: отписка по имени
 	placeTimer  *qt.QTimer              // поставить ролики на места после правок документа
 	unsubscribe func()
 
@@ -118,7 +125,8 @@ func NewFeed(d FeedDeps) *Feed {
 	if d.Users == nil {
 		d.Users = func(string) *model.User { return nil }
 	}
-	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{}}
+	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{},
+		animSubs: map[string]func(){}}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.view.SetOpenLinks(false)
@@ -164,6 +172,7 @@ func (f *Feed) Widget() *qt.QWidget { return f.view.QWidget }
 func (f *Feed) dispose() {
 	f.unsubscribe()
 	f.stopMovies()
+	f.stopEmojiAnimations()
 }
 
 func (f *Feed) restyleRenderer() {
@@ -241,6 +250,7 @@ func (f *Feed) placeholderHTML(iconName, title, text, extra string) {
 func (f *Feed) clearDoc() {
 	f.stopMovies()
 	f.stopVideos()
+	f.stopEmojiAnimations()
 	f.spin.stop()
 	f.items = nil
 	f.history = nil
@@ -455,7 +465,23 @@ func (f *Feed) refreshSoon() {
 	})
 }
 
+// customEmoji — картинка кастомного эмодзи в тексте: ресурс документа
+// «emoji:имя» 20 px; у анимированного кадры подменяются в нём же.
 func (f *Feed) customEmoji(name string) string {
+	path := f.customEmojiPath(name)
+	if path == "" {
+		return ""
+	}
+	src := "emoji:" + name
+	if _, ok := f.resources[src]; !ok {
+		f.addResource(src, f.emojiPixmap(name, path, 20), 20, 20)
+		f.animateEmoji(name)
+	}
+	return src
+}
+
+// customEmojiPath — файл кастомного эмодзи; нет — догрузить и перерисовать ленту.
+func (f *Feed) customEmojiPath(name string) string {
 	if f.d.Assets == nil {
 		return ""
 	}
@@ -464,6 +490,59 @@ func (f *Feed) customEmoji(name string) string {
 		f.d.Assets.WantEmoji(name, f.refreshSoon)
 	}
 	return p
+}
+
+// emojiPixmap — кастомное эмодзи size px: текущий кадр анимированного или картинка с диска.
+func (f *Feed) emojiPixmap(name, path string, size int) *qt.QPixmap {
+	pm := f.d.Assets.EmojiFrame(name)
+	if pm == nil {
+		pm = qt.NewQPixmap4(path)
+	}
+	pm = pm.Scaled3(size*resourceDPR, size*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+	pm.SetDevicePixelRatio(resourceDPR)
+	return pm
+}
+
+// animateEmoji подписывает ленту на кадры анимированного эмодзи (для
+// обычного — ничего): плашки реакций и эмодзи в тексте перерисовываются в
+// тех же ресурсах документа.
+func (f *Feed) animateEmoji(name string) {
+	if _, ok := f.animSubs[name]; ok || f.d.Assets == nil {
+		return
+	}
+	f.animSubs[name] = f.d.Assets.OnEmojiFrame(name, func() { f.emojiFrame(name) })
+}
+
+func (f *Feed) emojiFrame(name string) {
+	changed := false
+	if src := "emoji:" + name; f.resources[src] != [2]int{} {
+		f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(src), f.emojiPixmap(name, f.d.Assets.Emoji(name), 20).ToQVariant())
+		changed = true
+	}
+	for src, pl := range f.pills {
+		if pl.emoji != name || pl.render == nil {
+			continue
+		}
+		pl.normal, pl.hover = pl.render()
+		f.pills[src] = pl
+		cur := pl.normal
+		if f.hovered == src {
+			cur = pl.hover
+		}
+		f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(src), cur.ToQVariant())
+		changed = true
+	}
+	if changed {
+		f.view.Viewport().Update()
+	}
+}
+
+// stopEmojiAnimations — лента очищается или закрывается: анимации ей больше не нужны.
+func (f *Feed) stopEmojiAnimations() {
+	for name, cancel := range f.animSubs {
+		cancel()
+		delete(f.animSubs, name)
+	}
 }
 
 func (f *Feed) index(id string) int {
@@ -1008,14 +1087,13 @@ func (f *Feed) threadHTML(p *model.Post) string {
 // поэтому картинкой.
 func (f *Feed) reactionPill(src, name string, count int, mine bool) (w, h int) {
 	pal := Pal()
-	label, emojiText := "", ""
-	var iconPm *qt.QPixmap
+	label, emojiText, custom := "", "", ""
 	if name != "" {
 		label = fmt.Sprint(count)
 		if s, ok := emoji.Char(name); ok {
 			emojiText = s
-		} else if path := f.customEmoji(name); path != "" {
-			iconPm = qt.NewQPixmap4(path)
+		} else if path := f.customEmojiPath(name); path != "" {
+			custom = path
 		} else {
 			emojiText = ":" + name + ":"
 		}
@@ -1024,7 +1102,7 @@ func (f *Feed) reactionPill(src, name string, count int, mine bool) (w, h int) {
 	countFont := pixelFont(12, qt.QFont__DemiBold)
 	emojiFont := pixelFont(16, qt.QFont__Normal)
 	emojiW := 16
-	if iconPm == nil && emojiText != "" {
+	if custom == "" && emojiText != "" {
 		emojiW = qt.NewQFontMetrics(emojiFont).HorizontalAdvance(emojiText)
 	}
 	if name == "" {
@@ -1044,8 +1122,8 @@ func (f *Feed) reactionPill(src, name string, count int, mine bool) (w, h int) {
 		if name == "" {
 			p.DrawPixmap9((w-16)/2, (h-16)/2, iconPixmap("smile-plus", pal.Tx2, 16))
 		} else {
-			if iconPm != nil && !iconPm.IsNull() {
-				p.DrawPixmap11(6, (h-16)/2, 16, 16, iconPm)
+			if custom != "" {
+				p.DrawPixmap9(6, (h-16)/2, f.emojiPixmap(name, custom, 16))
 			} else {
 				p.SetFont(emojiFont)
 				p.SetPen(qt.NewQColor6(fg))
@@ -1062,8 +1140,12 @@ func (f *Feed) reactionPill(src, name string, count int, mine bool) (w, h int) {
 	if mine {
 		bg, border, fg = pal.AccW, pal.Acc, pal.SelTx
 	}
-	pl := pill{normal: draw(bg, border, fg), hover: draw(pal.Hover, border, fg)}
+	pl := pill{emoji: name, render: func() (*qt.QPixmap, *qt.QPixmap) { return draw(bg, border, fg), draw(pal.Hover, border, fg) }}
+	pl.normal, pl.hover = pl.render()
 	f.pills[src] = pl
+	if custom != "" {
+		f.animateEmoji(name)
+	}
 	cur := pl.normal
 	if f.hovered == src {
 		cur = pl.hover

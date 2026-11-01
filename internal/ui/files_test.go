@@ -65,7 +65,7 @@ func testFilesAndMarkdown(t *testing.T, fake *mmfake.Server, s *mm.Session, uplo
 		}
 	}
 	waitFor(t, "image preview in feed", func() bool { return strings.Contains(html(imgPost), "mm-img:"+img.Id) })
-	waitFor(t, "custom emoji rendered", func() bool { return strings.Contains(html(md.post.Id), `<img src="file://`) })
+	waitFor(t, "custom emoji rendered", func() bool { return strings.Contains(html(md.post.Id), `<img src="emoji:partyparrot"`) })
 	body := html(md.post.Id)
 	for _, want := range []string{"font-size:15px;font-weight:600", "☑", `<table cellspacing="1"`, "white-space:pre-wrap", "mm-channel:town-square", "👍"} {
 		if !strings.Contains(body, want) {

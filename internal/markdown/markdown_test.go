@@ -14,8 +14,11 @@ func TestRender(t *testing.T) {
 		Me:            "alice",
 		ChannelExists: func(name string) bool { return name == "town-square" },
 		CustomEmoji: func(name string) string {
-			if name == "partyparrot" {
+			switch name {
+			case "partyparrot":
 				return "/cache/emoji/partyparrot.gif"
+			case "dance": // анимированное: ресурс документа, а не файл
+				return "emoji:dance"
 			}
 			return ""
 		},
@@ -25,6 +28,7 @@ func TestRender(t *testing.T) {
 		want     []string // подстроки результата
 		not      []string // чего быть не должно
 	}{
+		{"custom emoji as a document resource", "ура :dance:", []string{`<img src="emoji:dance" width="20" height="20" title=":dance:">`}, []string{"file://"}},
 		{"emphasis", "**жир** _курсив_ ~~зачёрк~~", []string{"<strong>жир</strong>", "<em>курсив</em>", "<del>зачёрк</del>"}, nil},
 		{"hard wraps", "строка1\nстрока2", []string{"строка1<br>", "строка2"}, nil},
 		{"raw html is text", "<script>alert(1)</script> и <b>x</b>", []string{"&lt;script&gt;", "&lt;b&gt;x&lt;/b&gt;"}, []string{"<script>", "<b>x"}},

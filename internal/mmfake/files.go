@@ -221,6 +221,29 @@ func spinnerGIF(w, h int) []byte {
 	return b.Bytes()
 }
 
+// partyGIF — анимированный кастомный эмодзи: круг меняет цвет, 6 кадров.
+func partyGIF(size int) []byte {
+	colors := []color.RGBA{{230, 60, 140, 255}, {240, 140, 40, 255}, {230, 210, 40, 255}, {60, 190, 90, 255}, {50, 140, 230, 255}, {150, 80, 220, 255}}
+	anim := &gif.GIF{}
+	r := size / 2
+	for _, c := range colors {
+		img := image.NewPaletted(image.Rect(0, 0, size, size), color.Palette{color.Transparent, c})
+		for y := range size {
+			for x := range size {
+				if dx, dy := x-r, y-r; dx*dx+dy*dy <= r*r {
+					img.SetColorIndex(x, y, 1)
+				}
+			}
+		}
+		anim.Image = append(anim.Image, img)
+		anim.Delay = append(anim.Delay, 8)
+		anim.Disposal = append(anim.Disposal, gif.DisposalBackground)
+	}
+	var b bytes.Buffer
+	gif.EncodeAll(&b, anim)
+	return b.Bytes()
+}
+
 func circlePNG(size int, c color.Color) []byte {
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	r := size / 2

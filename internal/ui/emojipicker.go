@@ -253,6 +253,11 @@ func (m *MainWindow) emojiImage(name string, size int, done func()) *qt.QPixmap 
 	if c, ok := emoji.Char(name); ok {
 		return emojiPixmapSized(c, size)
 	}
+	if frame := m.assets.EmojiFrame(name); frame != nil { // анимированное — текущий кадр
+		pm := frame.Scaled3(size*resourceDPR, size*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+		pm.SetDevicePixelRatio(resourceDPR)
+		return pm
+	}
 	key := fmt.Sprintf("custom|%s|%d", name, size)
 	if pm := style.icons[key]; pm != nil {
 		return pm
@@ -303,11 +308,19 @@ func emojiPixmapSized(char string, size int) *qt.QPixmap {
 func (m *MainWindow) pickReaction(p *model.Post) {
 	pos := qt.QCursor_Pos()
 	var picker *emojiPicker
+	var stop []func()
+	update := func() {
+		if !picker.closed {
+			picker.grid.Update()
+		}
+	}
 	picker = newEmojiPicker(m.w, func(name string, size int) *qt.QPixmap {
 		return m.emojiImage(name, size, func() {
+			// Докачалось при открытом окне: если анимированное — пусть крутится сразу.
 			if !picker.closed {
-				picker.grid.Update()
+				stop = append(stop, m.assets.OnEmojiFrame(name, update))
 			}
+			update()
 		})
 	})
 	m.picker = picker
@@ -317,6 +330,18 @@ func (m *MainWindow) pickReaction(p *model.Post) {
 		}
 	}
 	picker.setSections(m.pickerSections())
+	// Анимированные эмодзи сервера крутятся, пока окно открыто.
+	animate := func() {
+		for _, name := range m.customEmoji {
+			stop = append(stop, m.assets.OnEmojiFrame(name, update))
+		}
+	}
+	animate()
+	picker.w.OnDestroyed(func() {
+		for _, f := range stop {
+			f()
+		}
+	})
 	picker.w.AdjustSize()
 	// В пределах экрана: окно выше и левее курсора, если не помещается.
 	scr := m.w.Screen().AvailableGeometry()
@@ -331,6 +356,7 @@ func (m *MainWindow) pickReaction(p *model.Post) {
 	m.loadEmojiData(func() {
 		if !picker.closed {
 			picker.setSections(m.pickerSections())
+			animate()
 		}
 	})
 }

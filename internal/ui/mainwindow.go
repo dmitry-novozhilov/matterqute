@@ -285,6 +285,7 @@ func (m *MainWindow) Close() {
 	for _, pl := range m.players {
 		pl.w.Close()
 	}
+	m.assets.stopAnimations()
 	m.w.Close()
 }
 

@@ -26,8 +26,16 @@ type Config struct {
 	Servers []Server `json:"servers"`
 	Active  string   `json:"active"`          // URL сервера, открытого последним
 	Theme   string   `json:"theme,omitempty"` // system, light, dark; пусто — system
+	Window  Window   `json:"window,omitzero"` // окно и колонки, как их оставили
 
 	path string
+}
+
+// Window — окно и колонки с прошлого запуска; нули — как по умолчанию.
+type Window struct {
+	Geometry []byte `json:"geometry,omitempty"` // QWidget::saveGeometry: место, размер, развёрнуто ли
+	Sidebar  int    `json:"sidebar,omitempty"`  // ширина сайдбара, px
+	Thread   int    `json:"thread,omitempty"`   // ширина панели треда, px
 }
 
 // Dir — каталог настроек, ~/.config/matterqute на Linux.

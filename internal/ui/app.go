@@ -37,14 +37,26 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 	}
 	OnThemeModeChosen = func(mode ThemeMode) {
 		a.cfg.Theme = string(mode)
-		if err := a.cfg.Save(); err != nil {
-			a.log.Error("save config", "err", err)
+		a.saveConfig()
+	}
+	a.shell.OnClose = func() {
+		a.cfg.Window.Geometry = a.shell.Geometry()
+		if a.main != nil {
+			a.cfg.Window.Sidebar, a.cfg.Window.Thread = a.main.Columns()
 		}
+		a.saveConfig()
 	}
 	return a
 }
 
+func (a *App) saveConfig() {
+	if err := a.cfg.Save(); err != nil {
+		a.log.Error("save config", "err", err)
+	}
+}
+
 func (a *App) Start() {
+	a.shell.RestoreGeometry(a.cfg.Window.Geometry)
 	a.shell.Show()
 	srv := a.cfg.ActiveServer()
 	if srv == nil {
@@ -189,9 +201,7 @@ func (a *App) remember(s *mm.Session, loginID string) {
 		srv.LastChannel = old.LastChannel
 	}
 	a.cfg.Upsert(srv)
-	if err := a.cfg.Save(); err != nil {
-		a.log.Error("save config", "err", err)
-	}
+	a.saveConfig()
 }
 
 func (a *App) openMain(s *mm.Session) {
@@ -206,14 +216,17 @@ func (a *App) openMain(s *mm.Session) {
 		cacheDir = filepath.Join(os.TempDir(), "matterqute-cache")
 	}
 	m := NewMainWindow(s, a.log, lastChannel, cacheDir)
+	m.SetColumns(a.cfg.Window.Sidebar, a.cfg.Window.Thread)
+	m.OnColumnsChanged = func(sidebar, thread int) {
+		a.cfg.Window.Sidebar, a.cfg.Window.Thread = sidebar, thread
+		a.saveConfig()
+	}
 	m.OnConnection = a.shell.SetConnection
 	m.OnMessage = a.shell.ShowMessage
 	m.OnChannelOpened = func(id string) {
 		if srv := a.cfg.Server(s.ServerURL); srv != nil && srv.LastChannel != id {
 			srv.LastChannel = id
-			if err := a.cfg.Save(); err != nil {
-				a.log.Error("save config", "err", err)
-			}
+			a.saveConfig()
 		}
 	}
 	a.main = m

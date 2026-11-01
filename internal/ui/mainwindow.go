@@ -34,6 +34,8 @@ type MainWindow struct {
 	closed bool
 
 	split       *qt.QSplitter
+	columns     columns    // ширины сайдбара и панели треда
+	saveColumns *qt.QTimer // сохранить ширины, когда разделитель отпустили
 	sidebar     *qt.QTreeWidget
 	items       map[string]*qt.QTreeWidgetItem // по id канала; threadsID — «Треды»
 	center      *qt.QStackedWidget             // channelPage или threadsPage
@@ -59,10 +61,19 @@ type MainWindow struct {
 	connectedOnce   bool
 	online          bool
 
-	OnChannelOpened func(id string)
-	OnConnection    func(ConnState)
-	OnMessage       func(text string) // короткое сообщение в строке состояния окна
+	OnChannelOpened  func(id string)
+	OnConnection     func(ConnState)
+	OnMessage        func(text string)         // короткое сообщение в строке состояния окна
+	OnColumnsChanged func(sidebar, thread int) // пользователь передвинул разделитель
 }
+
+// Ширины колонок по дизайну: сайдбар 240 (от 180 до 360), тред 380 (от 280).
+const (
+	sidebarWidth, sidebarMin, sidebarMax = 240, 180, 360
+	threadWidth, threadMin               = 380, 280
+)
+
+type columns struct{ sidebar, thread int }
 
 // cacheDir — общий каталог кэша; у каждого сервера в нём свой подкаталог.
 func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir string) *MainWindow {
@@ -162,10 +173,28 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.split.AddWidget(m.center.QWidget)
 	m.split.AddWidget(m.panel.w)
 	m.split.SetStretchFactor(1, 1)
-	m.sidebar.SetMinimumWidth(180)
-	m.sidebar.SetMaximumWidth(360)
-	m.panel.w.SetMinimumWidth(280)
-	m.split.SetSizes([]int{240, 660, 380})
+	m.sidebar.SetMinimumWidth(sidebarMin)
+	m.sidebar.SetMaximumWidth(sidebarMax)
+	m.panel.w.SetMinimumWidth(threadMin)
+	m.SetColumns(0, 0)
+	// splitterMoved идёт на каждый пиксель перетаскивания: сохраняем, когда
+	// разделитель отпустили.
+	m.saveColumns = qt.NewQTimer2(m.w.QObject)
+	m.saveColumns.SetSingleShot(true)
+	m.saveColumns.SetInterval(500)
+	m.saveColumns.OnTimeout(func() {
+		if m.OnColumnsChanged != nil {
+			m.OnColumnsChanged(m.columns.sidebar, m.columns.thread)
+		}
+	})
+	m.split.OnSplitterMoved(func(int, int) {
+		sizes := m.split.Sizes()
+		m.columns.sidebar = sizes[0]
+		if m.panel.w.IsVisible() {
+			m.columns.thread = sizes[2]
+		}
+		m.saveColumns.Start2()
+	})
 	root := qt.NewQVBoxLayout(m.w)
 	root.SetContentsMargins(0, 0, 0, 0)
 	root.AddWidget(m.split.QWidget)
@@ -176,6 +205,23 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 }
 
 func (m *MainWindow) Widget() *qt.QWidget { return m.w }
+
+// SetColumns — ширины сайдбара и панели треда с прошлого раза; 0 — по
+// умолчанию. Центр забирает остаток: у него одного ненулевой stretch.
+func (m *MainWindow) SetColumns(sidebar, thread int) {
+	if sidebar <= 0 {
+		sidebar = sidebarWidth
+	}
+	if thread <= 0 {
+		thread = threadWidth
+	}
+	m.columns = columns{min(max(sidebar, sidebarMin), sidebarMax), max(thread, threadMin)}
+	m.split.SetSizes([]int{m.columns.sidebar, 1280 - m.columns.sidebar - m.columns.thread, m.columns.thread})
+}
+
+// Columns — текущие ширины сайдбара и панели треда (последняя, с которой
+// панель была открыта).
+func (m *MainWindow) Columns() (sidebar, thread int) { return m.columns.sidebar, m.columns.thread }
 
 // Start грузит сайдбар и подключает realtime.
 func (m *MainWindow) Start() {

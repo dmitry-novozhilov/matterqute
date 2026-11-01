@@ -34,6 +34,7 @@ type Shell struct {
 	serverMenu *qt.QMenu
 
 	OnLogout func()
+	OnClose  func() // окно закрывается (и приложение выходит): сохранить, что нужно
 }
 
 func NewShell() *Shell {
@@ -54,7 +55,16 @@ func NewShell() *Shell {
 	file.AddSeparator()
 	quit := file.QWidget.AddActionWithText("Выход")
 	quit.SetShortcut(qt.NewQKeySequence2("Ctrl+Q"))
-	quit.OnTriggered(qt.QCoreApplication_Quit)
+	// Через закрытие окна, а не QCoreApplication::quit: иначе не будет
+	// closeEvent и положение окна не сохранится. Последнее окно закрылось —
+	// Qt выходит сам.
+	quit.OnTriggered(func() { s.w.Close() })
+	s.w.OnCloseEvent(func(super func(*qt.QCloseEvent), e *qt.QCloseEvent) {
+		if s.OnClose != nil {
+			s.OnClose()
+		}
+		super(e)
+	})
 
 	view := s.w.MenuBar().AddMenuWithTitle("&Вид")
 	themes := view.AddMenuWithTitle("Тема")
@@ -188,4 +198,15 @@ func (s *Shell) restyle() {
 
 func hostOf(serverURL string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(serverURL, "https://"), "http://")
+}
+
+// Geometry — место и размер окна (и развёрнуто ли) для следующего запуска.
+func (s *Shell) Geometry() []byte { return s.w.SaveGeometry() }
+
+// RestoreGeometry возвращает окно туда, где его оставили; звать до Show. Если
+// того экрана больше нет, Qt сам вернёт окно на видимый. Пустое — как по умолчанию.
+func (s *Shell) RestoreGeometry(g []byte) {
+	if len(g) > 0 {
+		s.w.RestoreGeometry(g)
+	}
 }

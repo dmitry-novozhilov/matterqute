@@ -21,6 +21,7 @@ func TestConfigRoundTrip(t *testing.T) {
 	c.Upsert(Server{URL: "https://a.example", LoginID: "alice"})
 	c.Upsert(Server{URL: "https://b.example", LoginID: "bob"})
 	c.Upsert(Server{URL: "https://a.example", LoginID: "alice@example.com", Username: "alice"})
+	c.Window = Window{Geometry: []byte{0x01, 0xd9, 0xd0, 0xcb, 0x00}, Sidebar: 300, Thread: 420}
 	if err := c.Save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -34,6 +35,9 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 	if a := c2.ActiveServer(); a == nil || a.URL != "https://a.example" || a.LoginID != "alice@example.com" {
 		t.Errorf("active = %+v, want updated https://a.example", a)
+	}
+	if w := c2.Window; string(w.Geometry) != string(c.Window.Geometry) || w.Sidebar != 300 || w.Thread != 420 {
+		t.Errorf("window = %+v, want %+v", w, c.Window)
 	}
 }
 

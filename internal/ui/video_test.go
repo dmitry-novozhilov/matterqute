@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/multimedia"
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -61,42 +62,85 @@ func TestVideo(t *testing.T) {
 		m.feed.ScrollToPost(post.Id)
 		shot(t, m, "video-preview")
 
-		// Плеер: заголовок, играет, время, пауза, закрытие.
+		// Клик по превью — ролик играет на месте превью, кадры идут.
 		m.feed.onAnchor(videoLink + fi.Id)
-		pl := m.players[fi.Id]
-		if pl == nil {
-			t.Error("no player window")
+		v := m.feed.videos[fi.Id]
+		if v == nil {
+			t.Error("no inline video after a click on the preview")
 			return
 		}
-		if got := pl.w.WindowTitle(); got != "bug.avi — carol, # backend" {
-			t.Errorf("player title %q", got)
+		playing := func() bool {
+			return v.mp.PlaybackState() == multimedia.QMediaPlayer__PlayingState && v.mp.Position() > 0 && v.frame != nil
 		}
-		if !waitFor(t, "playing", func() bool {
-			return pl.mp.PlaybackState() == multimedia.QMediaPlayer__PlayingState && pl.mp.Position() > 0
+		if !waitFor(t, "inline video playing", playing) {
+			t.Logf("inline status: %q", v.status)
+			return
+		}
+		if v.frame.Width() != 320 || v.frame.Height() != 180 {
+			t.Errorf("inline frame %dx%d, want 320x180", v.frame.Width(), v.frame.Height())
+		}
+		img := v.imageAt(v.pos)
+		g := v.w.Geometry()
+		if !v.w.IsVisible() || g.Width() != int(img.Width()) || g.Height() != int(img.Height()) {
+			t.Errorf("inline video %dx%d visible=%v, preview is %.0fx%.0f", g.Width(), g.Height(), v.w.IsVisible(), img.Width(), img.Height())
+		}
+		// Независимо от того, как место искали: середина виджета попадает в саму картинку.
+		mid := qt.NewQPoint2(g.X()+g.Width()/2, g.Y()+g.Height()/2)
+		if hit := m.feed.view.CursorForPosition(mid).Position(); hit != v.pos && hit != v.pos+1 {
+			t.Errorf("middle of the inline video hits document position %d, the preview image is at %d", hit, v.pos)
+		}
+		if got := v.time.Text(); !strings.HasSuffix(got, "/ 0:02") {
+			t.Errorf("inline time %q", got)
+		}
+		shot(t, m, "video-inline")
+
+		// Едет вместе с лентой.
+		y := g.Y()
+		m.feed.bar.SetValue(m.feed.bar.Value() - 40)
+		settle()
+		if dy := v.w.Geometry().Y() - y; dy != 40 {
+			t.Errorf("inline video moved by %d px when the feed scrolled by 40", dy)
+		}
+
+		// Повторный клик — пауза, ещё один — дальше.
+		m.feed.onAnchor(videoLink + fi.Id)
+		if v.mp.PlaybackState() != multimedia.QMediaPlayer__PausedState {
+			t.Errorf("second click did not pause: state %d", v.mp.PlaybackState())
+		}
+
+		// «Во весь экран» — отдельное окно с той же позиции; закрыли — ролик
+		// продолжается в ленте.
+		m.feed.onAnchor(videoLink + fi.Id)
+		v.full.Click()
+		pl := m.players[fi.Id]
+		if pl == nil {
+			t.Error("no fullscreen window")
+			return
+		}
+		if !pl.w.IsFullScreen() || v.mp.PlaybackState() == multimedia.QMediaPlayer__PlayingState {
+			t.Errorf("fullscreen=%v, inline state %d: want fullscreen window and paused inline", pl.w.IsFullScreen(), v.mp.PlaybackState())
+		}
+		if got := pl.w.WindowTitle(); got != "bug.avi — carol, # backend" {
+			t.Errorf("fullscreen title %q", got)
+		}
+		if !waitFor(t, "fullscreen playing", func() bool {
+			sz := pl.video.VideoSink().VideoSize()
+			return pl.mp.PlaybackState() == multimedia.QMediaPlayer__PlayingState && sz.Width() == 320
 		}) {
 			t.Logf("player message: %q", pl.msg.Text())
 			return
 		}
-		// Кадры доходят до виджета (сам кадр offscreen на скриншот не попадает).
-		if !waitFor(t, "frames in the video widget", func() bool {
-			sz := pl.video.VideoSink().VideoSize()
-			return sz.Width() == 320 && sz.Height() == 180
-		}) {
-			return
-		}
-		if got := pl.time.Text(); !strings.HasSuffix(got, "/ 0:02") {
-			t.Errorf("time label %q", got)
-		}
-		shotWidget(t, pl.w, "video-player")
-		pl.play.Click()
-		if pl.mp.PlaybackState() != multimedia.QMediaPlayer__PausedState {
-			t.Errorf("play button did not pause: state %d", pl.mp.PlaybackState())
-		}
-		m.feed.onAnchor(videoLink + fi.Id)
-		if m.players[fi.Id] != pl {
-			t.Error("second click opened another player instead of raising the first")
-		}
+		shotWidget(t, pl.w, "video-fullscreen")
 		pl.w.Close()
-		waitFor(t, "player gone", func() bool { return m.players[fi.Id] == nil })
+		waitFor(t, "fullscreen closed", func() bool { return m.players[fi.Id] == nil })
+		if v.mp.PlaybackState() != multimedia.QMediaPlayer__PlayingState {
+			t.Errorf("inline did not continue after fullscreen: state %d", v.mp.PlaybackState())
+		}
+
+		// Другой канал — ролик останавливается и убирается.
+		m.selectChannel(channelByName(m, "dev", "town-square").Id)
+		if len(m.feed.videos) != 0 {
+			t.Errorf("%d inline videos left after switching channels", len(m.feed.videos))
+		}
 	})
 }

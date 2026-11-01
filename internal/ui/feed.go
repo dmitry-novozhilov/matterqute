@@ -41,7 +41,7 @@ const (
 	imageLink     = "mm-img:"        // mm-img:<файл> — картинка целиком
 	retryLink     = "mm-retry:"      // повторить загрузку ленты
 	hookLink      = "mm-hook:"       // mm-hook:<post> — карточка интеграции, написавшей пост
-	videoLink     = "mm-video:"      // mm-video:<файл> — открыть плеер
+	videoLink     = "mm-video:"      // mm-video:<файл> — играть ролик в ленте (повторно — пауза)
 	spinnerSrc    = "spinner:24"     // ресурс с текущим кадром крутилки
 )
 
@@ -81,13 +81,15 @@ type Feed struct {
 	pills       map[string]pill   // имя ресурса реакции → обычная и при наведении
 	hovered     string            // ресурс реакции под курсором
 	movies      map[string]*qt.QMovie
-	placeholder bool           // в документе заглушка вместо постов
-	history     *qt.QTextFrame // строка «Загружаем историю…» над постами
-	newSince    int64          // посты новее — «Новые сообщения»
-	newMarker   string         // id поста, над которым отметка
-	lastWidth   int            // ширина, под которую вписаны картинки
-	refit       *qt.QTimer     // отложенная перерисовка картинок после ресайза
-	spin        *spinner       // крутилка заглушки «Загружаем сообщения…»
+	placeholder bool                    // в документе заглушка вместо постов
+	history     *qt.QTextFrame          // строка «Загружаем историю…» над постами
+	newSince    int64                   // посты новее — «Новые сообщения»
+	newMarker   string                  // id поста, над которым отметка
+	lastWidth   int                     // ширина, под которую вписаны картинки
+	refit       *qt.QTimer              // отложенная перерисовка картинок после ресайза
+	spin        *spinner                // крутилка заглушки «Загружаем сообщения…»
+	videos      map[string]*inlineVideo // ролики, которые играют в ленте, по id файла
+	placeTimer  *qt.QTimer              // поставить ролики на места после правок документа
 	unsubscribe func()
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
@@ -103,17 +105,19 @@ type Feed struct {
 	OnToggleReaction func(p *model.Post, emoji string) // поставить или снять свою реакцию
 	OnLink           func(url string)                  // клик по ссылке в тексте
 	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
-	OnOpenVideo      func(fi *model.FileInfo, p *model.Post)
-	OnOpenFile       func(fi *model.FileInfo)
-	OnSaveFile       func(fi *model.FileInfo)
-	OnRetry          func() // «Повторить» в заглушке ошибки
+	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
+	// позиции; back — вернуть позицию и «играл ли», когда окно закроют.
+	OnFullscreenVideo func(fi *model.FileInfo, p *model.Post, path string, pos int64, playing bool, back func(pos int64, playing bool))
+	OnOpenFile        func(fi *model.FileInfo)
+	OnSaveFile        func(fi *model.FileInfo)
+	OnRetry           func() // «Повторить» в заглушке ошибки
 }
 
 func NewFeed(d FeedDeps) *Feed {
 	if d.Users == nil {
 		d.Users = func(string) *model.User { return nil }
 	}
-	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}}
+	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{}}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.view.SetOpenLinks(false)
@@ -132,12 +136,21 @@ func NewFeed(d FeedDeps) *Feed {
 	f.refit.SetSingleShot(true)
 	f.refit.SetInterval(50)
 	f.refit.OnTimeout(f.fitImages)
+	f.placeTimer = qt.NewQTimer2(f.view.QObject)
+	f.placeTimer.SetSingleShot(true)
+	f.placeTimer.OnTimeout(f.placeVideos)
+	f.doc.OnContentsChanged(func() {
+		if len(f.videos) > 0 {
+			f.placeTimer.Start(0)
+		}
+	})
 	f.spin = newSpinner(f.view.QObject, func(pm *qt.QPixmap) {
 		f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(spinnerSrc), pm.ToQVariant())
 		f.view.Viewport().Update()
 	})
 	f.bar = f.view.VerticalScrollBar()
 	f.bar.OnValueChanged(f.onScroll)
+	f.bar.OnValueChanged(func(int) { f.placeVideos() })
 	f.bar.OnRangeChanged(f.onRange)
 	f.restyleRenderer()
 	f.unsubscribe = OnThemeChanged(f.restyle)
@@ -163,6 +176,9 @@ func (f *Feed) restyle() {
 	f.pills = map[string]pill{}
 	if f.spin.timer.IsActive() {
 		f.spin.start(Pal().Tx3, 24)
+	}
+	for _, v := range f.videos {
+		v.restyle()
 	}
 	f.renderAll()
 }
@@ -223,6 +239,7 @@ func (f *Feed) placeholderHTML(iconName, title, text, extra string) {
 // обработчики ходят по f.items и f.history.
 func (f *Feed) clearDoc() {
 	f.stopMovies()
+	f.stopVideos()
 	f.spin.stop()
 	f.items = nil
 	f.history = nil
@@ -1141,9 +1158,8 @@ func (f *Feed) onAnchor(link string) {
 			f.OnRetry()
 		}
 	case strings.HasPrefix(link, videoLink):
-		id := strings.TrimPrefix(link, videoLink)
-		if fi := f.file(id); fi != nil && f.OnOpenVideo != nil {
-			f.OnOpenVideo(fi, f.fileOwner(id))
+		if fi := f.file(strings.TrimPrefix(link, videoLink)); fi != nil {
+			f.playInline(fi)
 		}
 	case strings.HasPrefix(link, hookLink):
 		if p := f.post(strings.TrimPrefix(link, hookLink)); p != nil && f.OnIntegration != nil {
@@ -1348,6 +1364,7 @@ func newTextLabel(format qt.TextFormat) *qt.QLabel {
 // разделителя перерисовываем один раз, а не на каждый пиксель.
 func (f *Feed) onResize() {
 	f.pinToBottom()
+	f.placeVideos()
 	if abs(f.view.Viewport().Width()-f.lastWidth) >= 24 {
 		f.refit.Start2()
 	}

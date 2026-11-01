@@ -10,12 +10,13 @@ import (
 	"matterqute/internal/store"
 )
 
-// player — видео в отдельном окне (по дизайну): кадр на тёмном фоне и панель
-// 44 px — пуск/пауза, время, перемотка, громкость, во весь экран. Пробел —
-// пуск/пауза, F или двойной клик — во весь экран, Esc — обратно.
+// player — ролик во весь экран (кнопка «Во весь экран» у ролика в ленте):
+// кадр на тёмном фоне и панель 44 px по макету — пуск/пауза, время,
+// перемотка, громкость, выход из полноэкранного режима. Пробел — пуск/пауза,
+// Esc или та же кнопка — обратно в ленту, ролик продолжится там.
 type player struct {
 	w      *qt.QWidget
-	stack  *qt.QStackedWidget // загрузка или ошибка — либо видео
+	stack  *qt.QStackedWidget // сообщение (ошибка) — либо видео
 	msg    *qt.QLabel
 	video  *multimedia.QVideoWidget
 	mp     *multimedia.QMediaPlayer
@@ -26,14 +27,16 @@ type player struct {
 	time   *qt.QLabel
 	seek   *qt.QSlider
 	volume *qt.QSlider
-	closed bool // окно удалено: ответы загрузки игнорируем
+	closed bool
 
 	unsubscribe func()
 	onClosed    func()
+	back        func(pos int64, playing bool) // окно закрывают: где остановились и играло ли
 }
 
-// openVideo — плеер ролика; повторный клик по тому же ролику поднимает его окно.
-func (m *MainWindow) openVideo(fi *model.FileInfo, p *model.Post) {
+// fullscreenVideo — окно во весь экран с позиции pos; повторный вызов для того
+// же ролика поднимает уже открытое.
+func (m *MainWindow) fullscreenVideo(fi *model.FileInfo, p *model.Post, path string, pos int64, playing bool, back func(int64, bool)) {
 	if pl := m.players[fi.Id]; pl != nil {
 		pl.w.Raise()
 		pl.w.ActivateWindow()
@@ -42,24 +45,9 @@ func (m *MainWindow) openVideo(fi *model.FileInfo, p *model.Post) {
 	pl := newPlayer(m.w, m.videoTitle(fi, p))
 	m.players[fi.Id] = pl
 	pl.onClosed = func() { delete(m.players, fi.Id) }
-	pl.w.Show()
-	m.assets.Download(fi, func(path string, err error) {
-		if pl.closed {
-			return
-		}
-		if err != nil {
-			pl.fail("Не удалось скачать видео: " + err.Error())
-			return
-		}
-		pl.load(path)
-		// Большие ролики лента не качает сама: превью и длительность — сейчас.
-		if _, ok := m.assets.Video(fi.Id); !ok {
-			m.assets.WantVideo(fi, func() {
-				m.feed.refreshSoon()
-				m.panel.feed.refreshSoon()
-			})
-		}
-	})
+	pl.back = back
+	pl.w.ShowFullScreen()
+	pl.load(path, pos, playing)
 }
 
 // videoTitle — «demo.mp4 — bob, # backend».
@@ -92,9 +80,7 @@ func newPlayer(parent *qt.QWidget, title string) *player {
 	setName(p.msg.QObject, "playerMessage")
 	p.msg.SetAlignment(qt.AlignCenter)
 	p.msg.SetWordWrap(true)
-	p.msg.SetText("Загружаем видео…")
 	p.video = multimedia.NewQVideoWidget2()
-	p.video.OnMouseDoubleClickEvent(func(_ func(*qt.QMouseEvent), _ *qt.QMouseEvent) { p.toggleFull() })
 	p.stack = qt.NewQStackedWidget2()
 	setName(p.stack.QObject, "playerVideo")
 	p.stack.AddWidget(p.msg.QWidget)
@@ -117,8 +103,8 @@ func newPlayer(parent *qt.QWidget, title string) *player {
 	p.play.SetToolTip("Пуск / пауза (пробел)")
 	p.play.OnClicked(p.toggle)
 	p.full = button("playerFull")
-	p.full.SetToolTip("Во весь экран (F)")
-	p.full.OnClicked(p.toggleFull)
+	p.full.SetToolTip("Выйти из полноэкранного режима (Esc)")
+	p.full.OnClicked(func() { p.w.Close() })
 	p.time = qt.NewQLabel3(formatDuration(0) + " / " + formatDuration(0))
 	setName(p.time.QObject, "playerTime")
 	p.seek = qt.NewQSlider3(qt.Horizontal)
@@ -171,17 +157,20 @@ func newPlayer(parent *qt.QWidget, title string) *player {
 		switch qt.Key(e.Key()) {
 		case qt.Key_Space:
 			p.toggle()
-		case qt.Key_F:
-			p.toggleFull()
 		case qt.Key_Escape:
-			if p.w.IsFullScreen() {
-				p.toggleFull()
-			} else {
-				p.w.Close()
-			}
+			p.w.Close()
 		default:
 			super(e)
 		}
+	})
+	// Позицию и «играло ли» — до удаления окна: потом плеер уже удалён, а
+	// при удалении ещё и сообщит «остановлен».
+	p.w.OnCloseEvent(func(super func(*qt.QCloseEvent), e *qt.QCloseEvent) {
+		if p.back != nil {
+			p.back(p.mp.Position(), p.mp.PlaybackState() == multimedia.QMediaPlayer__PlayingState)
+			p.back = nil
+		}
+		super(e)
 	})
 	p.unsubscribe = OnThemeChanged(p.restyle)
 	p.w.OnDestroyed(func() {
@@ -195,9 +184,20 @@ func newPlayer(parent *qt.QWidget, title string) *player {
 	return p
 }
 
-// load — ролик скачан: играем.
-func (p *player) load(path string) {
+// load — играть с позиции pos; paused — встать на ней на паузе.
+func (p *player) load(path string, pos int64, playing bool) {
 	p.stack.SetCurrentWidget(p.video.QWidget)
+	seeked := false
+	p.mp.OnMediaStatusChanged(func(st multimedia.QMediaPlayer__MediaStatus) {
+		// Позиция до загрузки ролика не применяется — ставим, когда он загружен.
+		if !seeked && (st == multimedia.QMediaPlayer__LoadedMedia || st == multimedia.QMediaPlayer__BufferedMedia) {
+			seeked = true
+			p.mp.SetPosition(pos)
+			if !playing {
+				p.mp.Pause()
+			}
+		}
+	})
 	p.mp.SetSource(qt.QUrl_FromLocalFile(path))
 	p.mp.Play()
 }
@@ -212,14 +212,6 @@ func (p *player) toggle() {
 		p.mp.Pause()
 	} else {
 		p.mp.Play()
-	}
-}
-
-func (p *player) toggleFull() {
-	if p.w.IsFullScreen() {
-		p.w.ShowNormal()
-	} else {
-		p.w.ShowFullScreen()
 	}
 }
 

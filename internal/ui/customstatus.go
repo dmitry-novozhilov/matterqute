@@ -79,8 +79,9 @@ var presences = []struct{ status, title string }{
 	{model.StatusOffline, "Не в сети"},
 }
 
-// showStatusPanel — панель статуса у точки at: свой статус (эмодзи, текст,
-// срок) и присутствие — в сети, отошёл, не беспокоить со сроком, не в сети.
+// showStatusPanel — панель статуса над точкой at (своё имя в строке
+// состояния): свой статус (эмодзи, текст, срок) и присутствие — в сети,
+// отошёл, не беспокоить со сроком, не в сети.
 func (m *MainWindow) showStatusPanel(at *qt.QPoint) {
 	pal := Pal()
 	me := m.me()
@@ -182,8 +183,8 @@ QFrame[role="line"] { background: %s; max-height: 1px; min-height: 1px; border: 
 		})
 		c.lay.AddWidget(b.QWidget)
 	}
-	c.w.SetMinimumWidth(300)
-	c.show(at)
+	c.frame.SetFixedWidth(300) // окно по ширине карточки: лишнее место было бы пустым (чёрным) краем
+	c.showAbove(at)
 }
 
 // pickDNDEnd — «не беспокоить» до выбранного времени.

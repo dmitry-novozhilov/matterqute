@@ -158,10 +158,10 @@ func (m *MainWindow) showIntegrationCard(p *model.Post) {
 }
 
 // card — всплывающая карточка у курсора, закрывается кликом мимо или Esc.
-// Окно прозрачное ради скруглённых углов, фон и рамку рисует QFrame#userCard
-// внутри: окну верхнего уровня с WA_TranslucentBackground Qt QSS-фон не рисует.
+// Фон и рамку рисует QFrame#userCard внутри, углы скругляет маска окна.
 type card struct {
 	w      *qt.QWidget
+	frame  *qt.QFrame
 	lay    *qt.QVBoxLayout // содержимое карточки
 	closed bool            // после закрытия окно удалено, трогать его нельзя
 }
@@ -169,7 +169,6 @@ type card struct {
 func (m *MainWindow) newCard() *card {
 	c := &card{w: qt.NewQWidget3(m.w, qt.Popup|qt.FramelessWindowHint|qt.NoDropShadowWindowHint)}
 	c.w.SetAttribute(qt.WA_DeleteOnClose)
-	c.w.SetAttribute(qt.WA_TranslucentBackground)
 	c.w.OnDestroyed(func() { c.closed = true })
 	c.w.OnKeyPressEvent(func(super func(*qt.QKeyEvent), e *qt.QKeyEvent) {
 		if qt.Key(e.Key()) == qt.Key_Escape {
@@ -178,13 +177,13 @@ func (m *MainWindow) newCard() *card {
 		}
 		super(e)
 	})
-	frame := qt.NewQFrame(c.w)
-	setName(frame.QObject, "userCard")
-	frame.SetFixedWidth(280)
+	c.frame = qt.NewQFrame(c.w)
+	setName(c.frame.QObject, "userCard")
+	c.frame.SetFixedWidth(280)
 	outer := qt.NewQVBoxLayout(c.w)
 	outer.SetContentsMargins(0, 0, 0, 0)
-	outer.AddWidget(frame.QWidget)
-	c.lay = qt.NewQVBoxLayout(frame.QWidget)
+	outer.AddWidget(c.frame.QWidget)
+	c.lay = qt.NewQVBoxLayout(c.frame.QWidget)
 	c.lay.SetContentsMargins(16, 16, 16, 16)
 	c.lay.SetSpacing(6)
 	return c
@@ -210,10 +209,39 @@ func (c *card) header(avatar *qt.QLabel, name, sub string) {
 	c.lay.AddLayout(top.QLayout)
 }
 
-func (c *card) show(pos *qt.QPoint) {
+// show — у точки pos (глобальной): ниже и правее, а если снизу не
+// помещается — выше; всегда в пределах экрана.
+func (c *card) show(pos *qt.QPoint) { c.place(pos, false) }
+
+// showAbove — над точкой pos: строка состояния внизу окна.
+func (c *card) showAbove(pos *qt.QPoint) { c.place(pos, true) }
+
+func (c *card) place(pos *qt.QPoint, above bool) {
 	c.w.AdjustSize()
-	c.w.Move(pos.X()+8, pos.Y()+8)
+	w, h := c.w.Width(), c.w.Height()
+	scr := c.w.Screen().AvailableGeometry()
+	if s := qt.QGuiApplication_ScreenAt(pos); s != nil {
+		scr = s.AvailableGeometry()
+	}
+	x, y := pos.X()+8, pos.Y()+8
+	if above || y+h > scr.Y()+scr.Height() {
+		y = pos.Y() - h - 8
+	}
+	x = max(scr.X(), min(x, scr.X()+scr.Width()-w))
+	y = max(scr.Y(), min(y, scr.Y()+scr.Height()-h))
+	c.w.Move(x, y)
+	c.roundCorners(w, h, 6)
 	c.w.Show()
+}
+
+// roundCorners — скругление углов маской окна. Не прозрачностью: без
+// композитора (X11) прозрачное рисуется чёрным.
+func (c *card) roundCorners(w, h, r int) {
+	region := qt.NewQRegion2(r, 0, w-2*r, h).United(qt.NewQRegion2(0, r, w, h-2*r))
+	for _, xy := range [][2]int{{0, 0}, {w - 2*r, 0}, {0, h - 2*r}, {w - 2*r, h - 2*r}} {
+		region = region.United(qt.NewQRegion6(xy[0], xy[1], 2*r, 2*r, qt.QRegion__Ellipse))
+	}
+	c.w.SetMaskWithMask(region)
 }
 
 // statusLine — «В сети», «Не беспокоить до 18:00», «Не в сети с 23:10», «Это вы».

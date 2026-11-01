@@ -72,10 +72,10 @@ func NewShell() *Shell {
 		}
 	})
 	s.myStatus = file.QWidget.AddActionWithText("Статус…")
+	// Панель статуса — всегда над своим именем в строке состояния, и из меню тоже.
 	s.myStatus.OnTriggered(func() {
 		if s.OnStatus != nil {
-			r := s.w.Geometry()
-			s.OnStatus(qt.NewQPoint2(r.X()+r.Width()/2-150, r.Y()+r.Height()/3))
+			s.OnStatus(s.user.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0)))
 		}
 	})
 	file.AddSeparator()

@@ -74,6 +74,38 @@ func TestStatus(t *testing.T) {
 			t.Fatal("no «Установить свой статус…» in the panel")
 		}
 		shotWidget(t, panel.w, "status-panel")
+		panel.w.Close()
+		settle()
+
+		// У нижнего края экрана (строка состояния): над точкой и целиком на экране;
+		// окно не шире карточки — иначе по краю видно пустое (без композитора — чёрное).
+		inScreen := func(what string, w *qt.QWidget) {
+			scr, g := w.Screen().AvailableGeometry(), w.Geometry()
+			if g.X() < scr.X() || g.Y() < scr.Y() || g.X()+g.Width() > scr.X()+scr.Width() || g.Y()+g.Height() > scr.Y()+scr.Height() {
+				t.Errorf("%s %dx%d at %d,%d is off the screen %dx%d", what, g.Width(), g.Height(), g.X(), g.Y(), scr.Width(), scr.Height())
+			}
+		}
+		scr := m.w.Screen().AvailableGeometry()
+		bottom := qt.NewQPoint2(scr.X()+10, scr.Y()+scr.Height()-10)
+		m.showStatusPanel(bottom)
+		panel = m.statusPanel
+		inScreen("status panel", panel.w)
+		if g := panel.w.Geometry(); g.Y()+g.Height() > bottom.Y() {
+			t.Errorf("status panel bottom %d is below the status bar point %d", g.Y()+g.Height(), bottom.Y())
+		}
+		if pw, fw := panel.w.Width(), panel.frame.Width(); pw != fw {
+			t.Errorf("panel window %d px wide, card %d px: empty edge", pw, fw)
+		}
+		panel.w.Close()
+		settle()
+		m.openUserCard(carol, qt.NewQPoint2(scr.X()+scr.Width()-5, scr.Y()+scr.Height()-5))
+		if card := qt.QApplication_ActivePopupWidget(); card != nil {
+			inScreen("user card", card)
+			card.Close()
+			settle()
+		}
+		m.showStatusPanel(qt.NewQPoint2(100, 400))
+		panel = m.statusPanel
 		labelled(panel.w.QObject, "Отошёл").Click()
 		waitFor(t, "away", func() bool {
 			st, _, err := m.s.Client.GetUserStatus(ctx, me, "")

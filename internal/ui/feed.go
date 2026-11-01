@@ -93,6 +93,7 @@ type Feed struct {
 	stick          bool // лента у нижнего края: новые посты её прокручивают
 	keepFromBottom int  // после подгрузки старых: сохранить расстояние до низа; -1 — не нужно
 	programmatic   bool // SetValue из кода, а не прокрутка пользователем
+	editing        bool // идёт правка документа (edit): прокрутку от неё не принимаем за пользователя
 	hasMore        bool
 	loadingOlder   bool
 	refreshPending bool
@@ -163,9 +164,7 @@ func (f *Feed) restyle() {
 	if f.spin.timer.IsActive() {
 		f.spin.start(Pal().Tx3, 24)
 	}
-	for i := range f.items {
-		f.render(i)
-	}
+	f.renderAll()
 }
 
 // Reset очищает ленту; msg — текст вместо постов.
@@ -317,20 +316,26 @@ func (f *Feed) Has(id string) bool { return f.index(id) >= 0 }
 
 // Upsert вставляет новый пост по времени или перерисовывает изменённый.
 func (f *Feed) Upsert(p *model.Post) {
-	if i := f.index(p.Id); i >= 0 {
-		f.items[i].post = p
-		f.render(i)
-		return
-	}
-	i := len(f.items)
-	for i > 0 && f.items[i-1].post.CreateAt > p.CreateAt {
-		i--
-	}
-	f.keepFromBottom = -1
-	f.insert(i, p)
+	f.edit(func() {
+		if i := f.index(p.Id); i >= 0 {
+			f.items[i].post = p
+			f.render(i)
+			return
+		}
+		i := len(f.items)
+		for i > 0 && f.items[i-1].post.CreateAt > p.CreateAt {
+			i--
+		}
+		f.keepFromBottom = -1
+		f.insert(i, p)
+	})
 }
 
 func (f *Feed) Remove(id string) {
+	f.edit(func() { f.remove(id) })
+}
+
+func (f *Feed) remove(id string) {
 	i := f.index(id)
 	if i < 0 {
 		return
@@ -348,10 +353,62 @@ func (f *Feed) Remove(id string) {
 }
 
 // RefreshNames перерисовывает ленту, когда догрузились профили.
-func (f *Feed) RefreshNames() {
-	for i := range f.items {
-		f.render(i)
+func (f *Feed) RefreshNames() { f.renderAll() }
+
+// renderAll перерисовывает все посты: догрузились картинки или имена, сменилась тема.
+func (f *Feed) renderAll() {
+	f.edit(func() {
+		for i := range f.items {
+			f.render(i)
+		}
+	})
+}
+
+// edit — правка документа без прыжков прокрутки. Пока пост перерисовывается,
+// документ на миг короче, полоса прокрутки обрезает значение до максимума, и
+// onScroll принял бы это за прокрутку пользователя к низу — лента прилипала
+// к концу. Поэтому на время правки прокрутка «наша», а после неё лента у низа
+// остаётся у низа, иначе пост у верхнего края остаётся на своём месте.
+func (f *Feed) edit(do func()) {
+	if f.editing {
+		do()
+		return
 	}
+	f.editing = true
+	stick := f.stick
+	anchor, top := f.topPost()
+	do()
+	f.editing = false
+	f.programmatic = true
+	f.doc.Size() // раскладка до конца: дальше нужны настоящие позиции
+	switch {
+	case stick:
+		f.bar.SetValue(f.bar.Maximum())
+	case anchor != "":
+		if i := f.index(anchor); i >= 0 {
+			f.bar.SetValue(f.bar.Value() + f.postTop(i) - top)
+		}
+	}
+	f.programmatic = false
+	f.stick = stick
+}
+
+// topPost — пост у верхнего края окна и где его верх (px от края окна).
+func (f *Feed) topPost() (string, int) {
+	f.doc.Size()
+	for y := 0; y < 24; y += 4 {
+		it := f.itemAt(f.view.CursorForPosition(qt.NewQPoint2(feedAvatarCol+8, y)).Position())
+		if it != nil {
+			return it.post.Id, f.postTop(f.index(it.post.Id))
+		}
+	}
+	return "", 0
+}
+
+func (f *Feed) postTop(i int) int {
+	c := qt.NewQTextCursor2(f.doc)
+	c.SetPosition(f.items[i].frame.FirstPosition())
+	return f.view.CursorRect(c).Top()
 }
 
 // ScrollToPost прокручивает к посту (и ставит курсор в его начало).
@@ -376,9 +433,7 @@ func (f *Feed) refreshSoon() {
 	f.refreshPending = true
 	f.d.Assets.Later(func() {
 		f.refreshPending = false
-		for i := range f.items {
-			f.render(i)
-		}
+		f.renderAll()
 	})
 }
 
@@ -1304,11 +1359,13 @@ func (f *Feed) fitImages() {
 		return
 	}
 	f.lastWidth = w
-	for i, it := range f.items {
-		if it.post.Metadata != nil && slices.ContainsFunc(it.post.Metadata.Files, func(fi *model.FileInfo) bool { return isImage(fi) || isVideo(fi) }) {
-			f.render(i)
+	f.edit(func() {
+		for i, it := range f.items {
+			if it.post.Metadata != nil && slices.ContainsFunc(it.post.Metadata.Files, func(fi *model.FileInfo) bool { return isImage(fi) || isVideo(fi) }) {
+				f.render(i)
+			}
 		}
-	}
+	})
 }
 
 func abs(x int) int {
@@ -1338,7 +1395,7 @@ func (f *Feed) pinToBottom() {
 }
 
 func (f *Feed) onScroll(v int) {
-	if f.programmatic {
+	if f.programmatic || f.editing {
 		return
 	}
 	f.keepFromBottom = -1
@@ -1354,6 +1411,9 @@ func (f *Feed) onScroll(v int) {
 // переносы): держим низ или место, на котором был пользователь.
 func (f *Feed) onRange(_, max int) {
 	f.pinToBottom()
+	if f.editing {
+		return // прокрутку выставит edit, когда правка закончится
+	}
 	f.programmatic = true
 	defer func() { f.programmatic = false }()
 	switch {

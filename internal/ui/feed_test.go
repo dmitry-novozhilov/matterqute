@@ -305,3 +305,41 @@ func testFeedLoadingSpinner(t *testing.T) {
 		t.Error("spinner runs under the error placeholder")
 	}
 }
+
+// Пользователь отмотал чуть выше низа; перерисовка всех постов (догрузились
+// аватары, эмодзи, превью) не должна прилеплять ленту к концу, а пост у
+// верхнего края должен остаться на месте. Лента у низа остаётся у низа.
+func TestFeedRerenderKeepsScroll(t *testing.T) { onMain(func() { testFeedRerenderKeepsScroll(t) }) }
+
+func testFeedRerenderKeepsScroll(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	f.Widget().Resize(500, 300)
+	f.Widget().Show()
+	defer f.Widget().Close()
+	posts := makePosts(1, 40)
+	for i := 0; i < len(posts); i += 3 {
+		posts[i].Message = strings.Repeat("длинное сообщение в несколько строк ", 12)
+	}
+	f.SetPosts(posts, false)
+	settle()
+	f.RefreshNames()
+	settle()
+	if f.bar.Value() != f.bar.Maximum() || !f.stick {
+		t.Errorf("feed at the bottom left it after re-render: value %d of %d, stick %v", f.bar.Value(), f.bar.Maximum(), f.stick)
+	}
+
+	f.bar.SetValue(f.bar.Maximum() - 150) // как прокрутка колесом: не programmatic
+	settle()
+	if f.stick {
+		t.Fatal("scrolled up but feed still sticks to the bottom")
+	}
+	id, top := f.topPost()
+	f.RefreshNames()
+	settle()
+	if f.stick || f.bar.Value() == f.bar.Maximum() {
+		t.Errorf("re-render glued the feed to the bottom: value %d of %d, stick %v", f.bar.Value(), f.bar.Maximum(), f.stick)
+	}
+	if i := f.index(id); i < 0 || abs(f.postTop(i)-top) > 1 {
+		t.Errorf("post %s at the top moved from %d to %d px", id, top, f.postTop(i))
+	}
+}

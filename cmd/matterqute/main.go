@@ -3,10 +3,12 @@ package main
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	qt "github.com/mappu/miqt/qt6"
 
 	"matterqute/internal/config"
+	"matterqute/internal/notify"
 	"matterqute/internal/ui"
 )
 
@@ -46,7 +48,31 @@ func main() {
 	}
 
 	ui.InitStyle(app, ui.ThemeMode(cfg.Theme), log)
-	ui.NewApp(cfg, tokens, log).Start()
+	a := ui.NewApp(cfg, tokens, log)
+	if n := startNotifier(log); n != nil {
+		a.SetNotifier(n)
+	}
+	a.Start()
 	scheduleScreenshot(log)
 	os.Exit(qt.QApplication_Exec())
+}
+
+// startNotifier — уведомления рабочего стола; без сессионной шины или сервера
+// уведомлений работаем без них.
+func startNotifier(log *slog.Logger) *notify.Notifier {
+	icon := ""
+	if dir, err := config.CacheDir(); err == nil {
+		path := filepath.Join(dir, "app-icon.png")
+		if err := ui.SaveAppIcon(path); err != nil {
+			log.Warn("notifications", "err", err)
+		} else {
+			icon = path
+		}
+	}
+	n, err := notify.New("matterqute", icon)
+	if err != nil {
+		log.Warn("desktop notifications off", "err", err)
+		return nil
+	}
+	return n
 }

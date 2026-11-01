@@ -528,8 +528,12 @@ func (s *Server) Post(p *model.Post) *model.Post {
 	for _, c := range s.connsIn(p.ChannelId) {
 		ev := model.NewWebSocketEvent(model.WebsocketEventPosted, "", p.ChannelId, "", nil, "")
 		ev.Add("post", string(postJSON))
+		ev.Add("channel_type", string(s.channels[p.ChannelId].Type))
 		if slices.Contains(mentioned, c.userID) {
 			ev.Add("mentions", model.ArrayToJSON([]string{c.userID}))
+		}
+		if len(followers) > 0 {
+			ev.Add("followers", model.ArrayToJSON(followers))
 		}
 		data, _ := ev.ToJSON()
 		if err := c.write(data); err != nil {

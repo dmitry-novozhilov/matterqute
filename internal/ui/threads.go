@@ -142,7 +142,7 @@ func (m *MainWindow) sendReply(text string, fileIDs []string) {
 				return
 			}
 			m.panel.composer.Sent()
-			m.applyPosted(p, false)
+			m.applyPosted(store.NewPost{Post: p})
 		})
 	}()
 }

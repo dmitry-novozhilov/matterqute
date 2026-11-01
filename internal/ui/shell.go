@@ -210,3 +210,11 @@ func (s *Shell) RestoreGeometry(g []byte) {
 		s.w.RestoreGeometry(g)
 	}
 }
+
+// Raise — окно поверх остальных и в фокусе, даже если было свёрнуто.
+func (s *Shell) Raise() {
+	s.w.SetWindowState(s.w.WindowState()&^qt.WindowMinimized | qt.WindowActive)
+	s.w.Show()
+	s.w.Raise()
+	s.w.ActivateWindow()
+}

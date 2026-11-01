@@ -102,3 +102,20 @@ func TestRenderInlineAndDark(t *testing.T) {
 		t.Errorf("RenderInline dark: %s", got)
 	}
 }
+
+func TestPlainText(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"**жирный** и _курсив_ :+1:", "жирный и курсив 👍"},
+		{"строка\nвторая", "строка\nвторая"},
+		{"[ссылка](https://example.com) и https://mm.example.com", "ссылка и https://mm.example.com"},
+		{"### Релиз\n- [x] кэш\n- ~~API~~", "Релиз\nкэш\nAPI"},
+		{"код `make` и\n```\nline1\nline2\n```", "код make и\nline1\nline2"},
+		{"> цитата\n\nабзац", "цитата\nабзац"},
+		{"<b>сырой</b> html", "<b>сырой</b> html"},
+		{"@alice глянь ~town-square :нет_такого:", "@alice глянь ~town-square :нет_такого:"},
+	} {
+		if got := PlainText(tc.in); got != tc.want {
+			t.Errorf("PlainText(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

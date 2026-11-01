@@ -23,10 +23,14 @@ type App struct {
 	tokens *config.Tokens
 	log    *slog.Logger
 
-	shell *Shell
-	login *LoginView
-	main  *MainWindow
+	shell    *Shell
+	login    *LoginView
+	main     *MainWindow
+	notifier Notifier // nil — без уведомлений
 }
+
+// SetNotifier включает уведомления рабочего стола; звать до Start.
+func (a *App) SetNotifier(n Notifier) { a.notifier = n }
 
 func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 	a := &App{cfg: cfg, tokens: tokens, log: log, shell: NewShell()}
@@ -221,6 +225,8 @@ func (a *App) openMain(s *mm.Session) {
 		a.cfg.Window.Sidebar, a.cfg.Window.Thread = sidebar, thread
 		a.saveConfig()
 	}
+	m.notifier = a.notifier
+	m.OnRaise = a.shell.Raise
 	m.OnConnection = a.shell.SetConnection
 	m.OnMessage = a.shell.ShowMessage
 	m.OnChannelOpened = func(id string) {

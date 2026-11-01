@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"matterqute/internal/store"
 )
 
 // decodeEvent разбирает событие в горутине WebSocket и возвращает, что сделать
@@ -20,11 +22,18 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		if err != nil {
 			return nil, err
 		}
-		mentioned, err := eventMentions(data, me)
+		mentioned, err := eventUserList(data, "mentions", me)
 		if err != nil {
 			return nil, err
 		}
-		return func() { m.applyPosted(p, mentioned) }, nil
+		following, err := eventUserList(data, "followers", me)
+		if err != nil {
+			return nil, err
+		}
+		chType, _ := data["channel_type"].(string)
+		return func() {
+			m.applyPosted(store.NewPost{Post: p, Mentioned: mentioned, Following: following, ChannelType: chType})
+		}, nil
 
 	case model.WebsocketEventPostEdited:
 		p, err := eventPost(data)
@@ -174,20 +183,21 @@ func eventPost(data map[string]any) (*model.Post, error) {
 	return &p, nil
 }
 
-// eventMentions — упомянут ли me. Поле mentions сервер добавляет только
-// упомянутым, JSON-строкой с массивом id (web_broadcast_hooks.go).
-func eventMentions(data map[string]any, me string) (bool, error) {
-	raw, ok := data["mentions"]
+// eventUserList — есть ли me в списке id из события: mentions (упомянутые;
+// сервер добавляет поле только им, web_broadcast_hooks.go) или followers
+// (подписчики треда при CRT). Список — JSON-строка с массивом.
+func eventUserList(data map[string]any, key, me string) (bool, error) {
+	raw, ok := data[key]
 	if !ok {
 		return false, nil
 	}
 	s, ok := raw.(string)
 	if !ok {
-		return false, fmt.Errorf("mentions: want JSON string, got %T", raw)
+		return false, fmt.Errorf("%s: want JSON string, got %T", key, raw)
 	}
 	var ids []string
 	if err := json.Unmarshal([]byte(s), &ids); err != nil {
-		return false, fmt.Errorf("mentions %s: %w", truncate(s, 200), err)
+		return false, fmt.Errorf("%s %s: %w", key, truncate(s, 200), err)
 	}
 	return slices.Contains(ids, me), nil
 }

@@ -50,6 +50,8 @@ type MainWindow struct {
 	panel       *ThreadPanel
 	thread      *threadView // открытый в панели тред; nil — панель закрыта
 	assets      *Assets
+	notifier    Notifier          // nil — уведомлений нет (нет шины или сервера уведомлений)
+	notes       map[string]uint32 // показанное уведомление по каналу или треду: следующее его заменит
 	retryNow    chan struct{}
 	unsubscribe func()
 
@@ -65,6 +67,7 @@ type MainWindow struct {
 	OnConnection     func(ConnState)
 	OnMessage        func(text string)         // короткое сообщение в строке состояния окна
 	OnColumnsChanged func(sidebar, thread int) // пользователь передвинул разделитель
+	OnRaise          func()                    // показать окно поверх остальных (клик по уведомлению)
 }
 
 // Ширины колонок по дизайну: сайдбар 240 (от 180 до 360), тред 380 (от 280).
@@ -86,6 +89,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		ctx:      ctx,
 		cancel:   cancel,
 		items:    map[string]*qt.QTreeWidgetItem{},
+		notes:    map[string]uint32{},
 		retryNow: make(chan struct{}, 1),
 
 		initialChannel: initialChannel,
@@ -393,19 +397,20 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 		}
 	}
 	delete(peers, me.Id)
-	if len(peers) > 0 {
-		ids := make([]string, 0, len(peers))
-		for id := range peers {
-			ids = append(ids, id)
-		}
+	ids := make([]string, 0, len(peers))
+	for id := range peers {
+		ids = append(ids, id)
+	}
+	if len(ids) > 0 {
 		sb.Users, _, err = c.GetUsersByIds(ctx, ids)
 		if err != nil {
 			return nil, fmt.Errorf("load %d users for direct messages and threads: %w", len(ids), err)
 		}
-		// Точки присутствия у личек — не обязательны: без них сайдбар тоже работает.
-		if sb.Statuses, _, err = c.GetUsersStatusesByIds(ctx, ids); err != nil {
-			m.log.Warn("load statuses", "users", len(ids), "err", err)
-		}
+	}
+	// Присутствие собеседников — для точек у личек, своё — для «не беспокоить»
+	// (тогда без уведомлений). Не обязательно: без него сайдбар тоже работает.
+	if sb.Statuses, _, err = c.GetUsersStatusesByIds(ctx, append(ids, me.Id)); err != nil {
+		m.log.Warn("load statuses", "users", len(ids)+1, "err", err)
 	}
 	return sb, nil
 }
@@ -630,15 +635,17 @@ func (m *MainWindow) send(text string, fileIDs []string) {
 			}
 			m.composer.Sent()
 			// Тот же пост придёт и по WebSocket — applyPosted не задублирует.
-			m.applyPosted(p, false)
+			m.applyPosted(store.NewPost{Post: p})
 		})
 	}()
 }
 
 // applyPosted — новый пост из WebSocket или из ответа на отправку.
-func (m *MainWindow) applyPosted(p *model.Post, mentioned bool) {
-	r := m.st.ApplyPosted(p, mentioned)
+func (m *MainWindow) applyPosted(e store.NewPost) {
+	p := e.Post
+	r := m.st.ApplyPosted(p, e.Mentioned)
 	m.applyToThread(p)
+	m.maybeNotify(e)
 	if !r.KnownChannel {
 		m.reloadSidebar() // новая личка или канал, куда нас только что добавили
 		return

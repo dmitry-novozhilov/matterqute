@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -53,6 +54,26 @@ func (a *Assets) Preview(fileID string) string { return a.c.PreviewPath(fileID) 
 func (a *Assets) WantPreview(fileID string, done func()) {
 	a.want("preview:"+fileID, done, func(ctx context.Context) error {
 		_, err := a.c.FetchPreview(ctx, fileID)
+		return err
+	})
+}
+
+// Avatar — фото пользователя на диске или "" (нет фото или ещё не загружено).
+func (a *Assets) Avatar(u *model.User) string {
+	if u == nil || u.LastPictureUpdate <= 0 {
+		return ""
+	}
+	return a.c.AvatarPath(u.Id, u.LastPictureUpdate)
+}
+
+// WantAvatar догружает фото пользователя, если оно у него есть.
+func (a *Assets) WantAvatar(u *model.User, done func()) {
+	if u == nil || u.LastPictureUpdate <= 0 {
+		return
+	}
+	id, version := u.Id, u.LastPictureUpdate
+	a.want(fmt.Sprintf("avatar:%s:%d", id, version), done, func(ctx context.Context) error {
+		_, err := a.c.FetchAvatar(ctx, id, version)
 		return err
 	})
 }

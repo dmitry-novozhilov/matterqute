@@ -44,6 +44,7 @@ type Server struct {
 	files     map[string]*storedFile
 	emoji     []*model.Emoji
 	emojiData map[string][]byte // id эмодзи → картинка
+	statuses  map[string]string // user id → online, away, dnd, offline
 	conns     map[*wsConn]bool
 }
 
@@ -75,6 +76,7 @@ func New(log *slog.Logger) *Server {
 		followers:        map[string]map[string]*threadMember{},
 		files:            map[string]*storedFile{},
 		emojiData:        map[string][]byte{},
+		statuses:         map[string]string{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -100,6 +102,10 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("GET /api/v4/files/{fid}/thumbnail", s.auth(s.getFile))
 	// /emoji/name/{name} и /emoji/{id}/image: ServeMux считает их конфликтующими.
 	s.mux.HandleFunc("GET /api/v4/emoji/{a}/{b}", s.auth(s.emojiRoute))
+	s.mux.HandleFunc("POST /api/v4/users/status/ids", s.auth(s.statusesByIDs))
+	// /users/username/{name} и /users/{id}/status — одним обработчиком: иначе ServeMux видит конфликт.
+	s.mux.HandleFunc("GET /api/v4/users/{a}/{b}", s.auth(s.userRoute))
+	s.mux.HandleFunc("POST /api/v4/channels/direct", s.auth(s.createDirect))
 	s.mux.HandleFunc("GET /api/v4/websocket", s.websocket)
 	return s
 }
@@ -110,9 +116,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) seed() {
-	for _, name := range []string{"alice", "bob", "carol", "dave"} {
-		u := &model.User{Id: model.NewId(), Username: name, Email: name + "@example.com"}
+	for _, p := range []struct{ name, first, last, position, status string }{
+		{"alice", "Алиса", "Ковалёва", "Разработчица", model.StatusOnline},
+		{"bob", "Борис", "Иванов", "", model.StatusOnline},
+		{"carol", "Карина", "Орлова", "Тимлид", model.StatusAway},
+		{"dave", "Денис", "Ветров", "Инженер эксплуатации", model.StatusDnd},
+	} {
+		u := &model.User{Id: model.NewId(), Username: p.name, Email: p.name + "@example.com", FirstName: p.first, LastName: p.last, Position: p.position}
 		s.users[u.Id] = u
+		s.statuses[u.Id] = p.status
 	}
 	alice, bob, carol, dave := s.byName("alice"), s.byName("bob"), s.byName("carol"), s.byName("dave")
 	everyone := []*model.User{alice, bob, carol, dave}
@@ -179,6 +191,9 @@ func (s *Server) seed() {
 	doc := s.seedPost(backend, dave, now.Add(-30*time.Minute), "Отчёт по нагрузке")
 	doc.FileIds = model.StringArray{s.addFile(dave.Id, backend.Id, "load-report.pdf", []byte("%PDF-1.4\n% fake report\n")).Id}
 	s.attachFiles(doc)
+	spin := s.seedPost(backend, bob, now.Add(-25*time.Minute), "Деплой идёт")
+	spin.FileIds = model.StringArray{s.addFile(bob.Id, backend.Id, "deploy.gif", spinnerGIF(160, 90)).Id}
+	s.attachFiles(spin)
 	alert := s.seedPost(alerts, bob, now.Add(-90*time.Minute), "")
 	alert.AddProp(model.PostPropsAttachments, []*model.MessageAttachment{{
 		Color: "danger", Title: "[FIRING:1] DiskSpaceLow", TitleLink: "https://grafana.example.com/alerting/1",

@@ -124,6 +124,32 @@ func (c *Cache) FetchPreview(ctx context.Context, fileID string) (string, error)
 	})
 }
 
+// AvatarPath — фото пользователя на диске или "". Версия — LastPictureUpdate:
+// новое фото — новый файл.
+func (c *Cache) AvatarPath(userID string, version int64) string {
+	if !model.IsValidId(userID) {
+		return ""
+	}
+	return existing(filepath.Join(c.dir, "avatars", fmt.Sprintf("%s-%d", userID, version)), imageExts)
+}
+
+// FetchAvatar качает фото пользователя.
+func (c *Cache) FetchAvatar(ctx context.Context, userID string, version int64) (string, error) {
+	if !model.IsValidId(userID) {
+		return "", fmt.Errorf("user id %q: invalid", truncate(userID, 100))
+	}
+	return c.do(fmt.Sprintf("avatar:%s:%d", userID, version), func() (string, error) {
+		if p := c.AvatarPath(userID, version); p != "" {
+			return p, nil
+		}
+		data, _, err := c.c.GetProfileImage(ctx, userID, "")
+		if err != nil {
+			return "", fmt.Errorf("get profile image of %s from %s: %w", userID, c.server, err)
+		}
+		return c.save(filepath.Join(c.dir, "avatars", fmt.Sprintf("%s-%d", userID, version))+imageExt(data), data)
+	})
+}
+
 // FilePath — где лежит (или будет лежать) вложение целиком.
 func (c *Cache) FilePath(fi *model.FileInfo) string {
 	return filepath.Join(c.dir, "files", fi.Id, SafeName(fi.Name, fi.Id))

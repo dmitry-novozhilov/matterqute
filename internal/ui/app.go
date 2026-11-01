@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
 	"matterqute/internal/config"
@@ -18,21 +17,35 @@ import (
 
 const requestTimeout = 30 * time.Second
 
-// App решает, что показать: вход или главное окно активного сервера.
+// App решает, что показать в окне: вход или окно активного сервера.
 type App struct {
 	cfg    *config.Config
 	tokens *config.Tokens
 	log    *slog.Logger
 
-	login *LoginDialog
+	shell *Shell
+	login *LoginView
 	main  *MainWindow
 }
 
 func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
-	return &App{cfg: cfg, tokens: tokens, log: log}
+	a := &App{cfg: cfg, tokens: tokens, log: log, shell: NewShell()}
+	a.shell.OnLogout = func() {
+		if a.main != nil {
+			a.logout(a.main)
+		}
+	}
+	OnThemeModeChosen = func(mode ThemeMode) {
+		a.cfg.Theme = string(mode)
+		if err := a.cfg.Save(); err != nil {
+			a.log.Error("save config", "err", err)
+		}
+	}
+	return a
 }
 
 func (a *App) Start() {
+	a.shell.Show()
 	srv := a.cfg.ActiveServer()
 	if srv == nil {
 		a.showLogin("", "")
@@ -44,43 +57,40 @@ func (a *App) Start() {
 
 func (a *App) showLogin(server, loginID string) {
 	a.closeLogin()
-	l := NewLoginDialog(server, loginID)
+	l := NewLoginView(server, loginID)
 	l.OnSubmit = a.submitLogin
-	l.OnClosed = func() {
-		// Сюда же приходим из closeLogin, но там a.login уже сброшен.
-		if a.login == l {
-			a.login = nil
-			if a.main == nil {
-				qt.QCoreApplication_Quit()
-			}
-		}
-	}
 	a.login = l
-	l.Show()
+	a.shell.SetPage(l.Widget())
+	a.shell.SetUser("", "")
+	a.shell.SetServer("")
+	a.shell.SetConnection(ConnNone)
+	l.Focus()
 }
 
-// closeLogin закрывает окно входа; отложенные ответы сервера для него
+// closeLogin убирает страницу входа; отложенные ответы сервера для неё
 // отбрасываются по a.login != l.
 func (a *App) closeLogin() {
 	if l := a.login; l != nil {
 		a.login = nil
-		l.Close()
+		l.Dispose()
+		a.shell.RemovePage(l.Widget())
 	}
 }
 
-// resume входит по сохранённому токену; при неудаче оставляет окно входа.
+// resume входит по сохранённому токену; при неудаче оставляет страницу входа.
 func (a *App) resume(serverURL string) {
 	token, err := a.tokens.Get(serverURL)
 	if err != nil {
 		if !errors.Is(err, config.ErrNoToken) {
 			a.log.Error("read token", "server", serverURL, "err", err)
-			a.login.SetError(err.Error(), false)
+			a.login.SetError(err.Error())
 		}
 		return
 	}
 	l := a.login
 	l.OnRetry = func() { a.resume(serverURL) }
-	l.SetBusy("Подключаемся к " + serverURL + "…")
+	l.SetResuming(serverURL)
+	a.shell.SetConnection(ConnConnecting)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
@@ -95,10 +105,12 @@ func (a *App) resume(serverURL string) {
 			case mm.IsUnauthorized(err):
 				a.log.Info("saved session rejected", "server", serverURL, "err", err)
 				a.dropToken(serverURL)
-				l.SetError("Сессия истекла, войдите заново.", false)
+				a.shell.SetConnection(ConnNone)
+				l.SetExpired()
 			default:
 				a.log.Warn("resume session", "err", err)
-				l.SetError(err.Error(), true)
+				a.shell.SetConnection(ConnUnavailable)
+				l.SetUnavailable(err.Error(), true)
 			}
 		})
 	}()
@@ -108,14 +120,15 @@ func (a *App) submitLogin(f LoginForm) {
 	l := a.login
 	serverURL, err := mm.NormalizeServerURL(f.Server)
 	if err != nil {
-		l.SetError(err.Error(), false)
+		l.SetError(err.Error())
 		return
 	}
 	if f.LoginID == "" || f.Password == "" {
-		l.SetError("Введите логин и пароль.", false)
+		l.SetFieldError("Введите логин и пароль.")
 		return
 	}
-	l.SetBusy("Входим на " + serverURL + "…")
+	l.SetBusy()
+	a.shell.SetConnection(ConnConnecting)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
@@ -124,21 +137,34 @@ func (a *App) submitLogin(f LoginForm) {
 			if a.login != l {
 				return
 			}
+			var se *mm.ServerError
 			switch {
 			case errors.Is(err, mm.ErrMFARequired):
+				a.shell.SetConnection(ConnNone)
 				l.AskMFA()
-			case err != nil:
-				a.log.Warn("login", "err", err)
-				l.SetError(loginErrorText(err), false)
-			default:
+			case err == nil:
 				a.remember(s, f.LoginID)
 				a.openMain(s)
+			case errors.As(err, &se) && se.Status == 0:
+				// Ответа не было вовсе: сеть, DNS, TLS.
+				a.log.Warn("login", "err", err)
+				a.shell.SetConnection(ConnUnavailable)
+				l.SetUnavailable(err.Error(), false)
+			default:
+				a.log.Warn("login", "err", err)
+				a.shell.SetConnection(ConnNone)
+				if msg, ok := credentialsError(err); ok {
+					l.SetFieldError(msg)
+				} else {
+					l.SetError(err.Error())
+				}
 			}
 		})
 	}()
 }
 
-func loginErrorText(err error) string {
+// credentialsError — понятный текст для неверных логина, пароля или кода.
+func credentialsError(err error) (string, bool) {
 	var se *mm.ServerError
 	if errors.As(err, &se) {
 		switch se.ID {
@@ -146,12 +172,12 @@ func loginErrorText(err error) string {
 			"api.user.login.invalid_credentials_email",
 			"api.user.login.invalid_credentials_username",
 			"api.user.login.invalid_credentials_sso":
-			return "Неверный логин или пароль."
+			return "Неверный логин или пароль.", true
 		case "api.user.check_user_mfa.bad_code.app_error":
-			return "Неверный код MFA."
+			return "Неверный код. Проверьте время на телефоне и введите новый код.", true
 		}
 	}
-	return err.Error()
+	return "", false
 }
 
 func (a *App) remember(s *mm.Session, loginID string) {
@@ -180,7 +206,8 @@ func (a *App) openMain(s *mm.Session) {
 		cacheDir = filepath.Join(os.TempDir(), "matterqute-cache")
 	}
 	m := NewMainWindow(s, a.log, lastChannel, cacheDir)
-	m.OnLogout = func() { a.logout(m) }
+	m.OnConnection = a.shell.SetConnection
+	m.OnMessage = a.shell.ShowMessage
 	m.OnChannelOpened = func(id string) {
 		if srv := a.cfg.Server(s.ServerURL); srv != nil && srv.LastChannel != id {
 			srv.LastChannel = id
@@ -190,7 +217,11 @@ func (a *App) openMain(s *mm.Session) {
 		}
 	}
 	a.main = m
-	m.Show()
+	a.shell.SetPage(m.Widget())
+	a.shell.SetUser(s.Me.Username, s.ServerURL)
+	a.shell.SetServer(s.ServerURL)
+	a.shell.SetConnection(ConnConnecting)
+	m.Start()
 	a.closeLogin()
 }
 
@@ -208,10 +239,10 @@ func (a *App) logout(m *MainWindow) {
 	if srv := a.cfg.Server(s.ServerURL); srv != nil {
 		loginID = srv.LoginID
 	}
-	// Окно входа — до закрытия главного, иначе Qt решит, что окон не осталось, и выйдет.
 	a.main = nil
-	a.showLogin(s.ServerURL, loginID)
 	m.Close()
+	a.shell.RemovePage(m.Widget())
+	a.showLogin(s.ServerURL, loginID)
 }
 
 func (a *App) dropToken(serverURL string) {

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+</helmet>
+<div style="width:360px;box-sizing:border-box;padding:24px 24px 20px;background:var(--surf);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;gap:14px;font-family:'IBM Plex Sans',sans-serif;color:var(--tx);font-size:14px;line-height:20px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <dc-import name="AppIcon" concept="hash" size="40" hint-size="40px,40px"></dc-import>
+    <div style="display:flex;flex-direction:column">
+      <div style="font-size:20px;line-height:26px;font-weight:600">matterqute</div>
+      <div style="font-size:13px;line-height:18px;color:var(--tx2)">Вход в Mattermost</div>
+    </div>
+  </div>
+  <sc-if value="{{ notice }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;gap:8px;padding:8px 10px;background:{{ notice.bg }};font-size:13px;line-height:18px">
+      <span style="width:16px;height:16px;flex:none;margin-top:1px;background:{{ notice.ic }};-webkit-mask:url({{ notice.icon }}) center/16px no-repeat;mask:url({{ notice.icon }}) center/16px no-repeat"></span>
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+        <span style="font-weight:{{ notice.fw }}">{{ notice.text }}</span>
+        <sc-if value="{{ notice.detail }}" hint-placeholder-val="{{ false }}"><span style="font-family:'PT Mono',monospace;font-size:12px;line-height:16px;color:var(--tx2);overflow-wrap:anywhere">{{ notice.detail }}</span></sc-if>
+      </div>
+    </div>
+  </sc-if>
+  <sc-for list="{{ fields }}" as="x" hint-placeholder-count="3">
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ x.label }}</div>
+      <div style="height:32px;box-sizing:border-box;display:flex;align-items:center;border:{{ x.bd }};padding:{{ x.pad }};border-radius:4px;background:{{ x.bg }};color:{{ x.c }}">
+        <sc-if value="{{ x.caretBefore }}" hint-placeholder-val="{{ false }}"><span style="width:1px;height:18px;flex:none;margin-right:1px;background:var(--tx)"></span></sc-if>
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:{{ x.ls }}">{{ x.shown }}</span>
+        <sc-if value="{{ x.caretAfter }}" hint-placeholder-val="{{ false }}"><span style="width:1px;height:18px;flex:none;margin-left:1px;background:var(--tx)"></span></sc-if>
+      </div>
+      <sc-if value="{{ x.error }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;line-height:16px;color:var(--dang)">{{ x.error }}</div></sc-if>
+      <sc-if value="{{ x.hint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;line-height:16px;color:var(--tx2)">{{ x.hint }}</div></sc-if>
+    </div>
+  </sc-for>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+    <sc-if value="{{ retry }}" hint-placeholder-val="{{ false }}">
+      <span style="height:32px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 14px;border:1px solid var(--line2);border-radius:4px;background:var(--surf);font-size:13px;font-weight:500;cursor:pointer"><span style="width:14px;height:14px;background:var(--tx2);-webkit-mask:url(assets/icons/refresh-cw.svg) center/14px no-repeat;mask:url(assets/icons/refresh-cw.svg) center/14px no-repeat"></span>Повторить</span>
+    </sc-if>
+    <span style="height:32px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 18px;border:1px solid {{ btn.bd }};border-radius:4px;background:{{ btn.bg }};color:{{ btn.c }};font-size:13px;font-weight:500;cursor:pointer">
+      <sc-if value="{{ btn.busy }}" hint-placeholder-val="{{ false }}"><span style="width:14px;height:14px;background:{{ btn.c }};-webkit-mask:url(assets/icons/loader-circle.svg) center/14px no-repeat;mask:url(assets/icons/loader-circle.svg) center/14px no-repeat"></span></sc-if>
+      {{ btn.label }}
+    </span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:380,&quot;height&quot;:440},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;empty&quot;,&quot;session&quot;,&quot;signing&quot;,&quot;mfa&quot;,&quot;badCreds&quot;,&quot;badCode&quot;,&quot;unreachable&quot;,&quot;expired&quot;],&quot;default&quot;:&quot;empty&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.props.state || 'empty';
+    const f = (label, o) => ({ label, value: '', ph: '', pw: false, focus: false, error: '', disabled: false, hint: '', ...o });
+    const dots = '••••••••••';
+    const server = f('Сервер', { value: 'mm.example.com' });
+    const login = f('Логин', { value: 'alice' });
+    const pass = f('Пароль', { pw: true });
+    const lock = x => ({ ...x, disabled: true });
+    const code = f('Код MFA', { ph: '6 цифр из приложения-аутентификатора' });
+    let fields, notice = null, retry = false, btn = { label: 'Войти' };
+    const I = n => 'assets/icons/' + n + '.svg';
+    switch (st) {
+      case 'session':
+        fields = [lock(server), lock(login), lock(pass)];
+        notice = { kind: 'info', icon: I('loader-circle'), text: 'Подключаемся по сохранённой сессии…' };
+        btn = { label: 'Войти', disabled: true }; break;
+      case 'signing':
+        fields = [lock(server), lock(login), lock({ ...pass, value: dots })];
+        btn = { label: 'Входим…', busy: true }; break;
+      case 'mfa':
+        fields = [lock(server), lock(login), lock({ ...pass, value: dots }), { ...code, focus: true, hint: 'Введите код двухфакторной аутентификации.' }]; break;
+      case 'badCreds':
+        fields = [server, login, { ...pass, focus: true, error: 'Неверный логин или пароль.' }]; break;
+      case 'badCode':
+        fields = [lock(server), lock(login), lock({ ...pass, value: dots }), { ...code, value: '482913', focus: true, error: 'Неверный код. Введите новый из приложения.' }]; break;
+      case 'unreachable':
+        fields = [server, login, pass];
+        notice = { kind: 'danger', icon: I('wifi-off'), text: 'Сервер недоступен', detail: 'resume session https://mm.example.com: dial tcp: connection refused' };
+        retry = true; break;
+      case 'expired':
+        fields = [server, login, { ...pass, focus: true }];
+        notice = { kind: 'warn', icon: I('clock'), text: 'Сессия истекла. Войдите снова.' }; break;
+      default:
+        fields = [f('Сервер', { ph: 'mm.example.com', focus: true }), f('Логин', { ph: 'Email или имя пользователя' }), f('Пароль', { pw: true })];
+    }
+    if (notice) Object.assign(notice, {
+      bg: notice.kind === 'danger' ? 'var(--dang-bg)' : notice.kind === 'warn' ? 'var(--warn-bg)' : 'var(--surf2)',
+      ic: notice.kind === 'danger' ? 'var(--dang)' : notice.kind === 'warn' ? 'var(--warn)' : 'var(--tx2)',
+      fw: notice.detail ? 600 : 400
+    });
+    fields = fields.map(x => {
+      const has = !!x.value;
+      const bdColor = x.error ? 'var(--dang)' : x.focus ? 'var(--acc)' : x.disabled ? 'var(--line)' : 'var(--line2)';
+      const thick = x.focus || x.error;
+      return {
+        ...x,
+        shown: has ? x.value : x.ph,
+        ls: has && x.value === dots ? '1px' : 'normal',
+        bd: `${x.focus ? 2 : 1}px solid ${bdColor}`,
+        pad: x.focus ? '0 9px' : '0 10px',
+        bg: x.disabled ? 'var(--surf2)' : 'var(--surf)',
+        c: !has ? 'var(--tx3)' : x.disabled ? 'var(--tx2)' : 'var(--tx)',
+        caretBefore: x.focus && !has, caretAfter: x.focus && has && !x.error
+      };
+    });
+    btn = {
+      ...btn,
+      bg: btn.disabled ? 'var(--surf2)' : btn.busy ? 'var(--acc-w)' : 'var(--acc)',
+      bd: btn.disabled ? 'var(--line)' : btn.busy ? 'var(--acc-w)' : 'var(--acc)',
+      c: btn.disabled ? 'var(--tx3)' : btn.busy ? 'var(--sel-tx)' : 'var(--on-acc)'
+    };
+    return { fields, notice, retry, btn };
+  }
+}
+</script>
+</body>
+</html>

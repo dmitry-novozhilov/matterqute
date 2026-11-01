@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+<style>body{margin:0;background:#e4e0da}a{color:#007255}a:hover{color:#006145}</style>
+</helmet>
+<div style="--win:#f6f4f1;--side:#f1ede9;--surf:#fcfbf9;--surf2:#eeebe6;--hover:#e9e5e0;--line:#d9d5cf;--line2:#bcb6b0;--tx:#211d18;--tx2:#5f5a53;--tx3:#847f79;--acc:#007255;--acc-h:#006145;--acc-w:#d4f2e5;--sel-tx:#003927;--on-acc:#fcfcfc;--men-bg:#f6dd90;--men-tx:#4f3005;--men-row:#fdf6e0;--good:#428731;--warn:#b77610;--dang:#c13c36;--good-bg:#e3f5df;--warn-bg:#fdefd2;--dang-bg:#ffe7e4;--ph:#e4e0da;--av-alice:#c9cdf9;--av-alice-t:#35366b;--av-bob:#a5dbec;--av-bob-t:#00475d;--av-carol:#edc2dd;--av-carol-t:#5b284c;--av-dave:#b6ddbd;--av-dave-t:#0d4a22;--av-bot:#f5c5b4;--av-bot-t:#632914;--selbg:#afe2cd;padding:80px;display:flex;flex-direction:column;gap:120px;font-family:'IBM Plex Sans',sans-serif;font-size:16px;line-height:24px;color:#211d18;width:max-content">
+
+  <div style="display:flex;flex-direction:column;gap:16px;max-width:1100px">
+    <div style="display:flex;gap:20px;font-size:16px;line-height:22px"><a href="tokens.dc.html">Токены</a><a href="components.dc.html">Компоненты</a><a href="screens.dc.html">Экраны</a><span style="font-weight:600">Открытые вопросы</span></div>
+    <div style="font-size:44px;line-height:52px;font-weight:600">Открытые вопросы — варианты</div>
+    <div style="font-size:20px;line-height:30px;color:#5f5a53;text-wrap:pretty">Все вопросы решены: выбраны 1b, 2b, 3a, 4b, 5a и 6d. Для каждого вопроса показано по два-три варианта на одном экране 900×600. Номера вариантов (1a, 1b…) можно называть в обсуждении. На странице «Экраны» любую комбинацию можно включить в панели Tweaks.</div>
+  </div>
+
+  <section id="q1" style="display:flex;flex-direction:column;gap:32px">
+    <div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:32px;line-height:40px;font-weight:600">1. Формат времени</div><div style="font-size:18px;line-height:26px;color:#5f5a53">Разделители дней есть в обоих вариантах — это новое состояние ленты.</div></div>
+    <div style="display:flex;gap:80px;align-items:flex-start">
+      <div id="1a" style="display:flex;flex-direction:column;gap:14px;width:900px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">1a</span><span style="font-size:22px;line-height:28px;font-weight:600">Полное время у каждого сообщения</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Так сейчас: 2026-11-01 08:14:04, моноширинным, у каждой строки автора. Привычно владельцу, время сообщения видно без наведения. Строка автора длиннее на 11 знаков, в узкой панели треда её чаще приходится обрезать.</div>
+        <dc-import name="Window" screen="thread" size="narrow" time="full" style="width:900px;height:600px" hint-size="900px,600px"></dc-import>
+      </div>
+      <div id="1b" style="display:flex;flex-direction:column;gap:14px;width:900px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">1b</span><span style="font-size:22px;line-height:28px;font-weight:600">08:14 и разделители дней</span><span style="font-size:13px;line-height:18px;font-weight:600;padding:2px 10px;border-radius:12px;background:#428731;color:#fcfcfc">выбрано</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Как в большинстве чатов: в строке автора ЧЧ:ММ, дата — в разделителе, полное время с секундами — в подсказке (QToolTip над временем) и в «Копировать ссылку». Строка автора короче, лента спокойнее.</div>
+        <dc-import name="Window" screen="thread" size="narrow" time="short" style="width:900px;height:600px" hint-size="900px,600px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section id="q2" style="display:flex;flex-direction:column;gap:32px">
+    <div style="font-size:32px;line-height:40px;font-weight:600">2. Аватары</div>
+    <div style="display:flex;gap:80px;align-items:flex-start">
+      <div id="2a" style="display:flex;flex-direction:column;gap:14px;width:900px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">2a</span><span style="font-size:22px;line-height:28px;font-weight:600">Без аватаров</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Текст начинается в 16 px от края ленты, по ширине помещается больше. Тип лички в сайдбаре передаёт значок статуса. Авторов различают по имени.</div>
+        <dc-import name="Window" screen="channel" size="narrow" time="full" avatars="{{ false }}" style="width:900px;height:600px" hint-size="900px,600px"></dc-import>
+      </div>
+      <div id="2b" style="display:flex;flex-direction:column;gap:14px;width:900px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">2b</span><span style="font-size:22px;line-height:28px;font-weight:600">Аватары в ленте и сайдбаре</span><span style="font-size:13px;line-height:18px;font-weight:600;padding:2px 10px;border-radius:12px;background:#428731;color:#fcfcfc">выбрано</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">32 px у первого сообщения группы, 20 px со статусом в сайдбаре. Если у пользователя нет фото — инициалы на цвете из хэша имени. В ленте это картинка в ячейке таблицы, текст сдвигается на 42 px. Фото с сервера придётся кэшировать.</div>
+        <dc-import name="Window" screen="channel" size="narrow" time="full" avatars="{{ true }}" style="width:900px;height:600px" hint-size="900px,600px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section id="q3" style="display:flex;flex-direction:column;gap:32px">
+    <div style="font-size:32px;line-height:40px;font-weight:600">3. Плотность ленты</div>
+    <div style="display:flex;gap:80px;align-items:flex-start">
+      <div id="3a" style="display:flex;flex-direction:column;gap:14px;width:900px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">3a</span><span style="font-size:22px;line-height:28px;font-weight:600">Компактная</span><span style="font-size:13px;line-height:18px;font-weight:600;padding:2px 10px;border-radius:12px;background:#428731;color:#fcfcfc">выбрано</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Строка текста 20, между группами 10, строка сайдбара 28. Близко к тому, что есть сейчас.</div>
+        <dc-import name="Window" screen="channel" size="narrow" density="compact" style="width:900px;height:600px" hint-size="900px,600px"></dc-import>
+      </div>
+      <div id="3b" style="display:flex;flex-direction:column;gap:14px;width:900px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">3b</span><span style="font-size:22px;line-height:28px;font-weight:600">Просторная</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Строка текста 22, между группами 18, строка сайдбара 32. Кегль тот же, на экран помещается примерно на четверть меньше сообщений.</div>
+        <dc-import name="Window" screen="channel" size="narrow" density="cozy" style="width:900px;height:600px" hint-size="900px,600px"></dc-import>
+      </div>
+      <div id="3c" style="display:flex;flex-direction:column;gap:14px;width:520px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">3c</span><span style="font-size:22px;line-height:28px;font-weight:600">Переключатель в меню</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Обе плотности, выбор в новом меню «Вид». Значения — набор токенов (высота строки, отступы групп, высота строки сайдбара), документ ленты при переключении перестраивается.</div>
+        <div style="display:flex;flex-direction:column;background:var(--win);border:1px solid var(--line2);font-size:13px;line-height:18px;color:var(--tx);padding-bottom:24px">
+          <div style="height:26px;display:flex;align-items:center;gap:2px;padding:0 4px;border-bottom:1px solid var(--line)"><span style="padding:2px 8px"><u>Ф</u>айл</span><span style="padding:2px 8px;border-radius:3px;background:var(--acc-w);color:var(--sel-tx)"><u>В</u>ид</span></div>
+          <div style="display:flex;align-items:flex-start;margin-left:52px">
+            <div style="width:220px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:0 6px 6px 6px">
+              <div style="height:28px;display:flex;align-items:center;padding:0 10px 0 30px;border-radius:4px;background:var(--hover)"><span style="flex:1">Плотность ленты</span><span style="color:var(--tx2)">▸</span></div>
+              <div style="height:28px;display:flex;align-items:center;padding:0 10px 0 30px;border-radius:4px"><span style="flex:1">Тема</span><span style="color:var(--tx2)">▸</span></div>
+            </div>
+            <div style="width:200px;box-sizing:border-box;padding:4px;margin-top:4px;background:var(--surf);border:1px solid var(--line2);border-radius:6px">
+              <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:4px;background:var(--acc-w);color:var(--sel-tx)"><span style="width:6px;height:6px;border-radius:50%;background:var(--acc);margin:0 5px"></span>Компактная</div>
+              <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px 0 34px;border-radius:4px">Просторная</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="q4" style="display:flex;flex-direction:column;gap:32px">
+    <div style="font-size:32px;line-height:40px;font-weight:600">4. Тёмная тема</div>
+    <div style="display:flex;gap:80px;align-items:flex-start">
+      <div id="4a" style="display:flex;flex-direction:column;gap:14px;width:520px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">4a</span><span style="font-size:22px;line-height:28px;font-weight:600">Только по системе</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Своих настроек нет. Тема меняется вслед за системой по QStyleHints::colorSchemeChanged. В окружениях, которые не сообщают схему, тема остаётся светлой.</div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;color:#5f5a53">Система: светлая</span><div style="height:120px;background:#fcfbf9;border:1px solid #bcb6b0;display:flex;flex-direction:column;gap:6px;padding:12px;font-size:13px;line-height:18px;color:#211d18"><span><b style="font-weight:600">carol</b> <span style="font-family:'PT Mono',monospace;font-size:11px;color:#5f5a53">08:14</span></span><span>Да, всё ок, графики ровные.</span><span><span style="background:#f6dd90;color:#4f3005;font-weight:600">@alice</span> глянь</span></div></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;color:#5f5a53">Система: тёмная</span><div style="height:120px;background:#201e1b;border:1px solid #504c47;display:flex;flex-direction:column;gap:6px;padding:12px;font-size:13px;line-height:18px;color:#e9e6e1"><span><b style="font-weight:600">carol</b> <span style="font-family:'PT Mono',monospace;font-size:11px;color:#a8a49e">08:14</span></span><span>Да, всё ок, графики ровные.</span><span><span style="background:#755914;color:#fef2cc;font-weight:600">@alice</span> глянь</span></div></div>
+        </div>
+      </div>
+      <div id="4b" style="display:flex;flex-direction:column;gap:14px;width:520px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">4b</span><span style="font-size:22px;line-height:28px;font-weight:600">По системе и вручную</span><span style="font-size:13px;line-height:18px;font-weight:600;padding:2px 10px;border-radius:12px;background:#428731;color:#fcfcfc">выбрано</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Меню «Вид → Тема»: «Системная» (по умолчанию), «Светлая», «Тёмная». Выбор сохраняется в QSettings. Нужно, если окружение не сообщает схему или хочется тёмное окно на светлом столе.</div>
+        <div style="display:flex;flex-direction:column;background:var(--win);border:1px solid var(--line2);font-size:13px;line-height:18px;color:var(--tx);padding-bottom:24px">
+          <div style="height:26px;display:flex;align-items:center;gap:2px;padding:0 4px;border-bottom:1px solid var(--line)"><span style="padding:2px 8px"><u>Ф</u>айл</span><span style="padding:2px 8px;border-radius:3px;background:var(--acc-w);color:var(--sel-tx)"><u>В</u>ид</span></div>
+          <div style="display:flex;align-items:flex-start;margin-left:52px">
+            <div style="width:220px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:0 6px 6px 6px">
+              
+              <div style="height:28px;display:flex;align-items:center;padding:0 10px 0 30px;border-radius:4px;background:var(--hover)"><span style="flex:1">Тема</span><span style="color:var(--tx2)">▸</span></div>
+            </div>
+            <div style="width:200px;box-sizing:border-box;padding:4px;margin-top:4px;background:var(--surf);border:1px solid var(--line2);border-radius:6px">
+              <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:4px;background:var(--acc-w);color:var(--sel-tx)"><span style="width:6px;height:6px;border-radius:50%;background:var(--acc);margin:0 5px"></span>Системная</div>
+              <div style="height:28px;display:flex;align-items:center;padding:0 10px 0 34px;border-radius:4px">Светлая</div>
+              <div style="height:28px;display:flex;align-items:center;padding:0 10px 0 34px;border-radius:4px">Тёмная</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="q5" style="display:flex;flex-direction:column;gap:32px">
+    <div style="font-size:32px;line-height:40px;font-weight:600">5. Сайдбар</div>
+    <div style="display:flex;gap:80px;align-items:flex-start">
+      <div id="5a" style="display:flex;flex-direction:column;gap:14px;width:900px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">5a</span><span style="font-size:22px;line-height:28px;font-weight:600">Дерево команд</span><span style="font-size:13px;line-height:18px;font-weight:600;padding:2px 10px;border-radius:12px;background:#428731;color:#fcfcfc">выбрано</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Как сейчас: все команды сразу, группы сворачиваются. Хорошо работает при двух-трёх командах. Каналы с одинаковыми именами (два Town Square) различает только группа.</div>
+        <dc-import name="Window" screen="channel" size="narrow" sidebar="tree" style="width:900px;height:600px" hint-size="900px,600px"></dc-import>
+      </div>
+      <div id="5b" style="display:flex;flex-direction:column;gap:14px;width:900px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">5b</span><span style="font-size:22px;line-height:28px;font-weight:600">Как в Mattermost</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Слева полоса команд 56 px, в сайдбаре одна команда с категориями «Избранное», «Каналы», «Личные сообщения». Поддерживает категории сервера и масштабируется на много команд. Каналы другой команды скрыты, о новом там говорит метка на плитке.</div>
+        <dc-import name="Window" screen="channel" size="narrow" sidebar="teams" style="width:900px;height:600px" hint-size="900px,600px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section id="q6" style="display:flex;flex-direction:column;gap:32px">
+    <div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:32px;line-height:40px;font-weight:600">6. Где переключатель серверов</div><div style="font-size:18px;line-height:26px;color:#5f5a53">Второй сервер в примере — mm.partner.example, на нём 2 упоминания.</div></div>
+    <div style="display:flex;gap:80px;align-items:flex-start">
+
+      <div id="6a" style="display:flex;flex-direction:column;gap:14px;width:420px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">6a</span><span style="font-size:22px;line-height:28px;font-weight:600">Полоса слева</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Серверы видны всегда, счётчик на каждой плитке. Вместе с вариантом 5b в той же полосе стоят и команды, ниже разделителя. Сайдбар теряет 56 px ширины.</div>
+        <div style="display:flex;height:440px;border:1px solid var(--line2);font-size:14px;line-height:20px;color:var(--tx)">
+          <div style="width:56px;flex:none;box-sizing:border-box;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0">
+            <div title="mm.example.com" style="width:36px;height:36px;border-radius:6px;background:var(--acc);color:var(--on-acc);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600">EX</div>
+            <div title="mm.partner.example" style="position:relative;width:36px;height:36px;box-sizing:border-box;border-radius:6px;border:1px solid var(--line2);background:var(--surf);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--tx2)">PA<span style="position:absolute;right:-6px;top:-6px;min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center;border:2px solid var(--side)">2</span></div>
+            <div style="width:24px;height:1px;background:var(--line2);margin:2px 0"></div>
+            <div title="Добавить сервер" style="width:36px;height:36px;box-sizing:border-box;border-radius:6px;border:1px dashed var(--line2);display:flex;align-items:center;justify-content:center"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/plus.svg) center/16px no-repeat;mask:url(assets/icons/plus.svg) center/16px no-repeat"></span></div>
+          </div>
+          <div style="flex:1;background:var(--side);padding:6px 0;display:flex;flex-direction:column">
+            <div style="height:36px;display:flex;align-items:center;padding:0 14px;font-size:15px;font-weight:600">mm.example.com</div>
+            <sc-for list="{{ miniSide }}" as="r" hint-placeholder-count="8">
+              <sc-if value="{{ r.g }}" hint-placeholder-val="{{ false }}"><div style="height:28px;display:flex;align-items:center;gap:4px;padding:0 10px;font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)"><span style="width:12px;height:12px;background:var(--tx2);-webkit-mask:url(assets/icons/chevron-down.svg) center/12px no-repeat;mask:url(assets/icons/chevron-down.svg) center/12px no-repeat"></span>{{ r.label }}</div></sc-if>
+              <sc-if value="{{ r.i }}" hint-placeholder-val="{{ true }}"><div style="height:28px;display:flex;align-items:center;gap:8px;margin:0 6px;padding:0 6px 0 24px;border-radius:4px;background:{{ r.bg }};color:{{ r.c }};font-weight:{{ r.fw }}"><span style="width:16px;height:16px;background:{{ r.ic }};-webkit-mask:url({{ r.icon }}) center/16px no-repeat;mask:url({{ r.icon }}) center/16px no-repeat"></span>{{ r.label }}</div></sc-if>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div id="6b" style="display:flex;flex-direction:column;gap:14px;width:420px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">6b</span><span style="font-size:22px;line-height:28px;font-weight:600">Список в шапке сайдбара</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Имя текущего сервера над деревом, по клику — меню серверов со счётчиками. Ширина не теряется. Упоминания на другом сервере видны только как точка у имени, пока меню закрыто.</div>
+        <div style="position:relative;display:flex;flex-direction:column;height:440px;border:1px solid var(--line2);background:var(--side);font-size:14px;line-height:20px;color:var(--tx);padding:6px 0">
+          <div style="height:36px;display:flex;align-items:center;gap:6px;margin:0 6px 4px;padding:0 8px;border-radius:4px;background:var(--hover);font-size:15px;font-weight:600">mm.example.com<span style="width:6px;height:6px;border-radius:50%;background:var(--acc)"></span><span style="flex:1"></span><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/chevrons-up-down.svg) center/16px no-repeat;mask:url(assets/icons/chevrons-up-down.svg) center/16px no-repeat"></span></div>
+          <sc-for list="{{ miniSide }}" as="r" hint-placeholder-count="8">
+            <sc-if value="{{ r.g }}" hint-placeholder-val="{{ false }}"><div style="height:28px;display:flex;align-items:center;gap:4px;padding:0 10px;font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)"><span style="width:12px;height:12px;background:var(--tx2);-webkit-mask:url(assets/icons/chevron-down.svg) center/12px no-repeat;mask:url(assets/icons/chevron-down.svg) center/12px no-repeat"></span>{{ r.label }}</div></sc-if>
+            <sc-if value="{{ r.i }}" hint-placeholder-val="{{ true }}"><div style="height:28px;display:flex;align-items:center;gap:8px;margin:0 6px;padding:0 6px 0 24px;border-radius:4px;background:{{ r.bg }};color:{{ r.c }};font-weight:{{ r.fw }}"><span style="width:16px;height:16px;background:{{ r.ic }};-webkit-mask:url({{ r.icon }}) center/16px no-repeat;mask:url({{ r.icon }}) center/16px no-repeat"></span>{{ r.label }}</div></sc-if>
+          </sc-for>
+          <div style="position:absolute;left:6px;top:46px;width:300px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:6px;font-size:13px;line-height:18px">
+            <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:4px;background:var(--acc-w);color:var(--sel-tx)"><span style="width:16px;height:16px;background:var(--acc);-webkit-mask:url(assets/icons/check.svg) center/16px no-repeat;mask:url(assets/icons/check.svg) center/16px no-repeat"></span><span style="flex:1;font-weight:600">mm.example.com</span></div>
+            <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px 0 36px;border-radius:4px"><span style="flex:1">mm.partner.example</span><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center">2</span></div>
+            <div style="height:1px;background:var(--line);margin:4px 0"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:4px"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/plus.svg) center/16px no-repeat;mask:url(assets/icons/plus.svg) center/16px no-repeat"></span>Добавить сервер…</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="6d" style="display:flex;flex-direction:column;gap:14px;width:520px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">6d</span><span style="font-size:22px;line-height:28px;font-weight:600">Меню «Сервер»</span><span style="font-size:13px;line-height:18px;font-weight:600;padding:2px 10px;border-radius:12px;background:#428731;color:#fcfcfc">выбрано</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Отдельный пункт в строке меню. Текущий сервер отмечен галочкой, у остальных показан счётчик упоминаний и непрочитанных личных сообщений. Ctrl+1…9 переключают без меню. Сайдбар и раскладка не меняются. Пока меню закрыто, о новом на другом сервере говорят точка у пункта «Сервер» и счётчик в трее. Имя текущего сервера остаётся в строке состояния.</div>
+        <div style="height:440px;box-sizing:border-box;border:1px solid var(--line2);background:var(--surf);display:flex;flex-direction:column;font-size:13px;line-height:18px;color:var(--tx)">
+          <div style="height:26px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:2px;padding:0 4px;background:var(--win);border-bottom:1px solid var(--line)"><span style="padding:2px 8px"><u>Ф</u>айл</span><span style="padding:2px 8px"><u>В</u>ид</span><span style="display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:3px;background:var(--acc-w);color:var(--sel-tx)"><span><u>С</u>ервер</span><span style="width:6px;height:6px;border-radius:50%;background:var(--acc)"></span></span></div>
+          <div style="margin-left:92px;width:300px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:0 6px 6px 6px">
+            <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:4px;background:var(--acc-w);color:var(--sel-tx)"><span style="width:16px;height:16px;background:var(--acc);-webkit-mask:url(assets/icons/check.svg) center/16px no-repeat;mask:url(assets/icons/check.svg) center/16px no-repeat"></span><span style="flex:1;font-weight:600">mm.example.com</span><span style="font-size:12px;color:var(--tx2)">Ctrl+1</span></div>
+            <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px 0 36px;border-radius:4px"><span style="flex:1">mm.partner.example</span><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center">2</span><span style="font-size:12px;color:var(--tx2)">Ctrl+2</span></div>
+            <div style="height:1px;background:var(--line);margin:4px 0"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:4px"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/plus.svg) center/16px no-repeat;mask:url(assets/icons/plus.svg) center/16px no-repeat"></span>Добавить сервер…</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="6c" style="display:flex;flex-direction:column;gap:14px;width:520px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">6c</span><span style="font-size:22px;line-height:28px;font-weight:600">В строке состояния</span></div>
+        <div style="color:#5f5a53;text-wrap:pretty">Сервер уже показан там рядом с именем. Он становится кнопкой с меню, которое открывается вверх, и дублируется пунктом «Файл → Сервер». Раскладка не меняется. Место неочевидное, поэтому упоминания на других серверах нужно дублировать в трее.</div>
+        <div style="position:relative;height:440px;border:1px solid var(--line2);background:var(--surf);display:flex;flex-direction:column;justify-content:flex-end;font-size:13px;line-height:18px;color:var(--tx)">
+          <div style="position:absolute;left:52px;bottom:30px;width:300px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:6px">
+            <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:4px;background:var(--acc-w);color:var(--sel-tx)"><span style="width:16px;height:16px;background:var(--acc);-webkit-mask:url(assets/icons/check.svg) center/16px no-repeat;mask:url(assets/icons/check.svg) center/16px no-repeat"></span><span style="flex:1;font-weight:600">mm.example.com</span><span style="font-size:12px;color:var(--tx2)">@alice</span></div>
+            <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px 0 36px;border-radius:4px"><span style="flex:1">mm.partner.example</span><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center">2</span></div>
+            <div style="height:1px;background:var(--line);margin:4px 0"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:4px"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/plus.svg) center/16px no-repeat;mask:url(assets/icons/plus.svg) center/16px no-repeat"></span>Добавить сервер…</div>
+          </div>
+          <div style="height:24px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 10px;border-top:1px solid var(--line);background:var(--win);font-size:12px;line-height:16px;color:var(--tx2)"><span style="color:var(--tx);font-weight:600">@alice</span><span style="display:flex;align-items:center;gap:4px;padding:0 6px;border-radius:3px;background:var(--hover);color:var(--tx)">mm.example.com<span style="width:6px;height:6px;border-radius:50%;background:var(--acc)"></span><span style="width:12px;height:12px;background:var(--tx2);-webkit-mask:url(assets/icons/chevrons-up-down.svg) center/12px no-repeat;mask:url(assets/icons/chevrons-up-down.svg) center/12px no-repeat"></span></span><span style="flex:1"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--good)"></span><span>в сети</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const I = n => 'assets/icons/' + n + '.svg';
+    const it = (label, icon, o = {}) => ({ i: true, label, icon: I(icon), bg: o.sel ? 'var(--acc-w)' : 'transparent', c: o.sel ? 'var(--sel-tx)' : o.unread ? 'var(--tx)' : 'var(--tx2)', fw: o.sel || o.unread ? 600 : 400, ic: o.sel ? 'var(--acc)' : 'var(--tx2)' });
+    const miniSide = [
+      { g: true, label: 'Разработка' },
+      it('backend', 'hash', { unread: true }), it('Town Square', 'hash', { sel: true }), it('Релизы', 'lock'),
+      { g: true, label: 'Эксплуатация' },
+      it('alerts', 'hash'), it('Town Square', 'hash')
+    ];
+    return { miniSide };
+  }
+}
+</script>
+</body>
+</html>

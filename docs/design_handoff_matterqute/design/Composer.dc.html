@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+</helmet>
+<div style="display:flex;flex-direction:column;gap:6px;font-family:'IBM Plex Sans',sans-serif;font-size:14px;line-height:20px;color:var(--tx)">
+  <div style="display:flex;flex-direction:column;border:{{ bd }};padding:{{ pad }};border-radius:6px;background:{{ bg }}">
+    <sc-if value="{{ chip }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;padding:4px 4px 0">
+        <div style="position:relative;display:flex;align-items:center;gap:8px;height:36px;box-sizing:border-box;padding:0 4px 0 8px;border:1px solid {{ chip.bd }};border-radius:4px;background:{{ chip.bg }};overflow:hidden;max-width:100%">
+          <span style="width:16px;height:16px;flex:none;background:{{ chip.ic }};-webkit-mask:url({{ chip.icon }}) center/16px no-repeat;mask:url({{ chip.icon }}) center/16px no-repeat"></span>
+          <div style="display:flex;flex-direction:column;min-width:0"><span style="font-size:13px;line-height:16px;font-weight:500;white-space:nowrap">{{ chip.name }}</span><span style="font-size:11px;line-height:14px;color:{{ chip.mc }};white-space:nowrap">{{ chip.meta }}</span></div>
+          <sc-if value="{{ chip.error }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--acc);margin-left:4px;cursor:pointer">Повторить</span></sc-if>
+          <span title="Убрать" style="width:22px;height:22px;flex:none;border-radius:3px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:var(--hover)"><span style="width:14px;height:14px;background:var(--tx2);-webkit-mask:url(assets/icons/x.svg) center/14px no-repeat;mask:url(assets/icons/x.svg) center/14px no-repeat"></span></span>
+          <sc-if value="{{ chip.progress }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;bottom:0;height:2px;width:{{ chip.progress }}%;background:var(--acc)"></div></sc-if>
+        </div>
+      </div>
+    </sc-if>
+    <div style="display:flex;align-items:flex-start;gap:2px;padding:2px">
+      <div title="Прикрепить файл" style="width:32px;height:32px;flex:none;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:var(--hover)"><span style="width:18px;height:18px;background:{{ clipC }};-webkit-mask:url(assets/icons/paperclip.svg) center/18px no-repeat;mask:url(assets/icons/paperclip.svg) center/18px no-repeat"></span></div>
+      <div style="flex:1;min-width:0;padding:6px 6px 6px 2px;color:{{ txC }}">
+        <sc-if value="{{ empty }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;white-space:nowrap;overflow:hidden"><sc-if value="{{ focus }}" hint-placeholder-val="{{ false }}"><span style="width:1px;height:18px;flex:none;margin-right:1px;background:var(--tx)"></span></sc-if><span style="color:var(--tx3);overflow:hidden;text-overflow:ellipsis">{{ ph }}</span></div>
+        </sc-if>
+        <sc-for list="{{ lines }}" as="l" hint-placeholder-count="0">
+          <div style="display:flex;align-items:center"><span>{{ l.v }}</span><sc-if value="{{ l.caret }}" hint-placeholder-val="{{ false }}"><span style="width:1px;height:18px;flex:none;margin-left:1px;background:var(--tx)"></span></sc-if></div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <sc-if value="{{ wait }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;line-height:16px;color:var(--tx)"><span style="width:14px;height:14px;flex:none;background:var(--warn);-webkit-mask:url(assets/icons/triangle-alert.svg) center/14px no-repeat;mask:url(assets/icons/triangle-alert.svg) center/14px no-repeat"></span>Дождитесь загрузки файлов. Сообщение осталось в поле ввода.</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:560,&quot;height&quot;:120},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;empty&quot;,&quot;focus&quot;,&quot;text&quot;,&quot;multi&quot;,&quot;uploading&quot;,&quot;uploaded&quot;,&quot;error&quot;,&quot;wait&quot;,&quot;disabled&quot;],&quot;default&quot;:&quot;empty&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;placeholder&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Сообщение в # Town Square&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;text&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.props.state || 'empty';
+    const ph = this.props.placeholder || 'Сообщение в # Town Square';
+    const disabled = st === 'disabled';
+    const focus = st !== 'empty' && !disabled;
+    const withFile = ['uploading', 'uploaded', 'error', 'wait'].includes(st);
+    let lines = st === 'text' ? ['Посмотрю после обеда']
+      : st === 'multi' ? ['Итоги созвона:', '— релиз 2.4 в четверг;', '— старый API отключаем в 2.5.']
+      : withFile ? ['Заметки со встречи'] : [];
+    if (this.props.text) lines = [this.props.text];
+    lines = lines.map((v, i) => ({ v, caret: focus && i === lines.length - 1 }));
+    const file = 'assets/icons/file-text.svg';
+    const chip = st === 'uploading' ? { name: 'заметки.txt', meta: 'загружается · 40%', progress: 40 }
+      : st === 'wait' ? { name: 'заметки.txt', meta: 'загружается · 70%', progress: 70 }
+      : st === 'uploaded' ? { name: 'заметки.txt', meta: '12 КБ' }
+      : st === 'error' ? { name: 'схема.png', meta: 'Не удалось загрузить', error: true }
+      : null;
+    if (chip) Object.assign(chip, {
+      icon: chip.error ? 'assets/icons/triangle-alert.svg' : file,
+      ic: chip.error ? 'var(--dang)' : 'var(--tx2)',
+      bd: chip.error ? 'var(--dang)' : 'var(--line)',
+      bg: chip.error ? 'var(--dang-bg)' : 'var(--surf2)',
+      mc: chip.error ? 'var(--dang)' : 'var(--tx2)'
+    });
+    return {
+      ph, lines, empty: lines.length === 0, focus, chip, wait: st === 'wait',
+      bd: focus ? '2px solid var(--acc)' : disabled ? '1px solid var(--line)' : '1px solid var(--line2)',
+      pad: focus ? '0' : '1px',
+      bg: disabled ? 'var(--surf2)' : 'var(--surf)',
+      txC: disabled ? 'var(--tx3)' : 'var(--tx)',
+      clipC: disabled ? 'var(--tx3)' : 'var(--tx2)'
+    };
+  }
+}
+</script>
+</body>
+</html>

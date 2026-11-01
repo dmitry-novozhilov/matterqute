@@ -15,7 +15,9 @@ type RealtimeHandler interface {
 	// OnConnected — пришёл hello. Зовётся и после каждого переподключения:
 	// события за время обрыва потеряны, состояние надо досинхронизировать по REST.
 	OnConnected()
-	OnDisconnected(err error)
+	// OnDisconnected — соединение оборвалось; следующая попытка через retryIn
+	// (или раньше, если придёт сигнал в канал retry у RunRealtime).
+	OnDisconnected(err error, retryIn time.Duration)
 	OnEvent(ev *model.WebSocketEvent)
 }
 
@@ -27,11 +29,12 @@ const (
 )
 
 // RunRealtime держит WebSocket к серверу, переподключаясь с экспоненциальной
-// задержкой, пока не отменён ctx.
-func (s *Session) RunRealtime(ctx context.Context, h RealtimeHandler) {
+// задержкой, пока не отменён ctx. Сигнал в retry («Повторить сейчас»)
+// прерывает ожидание.
+func (s *Session) RunRealtime(ctx context.Context, h RealtimeHandler, retry <-chan struct{}) {
 	wsURL, err := websocketURL(s.ServerURL)
 	if err != nil {
-		h.OnDisconnected(err)
+		h.OnDisconnected(err, 0)
 		return
 	}
 	delay := reconnectMinDelay
@@ -41,14 +44,15 @@ func (s *Session) RunRealtime(ctx context.Context, h RealtimeHandler) {
 		if ctx.Err() != nil {
 			return
 		}
-		h.OnDisconnected(err)
 		if time.Since(started) > stableConnection {
 			delay = reconnectMinDelay
 		}
+		h.OnDisconnected(err, delay)
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(delay):
+		case <-retry:
 		}
 		delay = min(delay*2, reconnectMaxDelay)
 	}

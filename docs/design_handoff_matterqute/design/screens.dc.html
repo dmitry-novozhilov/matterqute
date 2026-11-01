@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+<style>body{margin:0;background:#e4e0da}a{color:#007255}a:hover{color:#006145}</style>
+</helmet>
+<div style="--win:#f6f4f1;--side:#f1ede9;--surf:#fcfbf9;--surf2:#eeebe6;--hover:#e9e5e0;--line:#d9d5cf;--line2:#bcb6b0;--tx:#211d18;--tx2:#5f5a53;--tx3:#847f79;--acc:#007255;--acc-h:#006145;--acc-w:#d4f2e5;--sel-tx:#003927;--on-acc:#fcfcfc;--men-bg:#f6dd90;--men-tx:#4f3005;--men-row:#fdf6e0;--good:#428731;--warn:#b77610;--dang:#c13c36;--good-bg:#e3f5df;--warn-bg:#fdefd2;--dang-bg:#ffe7e4;--ph:#e4e0da;--av-alice:#c9cdf9;--av-alice-t:#35366b;--av-bob:#a5dbec;--av-bob-t:#00475d;--av-carol:#edc2dd;--av-carol-t:#5b284c;--av-dave:#b6ddbd;--av-dave-t:#0d4a22;--av-bot:#f5c5b4;--av-bot-t:#632914;--selbg:#afe2cd;padding:80px;display:flex;flex-direction:column;gap:64px;font-family:'IBM Plex Sans',sans-serif;color:#211d18;width:max-content">
+
+  <div style="display:flex;flex-direction:column;gap:16px;max-width:1280px">
+    <div style="display:flex;gap:20px;font-size:16px;line-height:22px"><a href="tokens.dc.html">Токены</a><a href="components.dc.html">Компоненты</a><span style="font-weight:600">Экраны</span><a href="decisions.dc.html">Открытые вопросы</a><a href="app-icon.dc.html">Иконка</a></div>
+    <div style="font-size:44px;line-height:52px;font-weight:600">matterqute — экраны</div>
+    <div style="font-size:20px;line-height:30px;color:#5f5a53;max-width:1180px;text-wrap:pretty">Окно 1280×800 и узкое 900×600. Колонки разделяет QSplitter: сайдбар 240 или 200 px, панель треда 380 или 300 px, канал получает остаток, но не меньше 360 px. Принятые решения: время ЧЧ:ММ с разделителями дней, аватары в ленте и сайдбаре, компактная лента, дерево команд. Тема выбирается в меню «Вид → Тема»: Системная, Светлая, Тёмная. Серверы переключаются в меню «Сервер».</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+        <span onClick="{{ t.go }}" style="height:44px;box-sizing:border-box;display:flex;align-items:center;padding:0 20px;border-radius:6px;border:1px solid {{ t.bd }};background:{{ t.bg }};color:{{ t.c }};font-size:18px;font-weight:600;cursor:pointer">{{ t.label }}</span>
+      </sc-for>
+    </div>
+  </div>
+
+  <section style="{{ themeStyle }}">
+    <div style="display:flex;flex-wrap:wrap;gap:80px 80px;width:{{ rowW }}px;align-items:flex-start">
+      <sc-for list="{{ items }}" as="s" hint-placeholder-count="3">
+        <div data-screen-label="{{ s.label }}" style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:12px;align-items:baseline;font-size:22px;line-height:28px;color:#211d18"><span style="font-family:'PT Mono',monospace;color:#5f5a53">{{ s.n }}</span><span style="font-weight:600">{{ s.t }}</span></div>
+          <dc-import name="Window" screen="{{ s.screen }}" login="{{ s.login }}" size="{{ s.size }}" time="{{ time }}" avatars="{{ avatars }}" density="{{ density }}" sidebar="{{ sidebar }}" style="width:{{ s.w }}px;height:{{ s.h }}px" hint-size="1280px,800px"></dc-import>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;time&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;full&quot;,&quot;short&quot;],&quot;default&quot;:&quot;short&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Открытые вопросы&quot;},&quot;avatars&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Открытые вопросы&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;cozy&quot;],&quot;default&quot;:&quot;compact&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Открытые вопросы&quot;},&quot;sidebar&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;tree&quot;,&quot;teams&quot;],&quot;default&quot;:&quot;tree&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Открытые вопросы&quot;}}">
+class Component extends DCLogic {
+  state = { tab: 'wide' };
+  componentDidMount() {
+    try { const t = localStorage.getItem('mq-screens-tab'); if (t && t !== this.state.tab) this.setState({ tab: t }); } catch (e) {}
+  }
+  go(tab) {
+    try { localStorage.setItem('mq-screens-tab', tab); } catch (e) {}
+    this.setState({ tab });
+  }
+  renderVals() {
+    const key = [this.state.tab, this.props.time, this.props.avatars, this.props.density, this.props.sidebar].join('|');
+    if (this._key === key && this._vals) return this._vals;
+    this._key = key;
+    this._vals = this.compute();
+    return this._vals;
+  }
+  compute() {
+    const tab = this.state.tab;
+    const list = [
+      ['Вход — форма', 'login', 'empty'],
+      ['Вход — код MFA', 'login', 'mfa'],
+      ['Вход — сервер недоступен', 'login', 'unreachable'],
+      ['Канал', 'channel'],
+      ['Канал с открытым тредом', 'thread'],
+      ['Список тредов', 'threads'],
+      ['Карточка пользователя', 'usercard'],
+      ['Лента с вложениями', 'attachments'],
+      ['Сообщение интеграции', 'integration'],
+      ['Загрузка канала', 'loading'],
+      ['Пустой канал', 'empty'],
+      ['Нет связи', 'offline']
+    ];
+    const mk = (pre, size, sz) => list.map(([t, screen, login], i) => {
+      const n = pre + String(i + 1).padStart(2, '0');
+      return { n, t, screen, login: login || 'empty', size, w: size === 'wide' ? 1280 : 900, h: size === 'wide' ? 800 : 600, label: `${n} ${t} · ${sz}` };
+    });
+    const dark = [
+      ['Т1', 'Канал с открытым тредом', 'thread', 'empty', 'wide'],
+      ['Т2', 'Лента с вложениями', 'attachments', 'empty', 'wide'],
+      ['Т3', 'Карточка пользователя', 'usercard', 'empty', 'wide'],
+      ['Т4', 'Вход — код MFA', 'login', 'mfa', 'narrow'],
+      ['Т5', 'Сообщение интеграции', 'integration', 'empty', 'narrow'],
+      ['Т6', 'Нет связи', 'offline', 'empty', 'narrow']
+    ].map(([n, t, screen, login, size]) => ({ n, t, screen, login, size, w: size === 'wide' ? 1280 : 900, h: size === 'wide' ? 800 : 600, label: `${n} ${t} · тёмная` }));
+    const D = { '--win': '#1b1916', '--side': '#151311', '--surf': '#201e1b', '--surf2': '#2b2825', '--hover': '#282623', '--line': '#383531', '--line2': '#504c47', '--tx': '#e9e6e1', '--tx2': '#a8a49e', '--tx3': '#78746e', '--acc': '#5ec4a1', '--acc-h': '#7cd6b5', '--acc-w': '#193a2e', '--sel-tx': '#cff1e3', '--on-acc': '#071a13', '--men-bg': '#755914', '--men-tx': '#fef2cc', '--men-row': '#2b2417', '--good': '#71be60', '--warn': '#e8aa4e', '--dang': '#ea6b60', '--good-bg': '#1c2b18', '--warn-bg': '#332710', '--dang-bg': '#3a211e', '--ph': '#2e2b27', '--av-alice': '#464873', '--av-alice-t': '#d7dbff', '--av-bob': '#115667', '--av-bob-t': '#bae7f5', '--av-carol': '#663d59', '--av-carol-t': '#f6d2e9', '--av-dave': '#2f5838', '--av-dave-t': '#c8e8cd', '--av-bot': '#6d3f2f', '--av-bot-t': '#fdd4c6', '--selbg': '#285847' };
+    const tabs = [['wide', '1280×800'], ['narrow', '900×600'], ['dark', 'Тёмная тема']].map(([id, label]) => ({
+      label, go: () => this.go(id),
+      bg: id === tab ? '#211d18' : '#fcfbf9', c: id === tab ? '#f6f4f1' : '#211d18', bd: id === tab ? '#211d18' : '#bcb6b0'
+    }));
+    return {
+      tabs,
+      items: tab === 'narrow' ? mk('У', 'narrow', '900×600') : tab === 'dark' ? dark : mk('Ш', 'wide', '1280×800'),
+      rowW: tab === 'narrow' ? 3880 : 4000,
+      themeStyle: tab === 'dark' ? D : {},
+      time: this.props.time || 'short',
+      avatars: this.props.avatars !== false,
+      density: this.props.density || 'compact',
+      sidebar: this.props.sidebar || 'tree'
+    };
+  }
+}
+</script>
+</body>
+</html>

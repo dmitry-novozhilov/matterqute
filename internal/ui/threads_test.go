@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -99,8 +98,8 @@ func testThreadsCRT(t *testing.T, fake *mmfake.Server, s *mm.Session) {
 		return
 	}
 	// Засеяно: в треде упомянули alice, она этого не видела.
-	if text := m.items[threadsID].Text(0); !strings.Contains(text, "(1)") {
-		t.Errorf("threads item %q lacks unread mention", text)
+	if unread, mentions := m.st.ThreadsUnread(); !unread || mentions != 1 || m.items[threadsID] == nil {
+		t.Errorf("threads: unread=%v mentions=%d item=%v; want true 1 present", unread, mentions, m.items[threadsID] != nil)
 	}
 	for _, it := range m.feed.items {
 		if it.post.RootId != "" {

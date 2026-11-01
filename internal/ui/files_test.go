@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/markdown"
@@ -66,7 +67,7 @@ func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload 
 	waitFor(t, "image preview in feed", func() bool { return strings.Contains(html(imgPost), "mm-img:"+img.Id) })
 	waitFor(t, "custom emoji rendered", func() bool { return strings.Contains(html(md.post.Id), `<img src="file://`) })
 	body := html(md.post.Id)
-	for _, want := range []string{"<h3", "☑", "<table border", "white-space:pre-wrap", "mm-channel:town-square", "👍"} {
+	for _, want := range []string{"font-size:15px;font-weight:600", "☑", `<table cellspacing="1"`, "white-space:pre-wrap", "mm-channel:town-square", "👍"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("markdown post lacks %q:\n%s", want, body)
 		}
@@ -74,6 +75,29 @@ func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload 
 
 	m.feed.ScrollToPost(md.post.Id)
 	shot(t, m, "markdown-post")
+
+	// GIF крутится: QMovie запущен, кадры идут в ресурс превью.
+	var gifID string
+	for _, it := range m.feed.items {
+		if it.post.Metadata != nil && len(it.post.Metadata.Files) > 0 && it.post.Metadata.Files[0].MimeType == "image/gif" {
+			gifID = it.post.Metadata.Files[0].Id
+		}
+	}
+	if gifID == "" {
+		t.Error("seeded GIF not in backend")
+	} else {
+		var frames []int
+		waitFor(t, "GIF animating", func() bool {
+			mv := m.feed.movies[gifID]
+			if mv == nil || !mv.IsValid() || mv.State() != qt.QMovie__Running {
+				return false
+			}
+			if n := mv.CurrentFrameNumber(); len(frames) == 0 || frames[len(frames)-1] != n {
+				frames = append(frames, n)
+			}
+			return len(frames) >= 3 && mv.FrameCount() == 8
+		})
+	}
 
 	// Черновик остаётся в своём канале.
 	m.composer.edit.SetPlainText("черновик backend")
@@ -118,7 +142,7 @@ func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload 
 	m.selectChannel(alerts.Id)
 	waitFor(t, "bot attachment", func() bool {
 		for _, it := range m.feed.items {
-			if strings.Contains(it.html, "DiskSpaceLow") && strings.Contains(it.html, `bgcolor="#a30200"`) {
+			if strings.Contains(it.html, "DiskSpaceLow") && strings.Contains(it.html, `bgcolor="`+Pal().Dang+`"`) {
 				return true
 			}
 		}
@@ -131,7 +155,7 @@ func TestFitSizeAndCanOpen(t *testing.T) {
 	for _, c := range []struct{ w, h, ww, wh int }{
 		{640, 360, 360, 202}, {100, 50, 100, 50}, {300, 1200, 60, 240}, {0, 0, 360, 160},
 	} {
-		if w, h := fitSize(c.w, c.h, previewMaxW, previewMaxH); w != c.ww || h != c.wh {
+		if w, h := fitSize(c.w, c.h, 360, 240); w != c.ww || h != c.wh {
 			t.Errorf("fitSize(%d, %d) = %d×%d, want %d×%d", c.w, c.h, w, h, c.ww, c.wh)
 		}
 	}

@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+<style>body{margin:0}a{color:var(--acc)}a:hover{color:var(--acc-h)}</style>
+</helmet>
+<div style="--win:#f6f4f1;--side:#f1ede9;--surf:#fcfbf9;--surf2:#eeebe6;--hover:#e9e5e0;--line:#d9d5cf;--line2:#bcb6b0;--tx:#211d18;--tx2:#5f5a53;--tx3:#847f79;--acc:#007255;--acc-h:#006145;--acc-w:#d4f2e5;--sel-tx:#003927;--on-acc:#fcfcfc;--men-bg:#f6dd90;--men-tx:#4f3005;--men-row:#fdf6e0;--good:#428731;--warn:#b77610;--dang:#c13c36;--good-bg:#e3f5df;--warn-bg:#fdefd2;--dang-bg:#ffe7e4;--ph:#e4e0da;--av-alice:#c9cdf9;--av-alice-t:#35366b;--av-bob:#a5dbec;--av-bob-t:#00475d;--av-carol:#edc2dd;--av-carol-t:#5b284c;--av-dave:#b6ddbd;--av-dave-t:#0d4a22;--av-bot:#f5c5b4;--av-bot-t:#632914;--selbg:#afe2cd">
+<div style="{{ themeStyle }}">
+<div style="min-height:100vh;background:var(--win);color:var(--tx);font-family:'IBM Plex Sans',sans-serif;font-size:14px;line-height:20px">
+<div style="max-width:1280px;margin:0 auto;padding:48px 32px 120px;display:flex;flex-direction:column;gap:72px">
+
+  <header style="display:flex;flex-direction:column;gap:14px">
+    <nav style="display:flex;flex-wrap:wrap;gap:20px;font-size:15px"><a href="tokens.dc.html">Токены</a><span style="font-weight:600">Компоненты</span><a href="screens.dc.html">Экраны</a><a href="decisions.dc.html">Открытые вопросы</a></nav>
+    <h1 style="margin:0;font-size:36px;line-height:44px;font-weight:600">matterqute — компоненты и состояния</h1>
+    <p style="margin:0;max-width:800px;font-size:16px;line-height:24px;color:var(--tx2);text-wrap:pretty">Здесь все состояния из раздела «Экраны и состояния» брифа. У каждого раздела помечено, чем он станет в Qt: документом ленты (QTextBrowser, HTML 4) или обычным виджетом с QSS. Тёмная тема включается в панели Tweaks.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:8px">
+      <div style="display:flex;flex-direction:column;gap:6px;padding:16px;background:var(--surf);border:1px solid var(--line);border-radius:6px">
+        <span style="align-self:flex-start;font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--acc-w);color:var(--sel-tx)">документ ленты</span>
+        <span style="font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Текст, автор и время, ссылки, разделители. Реакции, «+» и превью — картинки, которые рисует код. «Открыть», «Сохранить…» и «N ответов» — ссылки. Наведения из QSS нет, поэтому у сообщения нет кнопок при наведении: все действия в контекстном меню.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:16px;background:var(--surf);border:1px solid var(--line);border-radius:6px">
+        <span style="align-self:flex-start;font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет</span>
+        <span style="font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Сайдбар, шапка канала, поле ввода, панель треда, меню, диалоги, карточка пользователя, плеер. Доступно всё из QSS: наведение, нажатие, фокус, скругления.</span>
+      </div>
+    </div>
+  </header>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Кнопки</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет</span></div>
+    <div style="display:grid;grid-template-columns:140px repeat(5,minmax(110px,1fr));gap:16px 20px;align-items:center">
+      <span></span>
+      <sc-for list="{{ btnStates }}" as="s" hint-placeholder-count="5"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s }}</span></sc-for>
+      <sc-for list="{{ buttons }}" as="b" hint-placeholder-count="3">
+        <span style="font-size:13px;line-height:18px;color:var(--tx2)">{{ b.name }}</span>
+        <sc-for list="{{ b.states }}" as="x" hint-placeholder-count="5">
+          <div style="display:flex"><span style="height:{{ b.h }}px;min-width:{{ b.h }}px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;padding:{{ x.pad }};border:{{ x.bd }};border-radius:4px;background:{{ x.bg }};color:{{ x.c }};font-size:13px;line-height:18px;font-weight:500;white-space:nowrap"><sc-if value="{{ b.icon }}" hint-placeholder-val="{{ false }}"><span style="width:16px;height:16px;background:{{ x.c }};-webkit-mask:url({{ b.icon }}) center/16px no-repeat;mask:url({{ b.icon }}) center/16px no-repeat"></span></sc-if>{{ b.label }}</span></div>
+        </sc-for>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Поля</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px">
+      <sc-for list="{{ inputs }}" as="x" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ x.state }}</span>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Логин</span>
+            <div style="height:32px;box-sizing:border-box;display:flex;align-items:center;padding:{{ x.pad }};border:{{ x.bd }};border-radius:4px;background:{{ x.bg }};color:{{ x.c }}"><sc-if value="{{ x.caret }}" hint-placeholder-val="{{ false }}"><span style="order:{{ x.co }};width:1px;height:18px;margin:0 1px;background:var(--tx)"></span></sc-if><span>{{ x.v }}</span></div>
+            <sc-if value="{{ x.err }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;line-height:16px;color:var(--dang)">{{ x.err }}</span></sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Плашки и метки</h2></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:24px 20px">
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Счётчик упоминаний · виджет</span><div style="display:flex;gap:8px;align-items:center"><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center">1</span><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center">12</span><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center">99+</span><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--line2);color:var(--tx);font-size:11px;line-height:18px;font-weight:600;text-align:center">2</span><span style="font-size:12px;color:var(--tx2)">заглушён</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Статус · виджет и картинка</span><div style="display:flex;gap:14px;align-items:center;font-size:13px"><span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:var(--good);-webkit-mask:url(assets/icons/status-online.svg) center/10px no-repeat;mask:url(assets/icons/status-online.svg) center/10px no-repeat"></span>в сети</span><span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:var(--warn);-webkit-mask:url(assets/icons/status-away.svg) center/10px no-repeat;mask:url(assets/icons/status-away.svg) center/10px no-repeat"></span>отошёл</span><span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:var(--dang);-webkit-mask:url(assets/icons/status-dnd.svg) center/10px no-repeat;mask:url(assets/icons/status-dnd.svg) center/10px no-repeat"></span>не беспок.</span><span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:var(--tx3);-webkit-mask:url(assets/icons/status-offline.svg) center/10px no-repeat;mask:url(assets/icons/status-offline.svg) center/10px no-repeat"></span>не в сети</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Метки в тексте · документ</span><div style="display:flex;gap:12px;align-items:baseline"><span style="font-weight:600">Grafana</span><span style="font-size:11px;line-height:16px;font-weight:600;background:var(--surf2);color:var(--tx2)">&nbsp;БОТ&nbsp;</span><span>текст<span style="font-size:12px;color:var(--tx2)"> (изменено)</span></span></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Метки на превью · картинка</span><div style="display:flex;gap:8px"><span style="font-size:11px;line-height:14px;font-weight:600;padding:1px 5px;border-radius:3px;background:rgba(20,18,16,0.72);color:#fcfbf9">GIF</span><span style="font-family:'PT Mono',monospace;font-size:11px;line-height:14px;padding:1px 5px;border-radius:3px;background:rgba(20,18,16,0.72);color:#fcfbf9">1:04</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px;grid-column:span 2"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Плашка соединения под шапкой · виджет</span><div style="display:flex;align-items:center;gap:8px;padding:6px 16px;background:var(--warn-bg);border:1px solid var(--line);font-size:13px;line-height:18px"><span style="width:16px;height:16px;flex:none;background:var(--warn);-webkit-mask:url(assets/icons/wifi-off.svg) center/16px no-repeat;mask:url(assets/icons/wifi-off.svg) center/16px no-repeat"></span><span style="flex:1">Нет соединения с mm.example.com. Переподключаемся через 8 с…</span><span style="color:var(--acc);font-weight:600">Повторить сейчас</span></div></div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Строка сайдбара</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет · QTreeView + делегат</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:0 40px">
+      <sc-for list="{{ sideRows }}" as="r" hint-placeholder-count="12">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:16px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)">
+          <span style="font-size:13px;line-height:18px;color:var(--tx2)">{{ r.state }}</span>
+          <div style="background:var(--side);padding:4px 0">
+            <sc-if value="{{ r.g }}" hint-placeholder-val="{{ false }}">
+              <div style="height:28px;display:flex;align-items:center;gap:4px;padding:0 10px;font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)"><span style="width:12px;height:12px;flex:none;background:var(--tx2);-webkit-mask:url({{ r.chev }}) center/12px no-repeat;mask:url({{ r.chev }}) center/12px no-repeat"></span><span>{{ r.label }}</span></div>
+            </sc-if>
+            <sc-if value="{{ r.i }}" hint-placeholder-val="{{ true }}">
+              <div style="height:28px;display:flex;align-items:center;gap:8px;margin:0 6px;padding:0 6px 0 {{ r.pl }}px;border-radius:4px;background:{{ r.bg }};color:{{ r.c }};font-weight:{{ r.fw }}">
+                <sc-if value="{{ r.showAv }}" hint-placeholder-val="{{ false }}"><span style="position:relative;width:20px;height:20px;flex:none;border-radius:50%;background:{{ r.avBg }};color:{{ r.avTx }};display:flex;align-items:center;justify-content:center;font-size:9px;line-height:10px;font-weight:600">{{ r.ini }}<span style="position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;background:var(--side);display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;background:{{ r.ic }};-webkit-mask:url({{ r.icon }}) center/8px no-repeat;mask:url({{ r.icon }}) center/8px no-repeat"></span></span></span></sc-if>
+                <sc-if value="{{ r.showIcon }}" hint-placeholder-val="{{ true }}"><span style="width:16px;height:16px;flex:none;background:{{ r.ic }};-webkit-mask:url({{ r.icon }}) center/{{ r.isz }} no-repeat;mask:url({{ r.icon }}) center/{{ r.isz }} no-repeat"></span></sc-if>
+                <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}<span style="font-weight:400;color:var(--tx2)">{{ r.suffix }}</span></span>
+                <sc-if value="{{ r.muted }}" hint-placeholder-val="{{ false }}"><span style="width:14px;height:14px;flex:none;background:var(--tx3);-webkit-mask:url(assets/icons/bell-off.svg) center/14px no-repeat;mask:url(assets/icons/bell-off.svg) center/14px no-repeat"></span></sc-if>
+                <sc-if value="{{ r.badge }}" hint-placeholder-val="{{ false }}"><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:{{ r.bb }};color:{{ r.bc }};font-size:11px;line-height:18px;font-weight:600;text-align:center">{{ r.badge }}</span></sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Шапка канала</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет · заголовок — QLabel с rich text</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:20px">
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Только имя</span>
+        <div style="height:52px;box-sizing:border-box;padding:0 16px;background:var(--surf);border:1px solid var(--line);display:flex;align-items:center;gap:6px;font-size:16px;line-height:22px;font-weight:600"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/lock.svg) center/16px no-repeat;mask:url(assets/icons/lock.svg) center/16px no-repeat"></span>Релизы</div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">С назначением</span>
+        <div style="height:52px;box-sizing:border-box;padding:0 16px;background:var(--surf);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:center"><div style="display:flex;align-items:center;gap:6px;font-size:16px;line-height:22px;font-weight:600"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/hash.svg) center/16px no-repeat;mask:url(assets/icons/hash.svg) center/16px no-repeat"></span>Town Square</div><div style="font-size:13px;line-height:18px;color:var(--tx2)">Общий канал команды</div></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">С заголовком (разметка и ссылки)</span>
+        <div style="height:52px;box-sizing:border-box;padding:0 16px;background:var(--surf);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;min-width:0"><div style="display:flex;align-items:center;gap:6px;font-size:16px;line-height:22px;font-weight:600"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/hash.svg) center/16px no-repeat;mask:url(assets/icons/hash.svg) center/16px no-repeat"></span>backend</div><div style="font-size:13px;line-height:18px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Сервисы и API · Дежурный: <span style="color:var(--acc);font-weight:600">@carol</span> · <a href="#" style="color:var(--acc)">Runbook</a> · <b style="font-weight:600;color:var(--tx)">заморозка до 2.4</b></div></div></div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Лента: служебные состояния</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--acc-w);color:var(--sel-tx)">документ ленты</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:20px">
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Загрузка канала</span>
+        <div style="height:150px;box-sizing:border-box;background:var(--surf);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:13px;line-height:18px;color:var(--tx2)"><span style="width:20px;height:20px;background:var(--tx2);-webkit-mask:url(assets/icons/loader-circle.svg) center/20px no-repeat;mask:url(assets/icons/loader-circle.svg) center/20px no-repeat"></span>Загружаем сообщения…</div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Ошибка загрузки</span>
+        <div style="height:150px;box-sizing:border-box;background:var(--surf);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:13px;line-height:18px;text-align:center;padding:0 24px"><span style="width:20px;height:20px;background:var(--dang);-webkit-mask:url(assets/icons/triangle-alert.svg) center/20px no-repeat;mask:url(assets/icons/triangle-alert.svg) center/20px no-repeat"></span><span style="font-weight:600;font-size:14px">Не удалось загрузить сообщения</span><span style="font-family:'PT Mono',monospace;font-size:12px;line-height:16px;color:var(--tx2)">GET /api/v4/channels/…/posts: 502 Bad Gateway</span><a href="#" style="color:var(--acc);font-weight:600">Повторить</a></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Пустой канал</span>
+        <div style="height:150px;box-sizing:border-box;background:var(--surf);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:0 24px"><span style="width:24px;height:24px;background:var(--tx3);-webkit-mask:url(assets/icons/hash.svg) center/24px no-repeat;mask:url(assets/icons/hash.svg) center/24px no-repeat"></span><span style="font-size:15px;line-height:20px;font-weight:600">В канале пока нет сообщений</span><span style="font-size:13px;line-height:18px;color:var(--tx2)">Напишите первое — его увидят все участники.</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Подгрузка истории (прокрутка вверх)</span>
+        <div style="height:150px;box-sizing:border-box;background:var(--surf);border:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 0;font-size:12px;line-height:16px;color:var(--tx2)"><span style="width:14px;height:14px;background:var(--tx2);-webkit-mask:url(assets/icons/loader-circle.svg) center/14px no-repeat;mask:url(assets/icons/loader-circle.svg) center/14px no-repeat"></span>Загружаем историю…</div>
+          <dc-import name="Message" avatars="{{ true }}" m="{{ histMsg }}" hint-size="100%,44px"></dc-import>
+        </div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Разделитель дней · новое</span>
+        <div style="height:150px;box-sizing:border-box;background:var(--surf);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:center">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 16px 4px;font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)"><span style="white-space:nowrap">Сегодня, 1 ноября</span><span style="flex:1;height:1px;background:var(--line)"></span></div>
+          <dc-import name="Message" avatars="{{ true }}" m="{{ dayMsg }}" hint-size="100%,44px"></dc-import>
+          <div style="padding:4px 16px 0;font-family:'PT Mono',monospace;font-size:11px;line-height:16px;color:var(--tx2)">&lt;table width=100%&gt;&lt;td nowrap&gt;подпись&lt;td&gt;&lt;hr&gt;</div>
+        </div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Отметка «Новые сообщения» · новое</span>
+        <div style="height:150px;box-sizing:border-box;background:var(--surf);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:center">
+          <dc-import name="Message" avatars="{{ true }}" m="{{ beforeNew }}" hint-size="100%,44px"></dc-import>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 16px 2px;font-size:12px;line-height:16px;font-weight:600;color:var(--dang)"><span style="flex:1;height:1px;background:var(--dang)"></span><span>Новые сообщения</span></div>
+          <dc-import name="Message" avatars="{{ true }}" m="{{ afterNew }}" hint-size="100%,44px"></dc-import>
+        </div></div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Сообщение</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--acc-w);color:var(--sel-tx)">документ ленты</span></div>
+    <p style="margin:0;max-width:800px;font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Сообщение — ячейка таблицы на всю ширину. Фон ячейки даёт подсветку «упоминает меня», поля ячейки — отступы группы. Продолжение (тот же автор, меньше 5 минут) идёт без строки автора, полное время показывается в подсказке.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:24px 20px">
+      <sc-for list="{{ msgStates }}" as="s" hint-placeholder-count="6">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s.state }}</span>
+          <div style="background:var(--surf);border:1px solid var(--line);padding:4px 0 8px">
+            <sc-for list="{{ s.msgs }}" as="m" hint-placeholder-count="1"><dc-import name="Message" avatars="{{ true }}" m="{{ m }}" hint-size="100%,44px"></dc-import></sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Выделение через несколько сообщений и контекстное меню (QMenu)</span>
+      <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+        <div style="flex:1 1 520px;max-width:620px;background:var(--surf);border:1px solid var(--line);padding:4px 0 8px">
+          <sc-for list="{{ selMsgs }}" as="m" hint-placeholder-count="2"><dc-import name="Message" avatars="{{ true }}" m="{{ m }}" hint-size="100%,44px"></dc-import></sc-for>
+        </div>
+        <div style="width:280px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:6px;display:flex;flex-direction:column;font-size:13px;line-height:18px">
+          <sc-for list="{{ ctxMenu }}" as="it" hint-placeholder-count="8">
+            <sc-if value="{{ it.sep }}" hint-placeholder-val="{{ false }}"><div style="height:1px;background:var(--line);margin:4px 0"></div></sc-if>
+            <sc-if value="{{ it.label }}" hint-placeholder-val="{{ true }}">
+              <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:4px;background:{{ it.bg }};color:{{ it.c }}">
+                <span style="width:16px;height:16px;flex:none;background:{{ it.ic }};-webkit-mask:url({{ it.icon }}) center/16px no-repeat;mask:url({{ it.icon }}) center/16px no-repeat"></span>
+                <span style="flex:1">{{ it.label }}</span>
+                <span style="font-size:12px;color:var(--tx2)">{{ it.key }}</span>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Разметка в тексте</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--acc-w);color:var(--sel-tx)">документ ленты · HTML 4</span></div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-top:1px solid var(--line)">
+      <div style="padding:12px 16px 12px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px"><div style="font-size:20px;line-height:26px;font-weight:600">Заголовок 1</div><div style="font-size:17px;line-height:24px;font-weight:600">Заголовок 2</div><div style="font-size:15px;line-height:20px;font-weight:600">Заголовок 3</div></div>
+      <div style="padding:12px 0 12px 16px;border-bottom:1px solid var(--line);font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:var(--tx2);overflow-wrap:anywhere">{{ sn.h }}</div>
+      <div style="padding:12px 16px 12px 0;border-bottom:1px solid var(--line)"><b style="font-weight:600">жирный</b>, <i>курсив</i>, <s>зачёркнутый</s>, <span style="font-family:'PT Mono',monospace;font-size:13px;background:var(--surf2)">код строкой</span></div>
+      <div style="padding:12px 0 12px 16px;border-bottom:1px solid var(--line);font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:var(--tx2);overflow-wrap:anywhere">{{ sn.code }}</div>
+      <div style="padding:12px 16px 12px 0;border-bottom:1px solid var(--line);display:flex;gap:32px">
+        <div style="display:flex;flex-direction:column"><span>•&nbsp;&nbsp;api</span><span>•&nbsp;&nbsp;ws</span></div>
+        <div style="display:flex;flex-direction:column"><span>1.&nbsp;&nbsp;собрать</span><span>2.&nbsp;&nbsp;выкатить</span></div>
+        <div style="display:flex;flex-direction:column"><span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:2px;background:var(--acc);display:flex;align-items:center;justify-content:center"><span style="width:10px;height:10px;background:var(--on-acc);-webkit-mask:url(assets/icons/check.svg) center/10px no-repeat;mask:url(assets/icons/check.svg) center/10px no-repeat"></span></span><b style="font-weight:600">новый</b> кэш сессий</span><span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;box-sizing:border-box;border-radius:2px;border:1px solid var(--line2);background:var(--surf)"></span>старый API — <i>в следующем</i></span></div>
+      </div>
+      <div style="padding:12px 0 12px 16px;border-bottom:1px solid var(--line);font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:var(--tx2);overflow-wrap:anywhere">{{ sn.list }}</div>
+      <div style="padding:12px 16px 12px 0;border-bottom:1px solid var(--line)"><table style="border-collapse:separate;border-spacing:1px;background:var(--line);font-size:14px;line-height:20px"><tbody><tr><th style="background:var(--surf2);padding:3px 10px;text-align:left;font-weight:600">сервис</th><th style="background:var(--surf2);padding:3px 10px;text-align:left;font-weight:600">p99</th></tr><tr><td style="background:var(--surf);padding:3px 10px">api</td><td style="background:var(--surf);padding:3px 10px">120 мс</td></tr><tr><td style="background:var(--surf);padding:3px 10px">ws</td><td style="background:var(--surf);padding:3px 10px">35 мс</td></tr></tbody></table></div>
+      <div style="padding:12px 0 12px 16px;border-bottom:1px solid var(--line);font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:var(--tx2);overflow-wrap:anywhere">{{ sn.table }}</div>
+      <div style="padding:12px 16px 12px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px"><div style="display:flex"><div style="width:3px;flex:none;background:var(--line2)"></div><div style="padding:0 10px;color:var(--tx2)">не забудьте <span style="font-family:'PT Mono',monospace;font-size:13px;background:var(--surf2);color:var(--tx)">make migrate</span></div></div><div style="background:var(--surf2);font-family:'PT Mono',monospace;font-size:13px;line-height:18px;padding:8px 12px">cache:<br>&nbsp;&nbsp;ttl: 30s<br>&nbsp;&nbsp;size: 10000</div></div>
+      <div style="padding:12px 0 12px 16px;border-bottom:1px solid var(--line);font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:var(--tx2);overflow-wrap:anywhere;display:flex;flex-direction:column;gap:8px"><span>{{ sn.quote }}</span><span>{{ sn.pre }}</span></div>
+      <div style="padding:12px 16px 12px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px"><span><span style="background:var(--men-bg);color:var(--men-tx);font-weight:600">@alice</span> <span style="background:var(--men-bg);color:var(--men-tx);font-weight:600">@channel</span> <span style="background:var(--men-bg);color:var(--men-tx);font-weight:600">@here</span> — подсвечиваются</span><span><span style="color:var(--acc);font-weight:600">@bob</span> — чужое упоминание, клик открывает карточку</span><span><a href="#" style="color:var(--acc)">~town-square</a> — канал ссылкой</span></div>
+      <div style="padding:12px 0 12px 16px;border-bottom:1px solid var(--line);font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:var(--tx2);overflow-wrap:anywhere;display:flex;flex-direction:column;gap:8px"><span>{{ sn.mention }}</span><span>{{ sn.other }}</span></div>
+      <div style="padding:12px 16px 12px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px"><span><a href="#" style="color:var(--acc)">Runbook</a> и голый адрес <a href="#" style="color:var(--acc)">https://grafana.example.com/d/abc</a></span><span>Картинка по ссылке пока ссылкой: <a href="#" style="color:var(--acc)">schema.png</a></span><span>HTML как есть: &lt;b&gt;не жирный&lt;/b&gt;</span></div>
+      <div style="padding:12px 0 12px 16px;border-bottom:1px solid var(--line);font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:var(--tx2);overflow-wrap:anywhere">{{ sn.link }}</div>
+      <div style="padding:12px 16px 12px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px">Эмодзи системные 👍 🎉 и кастомный <span style="width:20px;height:20px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--acc-w) 0 3px,var(--acc) 3px 5px)"></span> · только эмодзи: <span style="font-size:30px;line-height:36px">🚀</span></div>
+      <div style="padding:12px 0 12px 16px;border-bottom:1px solid var(--line);font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:var(--tx2);overflow-wrap:anywhere">{{ sn.emoji }}</div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Реакции</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--acc-w);color:var(--sel-tx)">документ ленты · картинки</span></div>
+    <p style="margin:0;max-width:800px;font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Каждая реакция — картинка, её рисует код (QPainter) и вставляет ссылкой в документ. Наведение — подмена картинки по сигналу highlighted(url). Подсказку «кто поставил» показывает QToolTip.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start">
+      <sc-for list="{{ reactStates }}" as="s" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s.state }}</span>
+          <div style="display:flex;gap:4px"><div style="height:24px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 8px 0 6px;min-width:32px;border-radius:12px;border:1px solid {{ s.bd }};background:{{ s.bg }};color:{{ s.c }};font-size:12px;line-height:16px;font-weight:600">
+            <sc-if value="{{ s.custom }}" hint-placeholder-val="{{ false }}"><span style="width:16px;height:16px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--acc-w) 0 3px,var(--acc) 3px 5px)"></span></sc-if>
+            <sc-if value="{{ s.e }}" hint-placeholder-val="{{ false }}"><span style="font-size:15px;line-height:16px">{{ s.e }}</span></sc-if>
+            <sc-if value="{{ s.plus }}" hint-placeholder-val="{{ false }}"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/smile-plus.svg) center/16px no-repeat;mask:url(assets/icons/smile-plus.svg) center/16px no-repeat"></span></sc-if>
+            <span>{{ s.n }}</span>
+          </div></div>
+        </div>
+      </sc-for>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Подсказка · QToolTip</span>
+        <div style="padding:4px 8px;background:var(--tx);color:var(--win);border-radius:4px;font-size:12px;line-height:16px">👍 alice (вы), bob</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">«+» → 12 быстрых эмодзи · QMenu</span>
+        <div style="display:grid;grid-template-columns:repeat(6,32px);gap:2px;padding:6px;background:var(--surf);border:1px solid var(--line2);border-radius:6px">
+          <sc-for list="{{ quick }}" as="q" hint-placeholder-count="12"><span style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:20px;background:{{ q.bg }}">{{ q.e }}</span></sc-for>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Вложения</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--acc-w);color:var(--sel-tx)">документ ленты</span></div>
+    <p style="margin:0;max-width:800px;font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Превью — картинка в документе, клик открывает её целиком. Крупное превью вписывается в ширину ленты (ниже показано для ленты 560 px), высота не больше 400. Размер известен заранее из метаданных файла, поэтому место резервируется и лента не прыгает. GIF анимирует код, подменяя кадры картинки (QMovie). Видео в ленте — только превью с кнопкой, плеер открывается отдельно.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(560px,1fr));gap:24px 20px">
+      <sc-for list="{{ attStates }}" as="s" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s.state }}</span>
+          <div style="background:var(--surf);border:1px solid var(--line);padding:4px 0 10px"><dc-import name="Message" avatars="{{ true }}" m="{{ s.m }}" hint-size="100%,60px"></dc-import></div>
+        </div>
+      </sc-for>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Видеоплеер · отдельное окно, QVideoWidget · новое</span>
+        <div style="border:1px solid var(--line2);background:var(--win);display:flex;flex-direction:column">
+          <div style="height:28px;display:flex;align-items:center;padding:0 6px 0 12px;border-bottom:1px solid var(--line);font-size:12px;line-height:16px;color:var(--tx2)"><span style="flex:1">demo.mp4 — bob, # backend</span><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/x.svg) center/16px no-repeat;mask:url(assets/icons/x.svg) center/16px no-repeat"></span></div>
+          <div style="height:300px;background:#141210;display:flex;align-items:center;justify-content:center"><span style="font-family:'PT Mono',monospace;font-size:12px;color:#a8a49e;background:#201e1b;padding:2px 6px">кадр видео 1280×720</span></div>
+          <div style="height:44px;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--surf)">
+            <span style="width:32px;height:32px;flex:none;border-radius:4px;background:var(--hover);display:flex;align-items:center;justify-content:center"><span style="width:16px;height:16px;background:var(--tx);-webkit-mask:url(assets/icons/pause.svg) center/16px no-repeat;mask:url(assets/icons/pause.svg) center/16px no-repeat"></span></span>
+            <span style="font-family:'PT Mono',monospace;font-size:12px;line-height:16px;color:var(--tx2);white-space:nowrap">0:21 / 1:04</span>
+            <span style="flex:1;height:4px;border-radius:2px;background:var(--line);display:flex;align-items:center"><span style="width:33%;height:4px;border-radius:2px;background:var(--acc)"></span><span style="width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--acc)"></span></span>
+            <span style="width:16px;height:16px;flex:none;background:var(--tx2);-webkit-mask:url(assets/icons/volume-2.svg) center/16px no-repeat;mask:url(assets/icons/volume-2.svg) center/16px no-repeat"></span>
+            <span style="width:56px;height:4px;border-radius:2px;background:var(--line);display:flex"><span style="width:70%;height:4px;border-radius:2px;background:var(--tx2)"></span></span>
+            <span style="width:16px;height:16px;flex:none;background:var(--tx2);-webkit-mask:url(assets/icons/maximize.svg) center/16px no-repeat;mask:url(assets/icons/maximize.svg) center/16px no-repeat"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Сообщение интеграции</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--acc-w);color:var(--sel-tx)">документ ленты · таблица</span></div>
+    <p style="margin:0;max-width:800px;font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Таблица из двух ячеек: полоса шириной 4 цвета вложения и ячейка с фоном --surf2. Короткие поля (short) идут в две колонки вложенной таблицы, длинные занимают всю ширину.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:24px 20px">
+      <sc-for list="{{ intStates }}" as="s" hint-placeholder-count="6">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s.state }}</span>
+          <div style="background:var(--surf);border:1px solid var(--line);padding:4px 0 10px"><dc-import name="Message" avatars="{{ true }}" m="{{ s.m }}" hint-size="100%,80px"></dc-import></div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Поле ввода</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет · QFrame + QTextEdit</span></div>
+    <p style="margin:0;max-width:800px;font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Enter отправляет, Shift+Enter переносит строку, подсказка об этом — в tooltip поля. Файл можно прикрепить через 📎, перетащить или вставить из буфера. У каждого канала и треда свой черновик. Поле растёт до 7 строк, дальше прокручивается.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:24px 20px">
+      <sc-for list="{{ compStates }}" as="s" hint-placeholder-count="9">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s.state }}</span>
+          <div style="background:var(--surf);border:1px solid var(--line);padding:12px 16px"><dc-import name="Composer" state="{{ s.st }}" placeholder="{{ s.ph }}" hint-size="100%,40px"></dc-import></div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Панель треда</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет, внутри — документ</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px">
+      <sc-for list="{{ threadStates }}" as="s" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s.state }}</span>
+          <div style="height:420px;display:flex;flex-direction:column;background:var(--surf);border:1px solid var(--line)">
+            <div style="height:52px;flex:none;box-sizing:border-box;padding:0 8px 0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px"><span style="font-size:16px;line-height:22px;font-weight:600">Тред</span><span style="flex:1;font-size:13px;line-height:18px;color:var(--tx2)">· # Town Square</span><span style="width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/x.svg) center/16px no-repeat;mask:url(assets/icons/x.svg) center/16px no-repeat"></span></span></div>
+            <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:{{ s.jc }};padding:6px 0">
+              <sc-if value="{{ s.loading }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;align-items:center;gap:8px;font-size:13px;line-height:18px;color:var(--tx2)"><span style="width:20px;height:20px;background:var(--tx2);-webkit-mask:url(assets/icons/loader-circle.svg) center/20px no-repeat;mask:url(assets/icons/loader-circle.svg) center/20px no-repeat"></span>Загружаем тред…</div></sc-if>
+              <sc-if value="{{ s.error }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 24px;text-align:center;font-size:13px;line-height:18px"><span style="width:20px;height:20px;background:var(--dang);-webkit-mask:url(assets/icons/triangle-alert.svg) center/20px no-repeat;mask:url(assets/icons/triangle-alert.svg) center/20px no-repeat"></span><span style="font-size:14px;font-weight:600">Не удалось загрузить тред</span><span style="color:var(--tx2)">Сообщение удалено или нет доступа к каналу.</span><a href="#" style="color:var(--acc);font-weight:600">Повторить</a></div></sc-if>
+              <sc-for list="{{ s.items }}" as="it" hint-placeholder-count="0">
+                <sc-if value="{{ it.isSep }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;padding:10px 16px 2px;font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)"><span>{{ it.label }}</span><span style="flex:1;height:1px;background:var(--line)"></span></div></sc-if>
+                <sc-if value="{{ it.isMsg }}" hint-placeholder-val="{{ false }}"><dc-import name="Message" avatars="{{ true }}" m="{{ it.m }}" hint-size="100%,44px"></dc-import></sc-if>
+              </sc-for>
+            </div>
+            <div style="flex:none;padding:4px 12px 12px"><dc-import name="Composer" state="{{ s.comp }}" placeholder="Ответить в треде" hint-size="100%,40px"></dc-import></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Список тредов</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет · QListView + делегат</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:24px 20px">
+      <sc-for list="{{ tlStates }}" as="s" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s.state }}</span>
+          <div style="background:var(--surf);border:1px solid var(--line);min-height:96px;display:flex;flex-direction:column;justify-content:center">
+            <sc-if value="{{ s.empty }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:20px 32px"><span style="width:24px;height:24px;background:var(--tx3);-webkit-mask:url(assets/icons/messages-square.svg) center/24px no-repeat;mask:url(assets/icons/messages-square.svg) center/24px no-repeat"></span><span style="font-size:15px;line-height:20px;font-weight:600">Тредов пока нет</span><span style="font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Здесь появятся треды, в которых вы отвечали или где вас упомянули.</span></div></sc-if>
+            <sc-if value="{{ s.row }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:2px;padding:10px 16px 12px">
+                <div style="display:flex;align-items:center;gap:8px;font-size:12px;line-height:16px;color:var(--tx2)"><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.row.chan }}</span><span style="font-family:'PT Mono',monospace">{{ s.row.time }}</span></div>
+                <div style="font-weight:{{ s.row.fw }};color:{{ s.row.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><sc-if value="{{ s.row.mention }}" hint-placeholder-val="{{ false }}"><span style="background:var(--men-bg);color:var(--men-tx)">@alice</span></sc-if>{{ s.row.text }}</div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:12px;line-height:16px"><span style="flex:1;color:{{ s.row.mc }};font-weight:{{ s.row.mfw }}">{{ s.row.meta }}</span><sc-if value="{{ s.row.badge }}" hint-placeholder-val="{{ false }}"><span style="height:18px;box-sizing:border-box;padding:0 6px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600">{{ s.row.badge }}</span></sc-if><sc-if value="{{ s.row.dot }}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;border-radius:50%;background:var(--acc)"></span></sc-if></div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Карточка пользователя · новое</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет · всплывающее окно Qt::Popup</span></div>
+    <p style="margin:0;max-width:800px;font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Открывается по клику на @имя или на автора сообщения, у точки клика. Закрывается кликом мимо или клавишей Esc. «Написать» открывает личку.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:20px">
+      <sc-for list="{{ cards }}" as="u" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ u.state }}</span>
+          <div style="width:280px;box-sizing:border-box;background:var(--surf);border:1px solid var(--line2);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:12px;align-items:center">
+              <div style="position:relative;width:56px;height:56px;flex:none;border-radius:50%;background:{{ u.avBg }};color:{{ u.avTx }};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600">{{ u.ini }}<span style="position:absolute;right:0;bottom:0;width:16px;height:16px;border-radius:50%;background:var(--surf);display:flex;align-items:center;justify-content:center"><span style="width:12px;height:12px;background:{{ u.sc }};-webkit-mask:url({{ u.si }}) center/12px no-repeat;mask:url({{ u.si }}) center/12px no-repeat"></span></span></div>
+              <div style="display:flex;flex-direction:column;min-width:0"><span style="font-size:16px;line-height:22px;font-weight:600">{{ u.name }}</span><span style="font-size:13px;line-height:18px;color:var(--tx2)">@{{ u.user }}<sc-if value="{{ u.me }}" hint-placeholder-val="{{ false }}"> · это вы</sc-if></span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:18px">
+              <div style="display:flex;align-items:center;gap:6px">{{ u.status }}</div>
+              <div style="color:var(--tx2)">{{ u.role }}</div>
+            </div>
+            <div style="height:32px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:4px;border:1px solid {{ u.bbd }};background:{{ u.bbg }};color:{{ u.bc }};font-size:13px;font-weight:500"><span style="width:14px;height:14px;background:{{ u.bc }};-webkit-mask:url(assets/icons/message-circle.svg) center/14px no-repeat;mask:url(assets/icons/message-circle.svg) center/14px no-repeat"></span>{{ u.btn }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Вход</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет · QFormLayout, подписи над полями</span></div>
+    <p style="margin:0;max-width:800px;font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Поле «Код MFA» появляется, только когда сервер его запросил. Уже принятые сервер, логин и пароль после этого блокируются. Технический текст ошибки показан моноширинным, чтобы его было удобно скопировать.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:28px 24px">
+      <sc-for list="{{ loginStates }}" as="s" hint-placeholder-count="8">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ s.state }}</span>
+          <dc-import name="LoginForm" state="{{ s.st }}" hint-size="360px,360px"></dc-import>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Главное окно: меню и строка состояния</h2><span style="font-size:11px;line-height:16px;font-weight:600;padding:1px 8px;border-radius:9px;background:var(--surf2);color:var(--tx2)">виджет · QMenuBar, QStatusBar</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Меню «Файл»</span>
+        <div style="display:flex;flex-direction:column;width:260px">
+          <div style="height:26px;display:flex;align-items:center;padding:0 4px;background:var(--win);border:1px solid var(--line);font-size:13px"><span style="padding:2px 8px;border-radius:3px;background:var(--acc-w);color:var(--sel-tx)"><u>Ф</u>айл</span><span style="padding:2px 8px"><u>В</u>ид</span><span style="padding:2px 8px"><u>С</u>ервер</span></div>
+          <div style="margin-left:4px;width:240px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:0 6px 6px 6px;font-size:13px;line-height:18px">
+            <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:4px;background:var(--hover)"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/log-out.svg) center/16px no-repeat;mask:url(assets/icons/log-out.svg) center/16px no-repeat"></span><span style="flex:1">Выйти из аккаунта</span></div>
+            <div style="height:1px;background:var(--line);margin:4px 0"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px 0 34px;border-radius:4px"><span style="flex:1">Выход</span><span style="font-size:12px;color:var(--tx2)">Ctrl+Q</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Меню «Вид» → «Тема»</span>
+        <div style="display:flex;flex-direction:column;width:440px">
+          <div style="height:26px;display:flex;align-items:center;padding:0 4px;background:var(--win);border:1px solid var(--line);font-size:13px"><span style="padding:2px 8px"><u>Ф</u>айл</span><span style="padding:2px 8px;border-radius:3px;background:var(--acc-w);color:var(--sel-tx)"><u>В</u>ид</span><span style="padding:2px 8px"><u>С</u>ервер</span></div>
+          <div style="display:flex;align-items:flex-start;margin-left:52px;font-size:13px;line-height:18px">
+            <div style="width:170px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:0 6px 6px 6px">
+              <div style="height:28px;display:flex;align-items:center;padding:0 10px 0 34px;border-radius:4px;background:var(--hover)"><span style="flex:1">Тема</span><span style="color:var(--tx2)">▸</span></div>
+            </div>
+            <div style="width:190px;box-sizing:border-box;padding:4px;margin-top:4px;background:var(--surf);border:1px solid var(--line2);border-radius:6px">
+              <div style="height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:4px;background:var(--acc-w);color:var(--sel-tx)"><span style="width:6px;height:6px;border-radius:50%;background:var(--acc);margin:0 5px"></span>Системная</div>
+              <div style="height:28px;display:flex;align-items:center;padding:0 10px 0 34px;border-radius:4px">Светлая</div>
+              <div style="height:28px;display:flex;align-items:center;padding:0 10px 0 34px;border-radius:4px">Тёмная</div>
+            </div>
+          </div>
+        </div>
+        <span style="max-width:440px;font-size:12px;line-height:16px;color:var(--tx2);text-wrap:pretty">«Системная» — по умолчанию, следует QStyleHints::colorScheme. Выбор хранится в QSettings и применяется сразу, без перезапуска.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Меню «Сервер» · переключатель серверов</span>
+        <div style="display:flex;flex-direction:column;width:400px">
+          <div style="height:26px;display:flex;align-items:center;padding:0 4px;background:var(--win);border:1px solid var(--line);font-size:13px"><span style="padding:2px 8px"><u>Ф</u>айл</span><span style="padding:2px 8px"><u>В</u>ид</span><span style="display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:3px;background:var(--acc-w);color:var(--sel-tx)"><span><u>С</u>ервер</span><span style="width:6px;height:6px;border-radius:50%;background:var(--acc)"></span></span></div>
+          <div style="margin-left:92px;width:300px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:0 6px 6px 6px;font-size:13px;line-height:18px">
+            <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:4px;background:var(--acc-w);color:var(--sel-tx)"><span style="width:16px;height:16px;background:var(--acc);-webkit-mask:url(assets/icons/check.svg) center/16px no-repeat;mask:url(assets/icons/check.svg) center/16px no-repeat"></span><span style="flex:1;font-weight:600">mm.example.com</span><span style="font-size:12px;color:var(--tx2)">Ctrl+1</span></div>
+            <div style="height:36px;display:flex;align-items:center;gap:10px;padding:0 10px 0 36px;border-radius:4px"><span style="flex:1">mm.partner.example</span><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center">2</span><span style="font-size:12px;color:var(--tx2)">Ctrl+2</span></div>
+            <div style="height:1px;background:var(--line);margin:4px 0"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:4px"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/plus.svg) center/16px no-repeat;mask:url(assets/icons/plus.svg) center/16px no-repeat"></span>Добавить сервер…</div>
+          </div>
+        </div>
+        <span style="max-width:400px;font-size:12px;line-height:16px;color:var(--tx2);text-wrap:pretty">Точка у пункта «Сервер» означает упоминания или непрочитанные личные сообщения на другом сервере. Сайдбар показывает только текущий сервер.</span>
+      </div>
+      <div style="flex:1 1 520px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">В сети</span>
+          <div style="height:24px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--line);background:var(--win);font-size:12px;line-height:16px;color:var(--tx2)"><span style="color:var(--tx);font-weight:600">@alice</span><span>mm.example.com</span><span style="flex:1"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--good)"></span><span>в сети</span></div></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Нет соединения, переподключаемся</span>
+          <div style="height:24px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--line);background:var(--win);font-size:12px;line-height:16px;color:var(--tx2)"><span style="color:var(--tx);font-weight:600">@alice</span><span>mm.example.com</span><span style="flex:1"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--warn)"></span><span>нет соединения, переподключаемся…</span></div></div>
+        <div style="font-size:13px;line-height:18px;color:var(--tx2)">Тред закрыт и тред открыт — макеты Ш04 и Ш05 на странице <a href="screens.dc.html">Экраны</a>.</div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Следующий этап · новое</h2></div>
+    <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Системное уведомление · org.freedesktop.Notifications</span>
+        <div style="width:360px;box-sizing:border-box;padding:12px 14px;background:var(--surf);border:1px solid var(--line2);border-radius:6px;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;line-height:16px;color:var(--tx2)"><dc-import name="AppIcon" concept="hash" size="16" hint-size="16px,16px"></dc-import>matterqute · сейчас</div>
+          <div style="font-weight:600">dave в # Town Square</div>
+          <div style="color:var(--tx2)">@alice приложи туда логи nginx, пожалуйста</div>
+          <div style="display:flex;gap:8px;margin-top:6px"><span style="height:28px;box-sizing:border-box;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line2);border-radius:4px;font-size:13px;font-weight:500">Открыть</span></div>
+        </div>
+        <span style="max-width:360px;font-size:12px;line-height:16px;color:var(--tx2);text-wrap:pretty">Как выглядит пузырь, решает окружение рабочего стола. От приложения: заголовок «автор в #канал», текст без разметки, действие «Открыть». Шлём на упоминания, личные сообщения и ответы в подписанных тредах.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Трей — есть упоминания · QSystemTrayIcon</span>
+        <div style="display:flex;gap:16px;align-items:flex-start">
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:center"><div style="height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#1b1916;border-radius:4px"><dc-import name="AppIcon" concept="hash" size="22" mode="dark" badge="2" hint-size="22px,22px"></dc-import></div><span style="font-size:11px;color:var(--tx2)">тёмная панель</span></div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:center"><div style="height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#eeebe6;border:1px solid var(--line);border-radius:4px"><dc-import name="AppIcon" concept="hash" size="22" mode="light" badge="2" hint-size="22px,22px"></dc-import></div><span style="font-size:11px;color:var(--tx2)">светлая панель</span></div>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:center"><div style="height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#1b1916;border-radius:4px"><dc-import name="AppIcon" concept="hash" size="22" mode="dark" hint-size="22px,22px"></dc-import></div><span style="font-size:11px;color:var(--tx2)">без новых</span></div>
+        </div>
+        <div style="width:220px;box-sizing:border-box;padding:4px;background:var(--surf);border:1px solid var(--line2);border-radius:6px;font-size:13px;line-height:18px">
+          <div style="height:28px;display:flex;align-items:center;padding:0 10px;border-radius:4px;background:var(--hover)">Открыть matterqute</div>
+          <div style="height:28px;display:flex;align-items:center;padding:0 10px;color:var(--tx2)">2 упоминания</div>
+          <div style="height:1px;background:var(--line);margin:4px 0"></div>
+          <div style="height:28px;display:flex;align-items:center;padding:0 10px">Выход</div>
+        </div>
+        <span style="max-width:320px;font-size:12px;line-height:16px;color:var(--tx2);text-wrap:pretty">Иконку рисует код в 22 и 44 px: монохромный знак в цвет панели и счётчик --dang поверх (это внутри картинки, не наложение). Счётчик считает упоминания и непрочитанные личные сообщения, больше 9 — «9+».</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:320px">
+        <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">Переключатель серверов</span>
+        <span style="font-size:13px;line-height:18px;color:var(--tx2);text-wrap:pretty">Отдельное меню «Сервер» в строке меню, вариант <a href="decisions.dc.html#6d">6d</a>. Как оно выглядит — в разделе «Главное окно: меню и строка состояния» выше.</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.theme === 'dark';
+    const D = { '--win': '#1b1916', '--side': '#151311', '--surf': '#201e1b', '--surf2': '#2b2825', '--hover': '#282623', '--line': '#383531', '--line2': '#504c47', '--tx': '#e9e6e1', '--tx2': '#a8a49e', '--tx3': '#78746e', '--acc': '#5ec4a1', '--acc-h': '#7cd6b5', '--acc-w': '#193a2e', '--sel-tx': '#cff1e3', '--on-acc': '#071a13', '--men-bg': '#755914', '--men-tx': '#fef2cc', '--men-row': '#2b2417', '--good': '#71be60', '--warn': '#e8aa4e', '--dang': '#ea6b60', '--good-bg': '#1c2b18', '--warn-bg': '#332710', '--dang-bg': '#3a211e', '--ph': '#2e2b27', '--av-alice': '#464873', '--av-alice-t': '#d7dbff', '--av-bob': '#115667', '--av-bob-t': '#bae7f5', '--av-carol': '#663d59', '--av-carol-t': '#f6d2e9', '--av-dave': '#2f5838', '--av-dave-t': '#c8e8cd', '--av-bot': '#6d3f2f', '--av-bot-t': '#fdd4c6', '--selbg': '#285847' };
+    const I = n => 'assets/icons/' + n + '.svg';
+    const INI = { alice: 'АК', bob: 'БИ', carol: 'КО', dave: 'ДВ', grafana: 'G' };
+    const TS = h => '2026-11-01 ' + h;
+    const msg = (who, h, segs, x = {}) => ({ who: who === 'grafana' ? 'bot' : who, author: who === 'grafana' ? 'Grafana' : who, ini: INI[who], time: h.slice(0, 5), tip: TS(h), header: true, segs, ...x });
+    const cont = (who, h, segs, x = {}) => ({ ...msg(who, h, segs, x), header: false });
+    const t = (v, sel) => ({ t: 't', v, sel }), br = { t: 'br' }, a = (v, sel) => ({ t: 'a', v, sel }), me = (v, sel) => ({ t: '@', v, me: true, sel });
+    const reactions = [{ e: '👍', n: 2, mine: true, tip: 'alice, bob' }, { e: '🎉', n: 1, tip: 'carol' }];
+    const daveSegs = [me('@alice'), t(' приложи туда логи nginx, пожалуйста')];
+    const carolSegs = [t('Да, всё ок, графики ровные.'), br, t('Но p99 на /api/v4/posts подрос, гляньте '), a('https://grafana.example.com/d/abc')];
+
+    // buttons
+    const btnStates = ['Обычная', 'Наведение', 'Нажатие', 'Фокус', 'Неактивна'];
+    const mk = (base) => btnStates.map((s, i) => ({ ...base[i] }));
+    const prim = [
+      { bg: 'var(--acc)', bd: '1px solid var(--acc)', c: 'var(--on-acc)' },
+      { bg: 'var(--acc-h)', bd: '1px solid var(--acc-h)', c: 'var(--on-acc)' },
+      { bg: 'var(--acc-h)', bd: '1px solid var(--acc-h)', c: 'var(--on-acc)' },
+      { bg: 'var(--acc)', bd: '2px solid var(--sel-tx)', c: 'var(--on-acc)', f: 1 },
+      { bg: 'var(--surf2)', bd: '1px solid var(--line)', c: 'var(--tx3)' }
+    ];
+    const sec = [
+      { bg: 'var(--surf)', bd: '1px solid var(--line2)', c: 'var(--tx)' },
+      { bg: 'var(--hover)', bd: '1px solid var(--line2)', c: 'var(--tx)' },
+      { bg: 'var(--line)', bd: '1px solid var(--line2)', c: 'var(--tx)' },
+      { bg: 'var(--surf)', bd: '2px solid var(--acc)', c: 'var(--tx)', f: 1 },
+      { bg: 'var(--surf2)', bd: '1px solid var(--line)', c: 'var(--tx3)' }
+    ];
+    const icn = [
+      { bg: 'transparent', bd: '1px solid transparent', c: 'var(--tx2)' },
+      { bg: 'var(--hover)', bd: '1px solid transparent', c: 'var(--tx)' },
+      { bg: 'var(--line)', bd: '1px solid transparent', c: 'var(--tx)' },
+      { bg: 'transparent', bd: '2px solid var(--acc)', c: 'var(--tx)', f: 1 },
+      { bg: 'transparent', bd: '1px solid transparent', c: 'var(--tx3)' }
+    ];
+    const withPad = (arr, p) => arr.map(x => ({ ...x, pad: x.f ? p[1] : p[0] }));
+    const buttons = [
+      { name: 'Основная', label: 'Войти', h: 32, states: withPad(prim, ['0 17px', '0 16px']) },
+      { name: 'Вторичная', label: 'Повторить', h: 32, icon: I('refresh-cw'), states: withPad(sec, ['0 13px', '0 12px']) },
+      { name: 'Иконка 28×28', label: '', h: 28, icon: I('x'), states: withPad(icn, ['0', '0']) }
+    ];
+
+    // inputs
+    const inputs = [
+      { state: 'Пустое', v: 'Email или имя пользователя', c: 'var(--tx3)', bd: '1px solid var(--line2)', pad: '0 10px', bg: 'var(--surf)' },
+      { state: 'Заполнено', v: 'alice', c: 'var(--tx)', bd: '1px solid var(--line2)', pad: '0 10px', bg: 'var(--surf)' },
+      { state: 'Фокус', v: 'alice', c: 'var(--tx)', bd: '2px solid var(--acc)', pad: '0 9px', bg: 'var(--surf)', caret: true, co: 1 },
+      { state: 'Ошибка', v: 'alise', c: 'var(--tx)', bd: '1px solid var(--dang)', pad: '0 10px', bg: 'var(--surf)', err: 'Неверный логин или пароль.' },
+      { state: 'Неактивно', v: 'alice', c: 'var(--tx2)', bd: '1px solid var(--line)', pad: '0 10px', bg: 'var(--surf2)' }
+    ];
+
+    // sidebar rows
+    const R = (state, label, icon, o = {}) => ({ state, i: true, label, icon: I(icon), ...o });
+    let sideRows = [
+      { state: 'Группа раскрыта', g: true, label: 'Разработка', chev: I('chevron-down') },
+      { state: 'Группа свёрнута', g: true, label: 'Эксплуатация', chev: I('chevron-right') },
+      R('«Треды» (при свёрнутых тредах)', 'Треды', 'messages-square', { badge: '1', unread: true, pl: 8 }),
+      R('Открытый канал · обычный', 'Town Square', 'hash'),
+      R('Приватный канал', 'Релизы', 'lock'),
+      R('Непрочитанный', 'backend', 'hash', { unread: true }),
+      R('С упоминаниями · счётчик', 'alerts', 'hash', { unread: true, badge: '3' }),
+      R('Выбранный', 'Town Square', 'hash', { sel: true }),
+      R('Наведение', 'Town Square', 'hash', { hover: true }),
+      R('Заглушённый', 'alerts', 'hash', { muted: true }),
+      R('Заглушённый с упоминанием', 'alerts', 'hash', { muted: true, badge: '2' }),
+      R('Личка · в сети', 'bob', 'status-online', { status: 'good', who: 'bob' }),
+      R('Личка · отошёл', 'carol', 'status-away', { status: 'warn', who: 'carol' }),
+      R('Личка · не беспокоить', 'dave', 'status-dnd', { status: 'dang', who: 'dave' }),
+      R('Личка · не в сети', 'dave', 'status-offline', { status: 'tx3', who: 'dave' }),
+      R('Личка с собой', 'alice', 'status-online', { status: 'good', who: 'alice', suffix: ' (вы)' }),
+      R('Личка с упоминанием', 'bob', 'status-online', { status: 'good', who: 'bob', unread: true, badge: '1' }),
+      R('Группа', 'alice, bob, carol', 'users')
+    ];
+    sideRows = sideRows.map(r => r.g ? r : ({
+      suffix: '', ...r,
+      bg: r.sel ? 'var(--acc-w)' : r.hover ? 'var(--hover)' : 'transparent',
+      c: r.sel ? 'var(--sel-tx)' : r.muted ? 'var(--tx3)' : r.unread ? 'var(--tx)' : 'var(--tx2)',
+      fw: r.sel || r.unread ? 600 : 400,
+      ic: r.status ? `var(--${r.status})` : r.sel ? 'var(--acc)' : r.muted ? 'var(--tx3)' : 'var(--tx2)',
+      isz: r.status ? '10px' : '16px', pl: r.pl != null ? r.pl : 24,
+      showAv: !!r.who, showIcon: !r.who, avBg: `var(--av-${r.who})`, avTx: `var(--av-${r.who}-t)`, ini: INI[r.who] || '',
+      bb: r.muted ? 'var(--line2)' : 'var(--acc)', bc: r.muted ? 'var(--tx)' : 'var(--on-acc)'
+    }));
+
+    // messages
+    const msgStates = [
+      { state: 'С заголовком', msgs: [msg('carol', '07:48:08', carolSegs)] },
+      { state: 'Продолжение · тот же автор, меньше 5 минут', msgs: [msg('alice', '08:02:08', [t('Напоминаю: в 15:00 созвон по планированию.')]), cont('alice', '08:03:15', [t('Ссылка на встречу та же.')])] },
+      { state: 'Системное', msgs: [{ sys: true, text: 'dave joined the channel.', tip: TS('08:20:51') }] },
+      { state: 'Изменено', msgs: [msg('alice', '08:03:15', [t('Ссылка на встречу та же, пароль в описании.')], { edited: true })] },
+      { state: 'Корень треда «N ответов»', msgs: [msg('dave', '08:23:08', daveSegs, { mentionMe: true, reactions, replies: { label: '3 ответа', last: 'последний 08:35' } })] },
+      { state: 'Корень треда · есть новые ответы', msgs: [msg('carol', '07:48:08', carolSegs, { replies: { label: '4 ответа', last: 'последний 09:02', unread: true } })] },
+      { state: 'Ответ в канале · без свёрнутых тредов', msgs: [msg('bob', '08:31:18', [t('Посмотрел, на staging то же самое.')], { replyTo: { author: 'dave', text: '@alice приложи туда логи nginx, пожалуйста' } })] },
+      { state: 'Упоминает меня', msgs: [msg('dave', '08:23:08', daveSegs, { mentionMe: true })] },
+      { state: 'Упоминание @channel', msgs: [msg('carol', '09:00:12', [me('@channel'), t(' релиз 2.4 выкатываем в четверг')], { mentionMe: true })] },
+      { state: 'Группа сообщений с аватарами', msgs: [msg('carol', '07:48:08', carolSegs), cont('carol', '07:49:30', [t('Дашборд по ссылке обновляется раз в минуту.')]), msg('bob', '08:09:08', [t('Доброе утро!')])] }
+    ];
+    const selMsgs = [
+      msg('carol', '07:48:08', [t('Да, всё ок, графики ровные.'), br, t('Но p99 на /api/v4/posts подрос, гляньте ', true), a('https://grafana.example.com/d/abc', true)]),
+      msg('alice', '08:02:08', [t('Напоминаю: в 15:00', true), t(' созвон по планированию.')], { selHeader: true })
+    ];
+    const MI = (label, icon, key, o = {}) => ({ label, icon: I(icon), key: key || '', ...o });
+    const ctxMenu = [
+      MI('Копировать выделенное', 'copy', 'Ctrl+C', { on: true }),
+      MI('Копировать ссылку', 'external-link'),
+      { sep: true },
+      MI('Ответить в треде', 'reply'),
+      MI('Реакция', 'smile-plus', '▸'),
+      { sep: true },
+      MI('Копировать текст сообщения', 'copy'),
+      MI('Выделить всё', 'check', 'Ctrl+A')
+    ].map(x => x.sep ? x : ({ ...x, bg: x.on ? 'var(--acc-w)' : 'transparent', c: x.on ? 'var(--sel-tx)' : 'var(--tx)', ic: x.on ? 'var(--acc)' : 'var(--tx2)' }));
+
+    const sn = {
+      h: '<h1 style="font-size:20px; margin:8px 0 4px"> · h2 17px · h3 15px',
+      code: '<b> <i> <s> · код: <span style="font-family:\'PT Mono\'; font-size:13px; background:#eeebe6">',
+      list: '<ul>, <ol>; чек-лист — QTextBlockFormat::setMarker(Checked / Unchecked)',
+      table: '<table cellspacing=1 cellpadding=3 bgcolor=#d9d5cf> + <th bgcolor=#eeebe6>, <td bgcolor=#fcfbf9>. Без border-collapse: 1 px между ячейками даёт фон таблицы.',
+      quote: 'Цитата: <table cellspacing=0><tr><td width=3 bgcolor=#bcb6b0></td><td style="padding:0 10px; color:#5f5a53">…',
+      pre: 'Блок кода: <table width=100% cellpadding=8 bgcolor=#eeebe6><tr><td><pre>…</pre>',
+      mention: '<a href="mm-user:alice" style="background:#f6dd90; color:#4f3005; font-weight:600; text-decoration:none">@alice</a>',
+      other: '<a href="mm-user:bob" style="color:#007255; font-weight:600; text-decoration:none">@bob</a> · <a href="mm-channel:town-square">~town-square</a>',
+      link: '<a href="…" style="color:#007255">. Голые адреса превращаются в ссылки. ![](url) пока ссылкой, HTML экранируется.',
+      emoji: 'Системные — символ, шрифт Noto Color Emoji. Кастомные — <img src="emoji:name" width=20 height=20>. Только эмодзи — 32 px.'
+    };
+
+    const reactStates = [
+      { state: 'Чужая', e: '🎉', n: 1, bd: 'var(--line)', bg: 'var(--surf)', c: 'var(--tx)' },
+      { state: 'Своя', e: '👍', n: 2, bd: 'var(--acc)', bg: 'var(--acc-w)', c: 'var(--sel-tx)' },
+      { state: 'Наведение · подмена картинки', e: '🎉', n: 1, bd: 'var(--line2)', bg: 'var(--hover)', c: 'var(--tx)' },
+      { state: 'Своя · наведение', e: '👍', n: 2, bd: 'var(--acc-h)', bg: 'var(--acc-w)', c: 'var(--sel-tx)' },
+      { state: 'Кастомный эмодзи', custom: true, n: 3, bd: 'var(--line)', bg: 'var(--surf)', c: 'var(--tx)' },
+      { state: '«+»', plus: true, n: '', bd: 'var(--line)', bg: 'var(--surf)', c: 'var(--tx)' }
+    ];
+    const quick = ['👍', '👎', '😄', '🎉', '❤️', '🔥', '👀', '🙏', '✅', '❌', '😢', '🚀'].map((e, i) => ({ e, bg: i === 0 ? 'var(--hover)' : 'transparent' }));
+
+    const big = { w: 528, h: 297 };
+    const attStates = [
+      { state: 'Маленькая картинка · 1:1, не уменьшается', m: msg('bob', '08:09:04', [t('Иконка для статуса')], { image: { w: 200, h: 120, label: '200×120' } }) },
+      { state: 'Большая картинка · вписана в ширину ленты', m: msg('bob', '08:09:04', [t('Схема нового кэша')], { image: { ...big, label: '1920×1080 → 528×297' } }) },
+      { state: 'Превью грузится · место зарезервировано', m: msg('bob', '08:09:04', [t('Схема нового кэша')], { image: { ...big, kind: 'loading' } }) },
+      { state: 'Файл · «Открыть» и «Сохранить…»', m: msg('dave', '08:14:04', [t('Отчёт по нагрузке')], { file: { name: 'load-report.pdf', meta: 'PDF · 1,2 МБ', canOpen: true } }) },
+      { state: 'Файл · только сохранить', m: msg('dave', '08:16:40', [t('Скрипт миграции')], { file: { name: 'migrate.sh', meta: 'SH · 4 КБ', canOpen: false, note: 'тип небезопасен для открытия' } }) },
+      { state: 'GIF с анимацией · новое', m: msg('carol', '08:18:02', [t('Как выглядит деплой')], { image: { w: 320, h: 180, kind: 'gif', label: 'GIF 320×180' } }) },
+      { state: 'Видео · превью, плеер открывается отдельно · новое', m: msg('bob', '08:20:15', [t('Запись бага')], { image: { ...big, kind: 'video', label: 'видео 1280×720' } }) }
+    ];
+    const G = (x) => msg('grafana', '07:14:04', [], { bot: true, alert: x });
+    const intStates = [
+      { state: 'good', m: G({ color: 'var(--good)', title: '[RESOLVED] DiskSpaceLow', text: 'Свободно ', bold: '41%', text2: ' на ', code: '/var/lib/postgresql', fields: [{ k: 'host', v: 'db-2', short: true }, { k: 'severity', v: 'critical', short: true }], footer: 'Grafana v11' }) },
+      { state: 'warning · поле в одну колонку', m: G({ color: 'var(--warn)', title: '[FIRING:1] HighLatency', text: 'p99 ', bold: '820 мс', text2: ' на ', code: '/api/v4/posts', fields: [{ k: 'host', v: 'api-1', short: true }, { k: 'severity', v: 'warning', short: true }, { k: 'описание', v: 'Задержка выше порога 500 мс дольше 10 минут', short: false }], footer: 'Grafana v11' }) },
+      { state: 'danger · поля в две колонки', m: G({ color: 'var(--dang)', title: '[FIRING:1] DiskSpaceLow', text: 'Свободно ', bold: '3%', text2: ' на ', code: '/var/lib/postgresql', fields: [{ k: 'host', v: 'db-2', short: true }, { k: 'severity', v: 'critical', short: true }], footer: 'Grafana v11' }) },
+      { state: 'Свой цвет · #2F7D95 от бота', m: G({ color: '#2f7d95', author: 'CI', title: 'Сборка #418 · backend', text: 'Ветка ', code: 'release/2.4', fields: [{ k: 'длительность', v: '4 мин 12 с', short: true }, { k: 'коммит', v: 'a1c9e07', short: true }], footer: 'CI · 07:14' }) },
+      { state: 'Без полей', m: G({ color: 'var(--dang)', title: '[FIRING:1] PodRestarting', text: 'Под ', code: 'notify-7f9c', text2: '', bold: '', footer: 'Grafana v11' }) },
+      { state: 'Только fallback-текст', m: G({ color: 'var(--dang)', text: '[FIRING] DiskSpaceLow on db-2' }) }
+    ];
+    const compStates = [
+      ['Пусто', 'empty'], ['Фокус', 'focus'], ['Текст', 'text'], ['Несколько строк', 'multi'],
+      ['Файл грузится', 'uploading'], ['Файл загружен', 'uploaded'], ['Ошибка загрузки', 'error'],
+      ['«Дождитесь загрузки файлов» · после Enter', 'wait'], ['Неактивно · нет соединения', 'disabled']
+    ].map(([state, st]) => ({ state, st, ph: st === 'disabled' ? 'Нет соединения — отправка недоступна' : 'Сообщение в # Town Square' }));
+    const M = m => ({ isMsg: true, m });
+    const threadStates = [
+      { state: 'Загрузка', loading: true, items: [], jc: 'center', comp: 'disabled' },
+      { state: 'Открыт', items: [M(msg('dave', '08:23:08', daveSegs, { mentionMe: true, reactions })), { isSep: true, label: '3 ответа' }, M(msg('bob', '08:31:18', [t('Посмотрел, на staging то же самое.')])), M(msg('alice', '08:33:28', [t('Ок, заведу задачу.')])), M(cont('alice', '08:35:40', [t('Логи nginx за утро приложила к задаче.')]))], jc: 'flex-start', comp: 'focus' },
+      { state: 'Ошибка', error: true, items: [], jc: 'center', comp: 'disabled' }
+    ];
+    const row = (o) => ({ chan: '# Town Square · dave', time: '08:35', text: ' приложи туда логи nginx, пожалуйста', mention: true, meta: '3 ответа · последний 08:35', fw: 400, c: 'var(--tx2)', mc: 'var(--tx2)', mfw: 400, ...o });
+    const tlStates = [
+      { state: 'Прочитан', row: row({}) },
+      { state: 'Новые ответы', row: row({ fw: 600, c: 'var(--tx)', meta: '2 новых ответа · последний 09:02', mc: 'var(--acc)', mfw: 600, dot: true, time: '09:02', chan: '# backend · carol', mention: false, text: 'Да, всё ок, графики ровные.' }) },
+      { state: 'Упоминания', row: row({ fw: 600, c: 'var(--tx)', badge: '@ 1' }) },
+      { state: 'Пусто', empty: true }
+    ];
+    const U = (state, who, name, user, st, role, o = {}) => {
+      const s = { on: ['status-online', 'var(--good)', 'В сети'], away: ['status-away', 'var(--warn)', 'Отошёл'], dnd: ['status-dnd', 'var(--dang)', 'Не беспокоить до 18:00'], off: ['status-offline', 'var(--tx3)', 'Не в сети с 23:10'] }[st];
+      return { state, ini: INI[who], name, user, role, si: I(s[0]), sc: s[1], status: s[2], avBg: `var(--av-${who})`, avTx: `var(--av-${who}-t)`, btn: 'Написать', bbg: 'var(--acc)', bbd: 'var(--acc)', bc: 'var(--on-acc)', ...o };
+    };
+    const cards = [
+      U('В сети', 'dave', 'Денис Ветров', 'dave', 'on', 'Инженер эксплуатации'),
+      U('Отошёл', 'bob', 'Борис Ильин', 'bob', 'away', 'Бэкенд-разработчик'),
+      U('Не беспокоить', 'carol', 'Карина Олейник', 'carol', 'dnd', 'Тимлид, Разработка'),
+      U('Не в сети', 'dave', 'Денис Ветров', 'dave', 'off', 'Инженер эксплуатации'),
+      U('Это я', 'alice', 'Алиса Котова', 'alice', 'on', 'Бэкенд-разработчица', { me: true, btn: 'Написать себе', bbg: 'var(--surf)', bbd: 'var(--line2)', bc: 'var(--tx)' })
+    ];
+    const loginStates = [
+      ['Пустая форма', 'empty'], ['Подключаемся по сохранённой сессии', 'session'], ['Входим…', 'signing'], ['Код MFA', 'mfa'],
+      ['Неверный логин или пароль', 'badCreds'], ['Неверный код', 'badCode'], ['Сервер недоступен + «Повторить»', 'unreachable'], ['Сессия истекла', 'expired']
+    ].map(([state, st]) => ({ state, st }));
+
+    return {
+      themeStyle: dark ? D : {},
+      btnStates, buttons, inputs, sideRows, msgStates, selMsgs, ctxMenu, sn,
+      histMsg: msg('bob', '07:41:07', [t('Кто-нибудь смотрел вчерашний релиз?')]),
+      dayMsg: msg('carol', '07:48:08', [t('Да, всё ок, графики ровные.')]),
+      beforeNew: msg('bob', '08:09:08', [t('Доброе утро!')]),
+      afterNew: msg('dave', '08:23:08', daveSegs, { mentionMe: true }),
+      reactStates, quick, attStates, intStates, compStates, threadStates, tlStates, cards, loginStates
+    };
+  }
+}
+</script>
+</body>
+</html>

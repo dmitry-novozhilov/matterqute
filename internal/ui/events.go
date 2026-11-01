@@ -121,6 +121,17 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 			}
 		}, nil
 
+	case model.WebsocketEventStatusChange:
+		userID, _ := data["user_id"].(string)
+		status, _ := data["status"].(string)
+		if userID == "" || status == "" {
+			return nil, fmt.Errorf("status_change: user_id %q, status %q", userID, status)
+		}
+		return func() {
+			m.st.SetStatus(userID, status)
+			m.refreshItem("")
+		}, nil
+
 	case model.WebsocketEventUserUpdated:
 		var u model.User
 		if err := remarshal(data["user"], &u); err != nil {

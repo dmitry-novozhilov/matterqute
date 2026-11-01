@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 	"io"
 	"net/url"
@@ -47,13 +47,11 @@ func (m *MainWindow) handleLink(link string) {
 			m.selectChannel(ch.Id)
 		}
 	case strings.HasPrefix(link, markdown.UserLinkScheme):
-		// Личка с этим пользователем, если она есть в сайдбаре.
 		name, _ := url.PathUnescape(strings.TrimPrefix(link, markdown.UserLinkScheme))
-		for _, ch := range m.st.DirectChannels() {
-			if ch.Type == model.ChannelTypeDirect && strings.EqualFold(m.st.Username(m.st.DMPeer(ch)), name) {
-				m.selectChannel(ch.Id)
-				return
-			}
+		switch name {
+		case "channel", "all", "here":
+		default:
+			m.showUserCard(name)
 		}
 	default:
 		u, err := url.Parse(link)
@@ -72,13 +70,13 @@ func (m *MainWindow) openFile(fi *model.FileInfo) {
 		m.saveFile(fi)
 		return
 	}
-	m.w.StatusBar().ShowMessage("Скачиваем " + fi.Name + "…")
+	m.message("Скачиваем " + fi.Name + "…")
 	m.assets.Download(fi, func(path string, err error) {
 		if err != nil {
 			m.fail("open file", err)
 			return
 		}
-		m.w.StatusBar().ClearMessage()
+		m.message("")
 		if !qt.QDesktopServices_OpenUrl(qt.QUrl_FromLocalFile(path)) {
 			m.fail("open file", fmt.Errorf("no application to open %s", path))
 		}
@@ -86,12 +84,12 @@ func (m *MainWindow) openFile(fi *model.FileInfo) {
 }
 
 func (m *MainWindow) saveFile(fi *model.FileInfo) {
-	target := qt.QFileDialog_GetSaveFileName3(m.w.QWidget, "Сохранить файл",
+	target := qt.QFileDialog_GetSaveFileName3(m.w, "Сохранить файл",
 		filepath.Join(downloadsDir(), cache.SafeName(fi.Name, fi.Id)))
 	if target == "" {
 		return
 	}
-	m.w.StatusBar().ShowMessage("Скачиваем " + fi.Name + "…")
+	m.message("Скачиваем " + fi.Name + "…")
 	m.assets.Download(fi, func(path string, err error) {
 		if err != nil {
 			m.fail("save file", err)
@@ -104,7 +102,7 @@ func (m *MainWindow) saveFile(fi *model.FileInfo) {
 					m.fail("save file", err)
 					return
 				}
-				m.w.StatusBar().ShowMessage2("Сохранено: "+target, 10000)
+				m.message("Сохранено: " + target)
 			})
 		}()
 	})
@@ -131,10 +129,20 @@ func copyFile(from, to string) error {
 }
 
 // upload грузит файл из поля ввода на сервер, в канал, где его прикрепили.
-func (m *MainWindow) upload(c *Composer, channelID string, id int, name, path string, data []byte) {
+func (m *MainWindow) upload(c *Composer, channelID string, id int, name, path string, data []byte, progress func(int)) {
 	limit := m.st.MaxFileSize()
 	go func() {
-		fileID, err := m.uploadFile(channelID, name, path, data, limit)
+		last := -1
+		fileID, err := m.uploadFile(channelID, name, path, data, limit, func(sent, total int64) {
+			if total <= 0 {
+				return
+			}
+			// Проценты, а не байты: иначе тысячи обновлений плашки на большом файле.
+			if pct := int(sent * 100 / total); pct != last {
+				last = pct
+				m.ui(func() { progress(pct) })
+			}
+		})
 		m.ui(func() {
 			if err != nil {
 				m.fail("upload", err)
@@ -146,34 +154,36 @@ func (m *MainWindow) upload(c *Composer, channelID string, id int, name, path st
 	}()
 }
 
-func (m *MainWindow) uploadFile(channelID, name, path string, data []byte, limit int64) (string, error) {
+func (m *MainWindow) uploadFile(channelID, name, path string, data []byte, limit int64, progress func(sent, total int64)) (string, error) {
 	if channelID == "" {
 		return "", fmt.Errorf("upload %q: no channel", name)
 	}
-	if data == nil {
-		st, err := os.Stat(path)
+	var r io.Reader
+	var size int64
+	if data != nil {
+		r, size = bytes.NewReader(data), int64(len(data))
+	} else {
+		f, err := os.Open(path)
+		if err != nil {
+			return "", fmt.Errorf("upload %s: %w", path, err)
+		}
+		defer f.Close()
+		st, err := f.Stat()
 		if err != nil {
 			return "", fmt.Errorf("upload %s: %w", path, err)
 		}
 		if st.IsDir() {
 			return "", fmt.Errorf("upload %s: is a directory", path)
 		}
-		if limit > 0 && st.Size() > limit {
-			return "", fmt.Errorf("upload %s: %s, server limit is %s", path, formatSize(st.Size()), formatSize(limit))
-		}
-		if data, err = os.ReadFile(path); err != nil {
-			return "", fmt.Errorf("upload %s: %w", path, err)
-		}
+		r, size = f, st.Size()
+	}
+	if limit > 0 && size > limit {
+		return "", fmt.Errorf("upload %q: %s, server limit is %s", name, formatSize(size), formatSize(limit))
 	}
 	// Без таймаута: большие файлы грузятся долго; отменится при закрытии окна.
-	ctx, cancel := context.WithCancel(m.ctx)
-	defer cancel()
-	resp, _, err := m.s.Client.UploadFile(ctx, data, channelID, name)
+	fi, err := m.s.UploadFile(m.ctx, channelID, name, r, size, progress)
 	if err != nil {
-		return "", fmt.Errorf("upload %q to channel %s: %w", name, channelID, err)
+		return "", err
 	}
-	if len(resp.FileInfos) == 0 {
-		return "", fmt.Errorf("upload %q to channel %s: server returned no file info", name, channelID)
-	}
-	return resp.FileInfos[0].Id, nil
+	return fi.Id, nil
 }

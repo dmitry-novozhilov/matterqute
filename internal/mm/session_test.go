@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -113,5 +115,43 @@ func TestWebsocketURL(t *testing.T) {
 	}
 	if _, err := websocketURL("example.com"); err == nil || !strings.Contains(err.Error(), "example.com") {
 		t.Errorf("websocketURL without scheme: err = %v, want error mentioning the url", err)
+	}
+}
+
+func TestUploadFileProgress(t *testing.T) {
+	var got []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v4/files" || r.Header.Get(model.HeaderAuth) != "BEARER tok" {
+			http.Error(w, "bad request "+r.URL.Path, http.StatusBadRequest)
+			return
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil || r.FormValue("channel_id") != "ch1" {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		f, fh, _ := r.FormFile("files")
+		got, _ = io.ReadAll(f)
+		json.NewEncoder(w).Encode(&model.FileUploadResponse{FileInfos: []*model.FileInfo{{Id: "f1", Name: fh.Filename}}})
+	}))
+	defer srv.Close()
+	c := model.NewAPIv4Client(srv.URL)
+	c.SetToken("tok")
+	s := &Session{ServerURL: srv.URL, Client: c}
+
+	data := strings.Repeat("x", 100000)
+	var last atomic.Int64 // прогресс приходит из горутины, которая пишет тело запроса
+	fi, err := s.UploadFile(context.Background(), "ch1", "файл.txt", strings.NewReader(data), int64(len(data)), func(sent, total int64) { last.Store(sent) })
+	if err != nil || fi.Id != "f1" || fi.Name != "файл.txt" {
+		t.Fatalf("UploadFile = %+v, %v", fi, err)
+	}
+	if string(got) != data || last.Load() != int64(len(data)) {
+		t.Errorf("server got %d bytes, progress ended at %d; want %d", len(got), last.Load(), len(data))
+	}
+
+	s.Client.SetToken("wrong")
+	_, err = s.UploadFile(context.Background(), "ch1", "a.txt", strings.NewReader("a"), 1, nil)
+	var se *ServerError
+	if !errors.As(err, &se) || se.Status != http.StatusBadRequest {
+		t.Errorf("upload with bad token: %v", err)
 	}
 }

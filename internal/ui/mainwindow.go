@@ -6,6 +6,7 @@ import (
 	"html"
 	"log/slog"
 	"strings"
+	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
@@ -17,16 +18,14 @@ import (
 	"matterqute/internal/store"
 )
 
-// Роль данных элемента сайдбара: id канала (у заголовков групп пусто).
-const channelIDRole = int(qt.UserRole) + 1
-
 // Сколько постов грузить за раз.
 const pageSize = 60
 
-// MainWindow — окно одного сервера. Все методы — из главного потока Qt;
-// горутины возвращаются в него через ui(), который проверяет closed.
+// MainWindow — окно одного сервера: страница внутри Shell (или отдельное окно
+// в тестах). Все методы — из главного потока Qt; горутины возвращаются в него
+// через ui(), который проверяет closed.
 type MainWindow struct {
-	w      *qt.QMainWindow
+	w      *qt.QWidget
 	s      *mm.Session
 	st     *store.Store
 	log    *slog.Logger
@@ -34,53 +33,54 @@ type MainWindow struct {
 	cancel context.CancelFunc
 	closed bool
 
+	split       *qt.QSplitter
 	sidebar     *qt.QTreeWidget
 	items       map[string]*qt.QTreeWidgetItem // по id канала; threadsID — «Треды»
 	center      *qt.QStackedWidget             // channelPage или threadsPage
 	channelPage *qt.QWidget
-	title       *qt.QLabel
+	head        *header
+	banner      *banner
 	feed        *Feed
 	composer    *Composer
 	threadsPage *qt.QWidget
+	threadsHead *header
 	threadsList *qt.QListWidget
 	panel       *ThreadPanel
 	thread      *threadView // открытый в панели тред; nil — панель закрыта
-	conn        *qt.QLabel
 	assets      *Assets
+	retryNow    chan struct{}
+	unsubscribe func()
 
-	current        string // открытый канал или threadsID
-	initialChannel string // открыть после первой загрузки сайдбара
-	sidebarLoading bool
-	sidebarDirty   bool // пока грузили, пришло событие, требующее перезагрузки
-	connectedOnce  bool
+	current         string // открытый канал или threadsID
+	initialChannel  string // открыть после первой загрузки сайдбара
+	selectAfterLoad string // открыть после перезагрузки сайдбара (новая личка)
+	sidebarLoading  bool
+	sidebarDirty    bool // пока грузили, пришло событие, требующее перезагрузки
+	connectedOnce   bool
+	online          bool
 
-	OnLogout        func()
 	OnChannelOpened func(id string)
+	OnConnection    func(ConnState)
+	OnMessage       func(text string) // короткое сообщение в строке состояния окна
 }
 
 // cacheDir — общий каталог кэша; у каждого сервера в нём свой подкаталог.
 func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir string) *MainWindow {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &MainWindow{
-		w:      qt.NewQMainWindow2(),
-		s:      s,
-		st:     store.New(s.Me),
-		log:    log.With("server", s.ServerURL),
-		ctx:    ctx,
-		cancel: cancel,
-		items:  map[string]*qt.QTreeWidgetItem{},
+		w:        qt.NewQWidget2(),
+		s:        s,
+		st:       store.New(s.Me),
+		log:      log.With("server", s.ServerURL),
+		ctx:      ctx,
+		cancel:   cancel,
+		items:    map[string]*qt.QTreeWidgetItem{},
+		retryNow: make(chan struct{}, 1),
 
 		initialChannel: initialChannel,
 	}
 	m.assets = NewAssets(cache.New(cacheDir, s.ServerURL, s.Client), ctx, m.ui, m.log)
-	m.w.SetWindowTitle(fmt.Sprintf("matterqute — %s", strings.TrimPrefix(strings.TrimPrefix(s.ServerURL, "https://"), "http://")))
-	m.w.Resize(1100, 720)
-	m.w.SetAttribute(qt.WA_DeleteOnClose)
-	m.w.OnCloseEvent(func(super func(*qt.QCloseEvent), ev *qt.QCloseEvent) {
-		m.closed = true
-		m.cancel()
-		super(ev)
-	})
+	m.w.Resize(1280, 774)
 	m.w.OnEvent(func(super func(*qt.QEvent) bool, ev *qt.QEvent) bool {
 		if ev.Type() == qt.QEvent__WindowActivate {
 			// Пока окно было неактивно, в открытом могло накопиться непрочитанное.
@@ -96,26 +96,19 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		return super(ev)
 	})
 
-	m.buildMenu()
+	m.setupSidebar()
 
-	m.sidebar = qt.NewQTreeWidget2()
-	m.sidebar.SetHeaderHidden(true)
-	m.sidebar.SetMinimumWidth(220)
-	m.sidebar.OnCurrentItemChanged(func(cur, _ *qt.QTreeWidgetItem) {
-		if cur == nil {
-			return
+	m.head = newHeader("channelHeader", false, m.handleLink)
+	m.head.set(nil, "Выберите канал", "")
+	m.banner = newBanner(hostOf(s.ServerURL))
+	m.banner.OnRetry = func() {
+		select {
+		case m.retryNow <- struct{}{}:
+		default:
 		}
-		if id := cur.Data(0, channelIDRole).ToString(); id != "" && id != m.current {
-			m.openChannel(id)
-		}
-	})
+	}
 
-	m.title = newTextLabel(qt.RichText)
-	m.title.OnLinkActivated(m.handleLink)
-	m.title.SetMargin(10)
-	m.title.SetText("Выберите канал")
-
-	deps := FeedDeps{Names: m.st.Username, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists}
+	deps := FeedDeps{Names: m.st.Username, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists}
 	m.feed = NewFeed(deps)
 	m.feed.OnNeedOlder = m.loadOlder
 	m.feed.OnOpenThread = m.openThread
@@ -123,8 +116,8 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 
 	m.composer = NewComposer()
 	m.composer.OnSend = m.send
-	m.composer.OnUpload = func(id int, name, path string, data []byte) {
-		m.upload(m.composer, m.current, id, name, path, data)
+	m.composer.OnUpload = func(id int, name, path string, data []byte, progress func(int)) {
+		m.upload(m.composer, m.current, id, name, path, data, progress)
 	}
 	m.composer.SetEnabled(false)
 
@@ -132,76 +125,96 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	cl := qt.NewQVBoxLayout(m.channelPage)
 	cl.SetContentsMargins(0, 0, 0, 0)
 	cl.SetSpacing(0)
-	cl.AddWidget(m.title.QWidget)
+	cl.AddWidget(m.head.f.QWidget)
+	cl.AddWidget(m.banner.f.QWidget)
 	cl.AddWidget2(m.feed.Widget(), 1)
 	cl.AddWidget(m.composer.Widget())
 
 	m.threadsPage = qt.NewQWidget2()
 	tl := qt.NewQVBoxLayout(m.threadsPage)
 	tl.SetContentsMargins(0, 0, 0, 0)
-	threadsTitle := newTextLabel(qt.RichText)
-	threadsTitle.SetMargin(10)
-	threadsTitle.SetText("<b>Треды</b>")
+	tl.SetSpacing(0)
+	m.threadsHead = newHeader("channelHeader", false, nil)
 	m.threadsList = qt.NewQListWidget2()
-	m.threadsList.SetWordWrap(true)
-	m.threadsList.SetSpacing(4)
-	m.threadsList.OnItemClicked(func(it *qt.QListWidgetItem) {
-		if id := it.Data(threadIDRole).ToString(); id != "" {
-			m.openThread(id)
-		}
-	})
-	tl.AddWidget(threadsTitle.QWidget)
+	m.setupThreadsList()
+	tl.AddWidget(m.threadsHead.f.QWidget)
 	tl.AddWidget2(m.threadsList.QWidget, 1)
 
 	m.center = qt.NewQStackedWidget2()
 	m.center.AddWidget(m.channelPage)
 	m.center.AddWidget(m.threadsPage)
+	m.center.SetMinimumWidth(360)
 
 	deps.Thread = true
 	m.panel = NewThreadPanel(deps, m.closeThread)
 	m.wireFeed(m.panel.feed)
 	m.panel.composer.OnSend = m.sendReply
-	m.panel.composer.OnUpload = func(id int, name, path string, data []byte) {
+	m.panel.composer.OnUpload = func(id int, name, path string, data []byte, progress func(int)) {
 		if t := m.thread; t != nil {
-			m.upload(m.panel.composer, t.channelID, id, name, path, data)
+			m.upload(m.panel.composer, t.channelID, id, name, path, data, progress)
 		}
 	}
 
-	split := qt.NewQSplitter2()
-	split.AddWidget(m.sidebar.QWidget)
-	split.AddWidget(m.center.QWidget)
-	split.AddWidget(m.panel.w)
-	split.SetStretchFactor(1, 1)
-	split.SetSizes([]int{260, 840, 400})
-	m.w.SetCentralWidget(split.QWidget)
+	m.split = qt.NewQSplitter2()
+	m.split.SetHandleWidth(1)
+	m.split.SetChildrenCollapsible(false)
+	m.split.AddWidget(m.sidebar.QWidget)
+	m.split.AddWidget(m.center.QWidget)
+	m.split.AddWidget(m.panel.w)
+	m.split.SetStretchFactor(1, 1)
+	m.sidebar.SetMinimumWidth(180)
+	m.sidebar.SetMaximumWidth(360)
+	m.panel.w.SetMinimumWidth(280)
+	m.split.SetSizes([]int{240, 660, 380})
+	root := qt.NewQVBoxLayout(m.w)
+	root.SetContentsMargins(0, 0, 0, 0)
+	root.AddWidget(m.split.QWidget)
 
-	m.conn = qt.NewQLabel3("подключаемся…")
-	m.w.StatusBar().AddWidget(qt.NewQLabel3(fmt.Sprintf("@%s", s.Me.Username)).QWidget)
-	m.w.StatusBar().AddPermanentWidget(m.conn.QWidget)
+	m.unsubscribe = OnThemeChanged(m.restyle)
+	m.restyle()
 	return m
 }
 
-func (m *MainWindow) Show() {
-	m.w.Show()
+func (m *MainWindow) Widget() *qt.QWidget { return m.w }
+
+// Start грузит сайдбар и подключает realtime.
+func (m *MainWindow) Start() {
 	m.reloadSidebar()
-	go m.s.RunRealtime(m.ctx, m)
+	go m.s.RunRealtime(m.ctx, m, m.retryNow)
 }
 
-// Close закрывает окно без выхода из аккаунта.
-func (m *MainWindow) Close() { m.w.Close() }
+// Show — отдельным окном (тесты).
+func (m *MainWindow) Show() {
+	m.w.Show()
+	m.Start()
+}
 
-func (m *MainWindow) buildMenu() {
-	file := m.w.MenuBar().AddMenuWithTitle("&Файл")
-	logout := file.QWidget.AddActionWithText("Выйти из аккаунта")
-	logout.OnTriggered(func() {
-		if m.OnLogout != nil {
-			m.OnLogout()
-		}
-	})
-	file.AddSeparator()
-	quit := file.QWidget.AddActionWithText("Выход")
-	quit.SetShortcut(qt.NewQKeySequence2("Ctrl+Q"))
-	quit.OnTriggered(qt.QCoreApplication_Quit)
+// Close останавливает работу окна сервера без выхода из аккаунта; виджеты
+// удаляет владелец (Shell.RemovePage) или Qt при закрытии окна.
+func (m *MainWindow) Close() {
+	if m.closed {
+		return
+	}
+	m.closed = true
+	m.cancel()
+	m.unsubscribe()
+	m.panel.dispose()
+	m.feed.dispose()
+	m.w.Close()
+}
+
+// restyle — смена темы: иконки и цвета, нарисованные кодом.
+func (m *MainWindow) restyle() {
+	m.banner.restyle()
+	m.refreshHeader()
+	m.sidebar.Viewport().Update()
+	m.threadsList.Viewport().Update()
+}
+
+func (m *MainWindow) setConnection(c ConnState) {
+	if m.OnConnection != nil {
+		m.OnConnection(c)
+	}
 }
 
 // ui запускает f в главном потоке, если окно ещё живо.
@@ -216,7 +229,13 @@ func (m *MainWindow) ui(f func()) {
 // fail показывает ошибку фоновой операции в строке состояния и в логе.
 func (m *MainWindow) fail(op string, err error) {
 	m.log.Error(op, "err", err)
-	m.w.StatusBar().ShowMessage2(err.Error(), 15000)
+	m.message(err.Error())
+}
+
+func (m *MainWindow) message(text string) {
+	if m.OnMessage != nil {
+		m.OnMessage(text)
+	}
 }
 
 // withUsers догружает недостающие профили и потом вызывает then. then
@@ -337,82 +356,12 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 		if err != nil {
 			return nil, fmt.Errorf("load %d users for direct messages and threads: %w", len(ids), err)
 		}
+		// Точки присутствия у личек — не обязательны: без них сайдбар тоже работает.
+		if sb.Statuses, _, err = c.GetUsersStatusesByIds(ctx, ids); err != nil {
+			m.log.Warn("load statuses", "users", len(ids), "err", err)
+		}
 	}
 	return sb, nil
-}
-
-func (m *MainWindow) fillSidebar() {
-	m.sidebar.Clear()
-	m.items = map[string]*qt.QTreeWidgetItem{}
-	var toSelect *qt.QTreeWidgetItem
-	if m.st.CRT() {
-		it := qt.NewQTreeWidgetItem2([]string{""})
-		it.SetData(0, channelIDRole, qt.NewQVariant11(threadsID))
-		m.sidebar.AddTopLevelItem(it)
-		m.items[threadsID] = it
-		m.refreshItem(threadsID)
-		if m.current == threadsID {
-			toSelect = it
-		}
-	}
-	addGroup := func(title string, chs []*model.Channel) {
-		if len(chs) == 0 {
-			return
-		}
-		group := qt.NewQTreeWidgetItem2([]string{title})
-		group.SetFlags(qt.ItemIsEnabled)
-		m.sidebar.AddTopLevelItem(group)
-		for _, ch := range chs {
-			it := qt.NewQTreeWidgetItem6(group)
-			it.SetData(0, channelIDRole, qt.NewQVariant11(ch.Id))
-			m.items[ch.Id] = it
-			m.refreshItem(ch.Id)
-			if ch.Id == m.current {
-				toSelect = it
-			}
-		}
-		group.SetExpanded(true)
-	}
-	for _, t := range m.st.Teams() {
-		addGroup(t.DisplayName, m.st.TeamChannels(t.Id))
-	}
-	addGroup("Личные сообщения", m.st.DirectChannels())
-	if m.current == "" && m.initialChannel != "" {
-		toSelect = m.items[m.initialChannel]
-		m.initialChannel = ""
-	}
-	if toSelect != nil {
-		m.sidebar.SetCurrentItem(toSelect)
-	}
-}
-
-// refreshItem перерисовывает строку канала: имя, жирность непрочитанного, упоминания.
-func (m *MainWindow) refreshItem(channelID string) {
-	it := m.items[channelID]
-	if it == nil {
-		return
-	}
-	var text string
-	var unread bool
-	var mentions int64
-	if channelID == threadsID {
-		text = "💬 Треды"
-		unread, mentions = m.st.ThreadsUnread()
-	} else {
-		ch := m.st.Channel(channelID)
-		if ch == nil {
-			return
-		}
-		unread, mentions = m.st.Unread(channelID)
-		text = channelPrefix(ch) + m.st.Title(ch)
-	}
-	if mentions > 0 {
-		text += fmt.Sprintf("  (%d)", mentions)
-	}
-	it.SetText(0, text)
-	font := it.Font(0)
-	font.SetBold(unread || mentions > 0)
-	it.SetFont(0, font)
 }
 
 func channelPrefix(ch *model.Channel) string {
@@ -445,18 +394,25 @@ func (m *MainWindow) openChannel(id string) {
 	m.current = id
 	m.center.SetCurrentWidget(m.channelPage)
 	m.composer.SwitchTo(id)
-	m.title.SetText(channelTitleHTML(ch, m.st.Title(ch)))
+	m.composer.SetPlaceholder("Сообщение в " + channelPrefix(ch) + m.st.Title(ch))
+	m.refreshHeader()
 	m.composer.SetEnabled(true)
 	m.composer.Focus()
+	m.feed.OnRetry = func() {
+		m.feed.Loading()
+		m.loadTimeline(id)
+	}
+	// «Новые сообщения» — от прошлого прочтения: запоминаем до markViewed.
+	m.feed.SetNewSince(m.st.LastViewed(id))
 
 	switch tl := m.st.Timeline(id); {
 	case tl == nil:
-		m.feed.Reset("Загрузка…")
+		m.feed.Loading()
 		m.loadTimeline(id)
 	case tl.Loaded:
-		m.feed.SetPosts(tl.Posts, tl.HasMore)
+		m.showTimeline(id, tl)
 	default:
-		m.feed.Reset("Загрузка…") // уже грузится
+		m.feed.Loading() // уже грузится
 	}
 	m.markViewed(id, prev)
 	if m.OnChannelOpened != nil {
@@ -464,19 +420,59 @@ func (m *MainWindow) openChannel(id string) {
 	}
 }
 
-func channelTitleHTML(ch *model.Channel, title string) string {
-	s := "<b>" + html.EscapeString(channelPrefix(ch)+title) + "</b>"
+// refreshHeader перерисовывает шапки канала и списка тредов.
+func (m *MainWindow) refreshHeader() {
+	p := Pal()
+	m.threadsHead.set(iconPixmap("messages-square", p.Tx2, 16), "Треды", "Треды, на которые вы подписаны")
+	ch := m.st.Channel(m.current)
+	if ch == nil {
+		m.head.set(nil, "Выберите канал", "")
+		return
+	}
+	var icon *qt.QPixmap
+	switch ch.Type {
+	case model.ChannelTypeOpen:
+		icon = iconPixmap("hash", p.Tx2, 16)
+	case model.ChannelTypePrivate:
+		icon = iconPixmap("lock", p.Tx2, 16)
+	case model.ChannelTypeGroup:
+		icon = iconPixmap("users", p.Tx2, 16)
+	case model.ChannelTypeDirect:
+		peer := m.st.DMPeer(ch)
+		icon = avatarPixmap(m.assets, m.st.User(peer), m.st.Username(peer), false, 16, m.refreshHeader)
+	}
+	var sub []string
 	if ch.Purpose != "" {
-		s += `<div style="color:gray">` + markdown.Render(ch.Purpose) + "</div>"
+		sub = append(sub, html.EscapeString(ch.Purpose))
 	}
 	if ch.Header != "" {
-		s += markdown.Render(ch.Header)
+		sub = append(sub, markdown.RenderInline(ch.Header, p))
 	}
-	return s
+	m.head.set(icon, html.EscapeString(m.st.Title(ch)), strings.Join(sub, " · "))
 }
 
 // loadTimeline грузит последние посты. Пустая лента в store появляется сразу,
 // чтобы посты из WebSocket, пришедшие во время загрузки, не потерялись.
+// showTimeline показывает загруженную ленту канала или заглушку пустого канала.
+func (m *MainWindow) showTimeline(id string, tl *store.Timeline) {
+	m.feed.SetPosts(tl.Posts, tl.HasMore)
+	if len(tl.Posts) > 0 {
+		return
+	}
+	ch := m.st.Channel(id)
+	if ch == nil {
+		return
+	}
+	iconName, text := "hash", ""
+	switch ch.Type {
+	case model.ChannelTypePrivate:
+		iconName, text = "lock", "Канал приватный: сообщения видят только участники."
+	case model.ChannelTypeDirect, model.ChannelTypeGroup:
+		iconName = "message-circle"
+	}
+	m.feed.Placeholder(iconName, "В канале «"+m.st.Title(ch)+"» пока нет сообщений", text)
+}
+
 func (m *MainWindow) loadTimeline(id string) {
 	tl := &store.Timeline{}
 	m.st.SetTimeline(id, tl)
@@ -494,7 +490,7 @@ func (m *MainWindow) loadTimeline(id string) {
 				err = fmt.Errorf("load posts of channel %s: %w", id, err)
 				m.fail("load timeline", err)
 				if m.current == id {
-					m.feed.Reset(err.Error())
+					m.feed.Error(err.Error())
 				}
 				return
 			}
@@ -506,7 +502,7 @@ func (m *MainWindow) loadTimeline(id string) {
 				tl.Prepend(posts, len(list.Order) >= pageSize)
 				tl.Loaded = true
 				if m.current == id {
-					m.feed.SetPosts(tl.Posts, tl.HasMore)
+					m.showTimeline(id, tl)
 				}
 			})
 		})
@@ -629,9 +625,13 @@ func (m *MainWindow) applyPosted(p *model.Post, mentioned bool) {
 
 func (m *MainWindow) OnConnected() {
 	m.ui(func() {
-		m.conn.SetText("в сети")
+		m.online = true
+		m.setConnection(ConnOnline)
+		m.banner.hide()
+		m.composer.SetOffline(false)
+		m.panel.composer.SetOffline(false)
 		if !m.connectedOnce {
-			m.connectedOnce = true // сайдбар уже грузится из Show
+			m.connectedOnce = true // сайдбар уже грузится из Start
 			return
 		}
 		// События за время обрыва потеряны: перечитываем всё, что показываем.
@@ -642,15 +642,21 @@ func (m *MainWindow) OnConnected() {
 			m.openThread(t.rootID)
 		}
 		if id := m.current; m.st.Channel(id) != nil {
-			m.feed.Reset("Загрузка…")
+			m.feed.Loading()
 			m.loadTimeline(id)
 		}
 	})
 }
 
-func (m *MainWindow) OnDisconnected(err error) {
-	m.log.Warn("realtime disconnected", "err", err)
-	m.ui(func() { m.conn.SetText("нет соединения, переподключаемся…") })
+func (m *MainWindow) OnDisconnected(err error, retryIn time.Duration) {
+	m.log.Warn("realtime disconnected", "err", err, "retry_in", retryIn)
+	m.ui(func() {
+		m.online = false
+		m.setConnection(ConnReconnecting)
+		m.banner.show(retryIn)
+		m.composer.SetOffline(true)
+		m.panel.composer.SetOffline(true)
+	})
 }
 
 func (m *MainWindow) OnEvent(ev *model.WebSocketEvent) {

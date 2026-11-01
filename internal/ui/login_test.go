@@ -6,34 +6,52 @@ import (
 	"testing"
 )
 
-// Состояния окна входа: форма, ожидание, код MFA, ошибка с повтором.
-func TestLoginDialogStates(t *testing.T) {
+// Состояния страницы входа: форма, вход по сессии, код MFA, ошибки.
+func TestLoginViewStates(t *testing.T) {
 	onMain(func() {
-		l := NewLoginDialog("mm.example.com", "alice")
-		defer l.Close()
-		l.Show()
+		l := NewLoginView("mm.example.com", "alice")
+		defer l.Dispose()
+		w := l.Widget()
+		w.Resize(900, 600)
+		w.Show()
+		defer w.Close()
 		save := func(name string) {
 			if dir := os.Getenv("MATTERQUTE_TEST_SHOTS"); dir != "" {
 				settleFor(100e6)
-				l.d.Grab().Save(filepath.Join(dir, name+".png"))
+				w.Grab().Save(filepath.Join(dir, name+".png"))
 			}
 		}
 		save("login-form")
 
-		l.SetBusy("Входим на https://mm.example.com…")
-		if l.submit.IsEnabled() || !l.status.IsVisible() {
-			t.Error("busy: submit enabled or status hidden")
+		l.SetResuming("https://mm.example.com")
+		if l.submit.IsEnabled() || l.notice.IsHidden() || l.server.IsEnabled() {
+			t.Error("resuming: form editable or notice hidden")
+		}
+		l.SetBusy()
+		if l.submit.IsEnabled() || l.submit.Text() != "Входим…" {
+			t.Errorf("busy: submit enabled=%v text=%q", l.submit.IsEnabled(), l.submit.Text())
 		}
 		l.AskMFA()
-		if !l.form.IsRowVisibleWithWidget(l.mfa.QWidget) || !l.submit.IsEnabled() {
-			t.Error("mfa: code row hidden or submit disabled")
+		if l.mfa.IsHidden() || !l.submit.IsEnabled() || l.password.IsEnabled() || l.server.IsEnabled() {
+			t.Error("mfa: code hidden, submit disabled or accepted fields still editable")
 		}
 		save("login-mfa")
-
-		l.SetError("resume session https://mm.example.com: dial tcp: connection refused", true)
-		if !l.retry.IsVisible() {
-			t.Error("error with retry: retry button hidden")
+		l.SetFieldError("Неверный код. Проверьте время на телефоне и введите новый код.")
+		if l.mfaError.IsHidden() || !l.pwError.IsHidden() {
+			t.Error("mfa error shown under the wrong field")
 		}
+
+		l2 := NewLoginView("mm.example.com", "alice")
+		defer l2.Dispose()
+		l2.SetFieldError("Неверный логин или пароль.")
+		if l2.pwError.IsHidden() {
+			t.Error("credentials error not shown under password")
+		}
+		l2.SetUnavailable("resume session https://mm.example.com: dial tcp: connection refused", true)
+		if l2.retry.IsHidden() || l2.notice.IsHidden() {
+			t.Error("unavailable: retry or notice hidden")
+		}
+		l.SetUnavailable("resume session https://mm.example.com: dial tcp: connection refused", true)
 		save("login-error")
 	})
 }

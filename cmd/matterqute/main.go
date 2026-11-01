@@ -25,7 +25,7 @@ func main() {
 		},
 	}))
 
-	qt.NewQApplication(os.Args)
+	app := qt.NewQApplication(os.Args)
 	qt.QCoreApplication_SetApplicationName("matterqute")
 	qt.QGuiApplication_SetApplicationDisplayName("matterqute")
 	qt.QGuiApplication_SetDesktopFileName("matterqute")
@@ -45,6 +45,7 @@ func main() {
 		log.Warn("startup", "err", err)
 	}
 
+	ui.InitStyle(app, ui.ThemeMode(cfg.Theme), log)
 	ui.NewApp(cfg, tokens, log).Start()
 	scheduleScreenshot(log)
 	os.Exit(qt.QApplication_Exec())

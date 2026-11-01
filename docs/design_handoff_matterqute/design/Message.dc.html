@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+</helmet>
+<div style="display:flex;gap:10px;padding:{{ pad }};background:{{ bg }};font-family:'IBM Plex Sans',sans-serif;font-size:14px;line-height:{{ lh }};color:var(--tx)" title="{{ m.tip }}">
+  <sc-if value="{{ av }}" hint-placeholder-val="{{ false }}">
+    <div style="width:32px;flex:none">
+      <sc-if value="{{ showAvatar }}" hint-placeholder-val="{{ false }}">
+        <div style="width:32px;height:32px;margin-top:2px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:16px;font-weight:600;background:{{ avBg }};color:{{ avTx }}">{{ m.ini }}</div>
+      </sc-if>
+    </div>
+  </sc-if>
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <sc-if value="{{ m.sys }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size:13px;line-height:18px;font-style:italic;color:var(--tx2)">{{ m.text }}</div>
+    </sc-if>
+    <sc-if value="{{ m.header }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:baseline;gap:8px;min-height:20px">
+        <span style="font-weight:600;cursor:pointer;background:{{ hSelBg }}">{{ m.author }}</span>
+        <sc-if value="{{ m.bot }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;line-height:16px;font-weight:600;background:var(--surf2);color:var(--tx2)">&nbsp;БОТ&nbsp;</span></sc-if>
+        <span style="font-family:'PT Mono',monospace;font-size:12px;line-height:16px;color:var(--tx2);background:{{ hSelBg }}">{{ m.time }}</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ m.replyTo }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:4px;min-width:0;font-size:12px;line-height:16px;color:var(--tx2);margin:1px 0 2px;cursor:pointer">
+        <span style="width:14px;height:14px;flex:none;background:var(--tx2);-webkit-mask:url(assets/icons/corner-down-right.svg) center/14px no-repeat;mask:url(assets/icons/corner-down-right.svg) center/14px no-repeat"></span>
+        <span style="flex:none">Ответ в треде</span>
+        <span style="flex:none;font-weight:600;color:var(--tx)">{{ m.replyTo.author }}:</span>
+        <span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.replyTo.text }}</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ hasSegs }}" hint-placeholder-val="{{ false }}">
+      <div style="overflow-wrap:anywhere"><sc-for list="{{ segs }}" as="s" hint-placeholder-count="0"><sc-if value="{{ s.isT }}"><span style="background:{{ s.selBg }}">{{ s.v }}</span></sc-if><sc-if value="{{ s.isBr }}"><br></sc-if><sc-if value="{{ s.isA }}"><a href="#" style="color:var(--acc);text-decoration:underline;background:{{ s.selBg }}">{{ s.v }}</a></sc-if><sc-if value="{{ s.isM }}"><span style="background:{{ s.bg }};color:{{ s.c }};font-weight:600;cursor:pointer">{{ s.v }}</span></sc-if><sc-if value="{{ s.isB }}"><b style="font-weight:600">{{ s.v }}</b></sc-if><sc-if value="{{ s.isCode }}"><span style="font-family:'PT Mono',monospace;font-size:13px;background:var(--surf2)">{{ s.v }}</span></sc-if></sc-for><sc-if value="{{ m.edited }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--tx2)"> (изменено)</span></sc-if></div>
+    </sc-if>
+    <sc-if value="{{ m.release }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:6px;font-size:17px;line-height:24px;font-weight:600;margin:2px 0 4px">Релиз 2.4 <span title=":party-parrot: — кастомный эмодзи сервера, 20 px" style="width:20px;height:20px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--acc-w) 0 3px,var(--acc) 3px 5px)"></span></div>
+        <div>Что вошло:</div>
+        <div style="display:flex;flex-direction:column;padding-left:18px;margin:2px 0 6px">
+          <div style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;box-sizing:border-box;border-radius:2px;background:var(--acc);display:flex;align-items:center;justify-content:center"><span style="width:10px;height:10px;background:var(--on-acc);-webkit-mask:url(assets/icons/check.svg) center/10px no-repeat;mask:url(assets/icons/check.svg) center/10px no-repeat"></span></span><span><b style="font-weight:600">новый</b> кэш сессий</span></div>
+          <div style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;box-sizing:border-box;border-radius:2px;border:1px solid var(--line2);background:var(--surf)"></span><span>старый API — <i>в следующем</i></span></div>
+        </div>
+        <table style="border-collapse:separate;border-spacing:1px;background:var(--line);margin:0 0 6px;font-size:14px;line-height:20px;align-self:flex-start">
+          <tbody>
+            <tr><th style="background:var(--surf2);padding:3px 10px;text-align:left;font-weight:600">сервис</th><th style="background:var(--surf2);padding:3px 10px;text-align:left;font-weight:600">p99</th></tr>
+            <tr><td style="background:var(--surf);padding:3px 10px">api</td><td style="background:var(--surf);padding:3px 10px">120 мс</td></tr>
+            <tr><td style="background:var(--surf);padding:3px 10px">ws</td><td style="background:var(--surf);padding:3px 10px">35 мс</td></tr>
+          </tbody>
+        </table>
+        <div>Конфиг:</div>
+        <div style="background:var(--surf2);font-family:'PT Mono',monospace;font-size:13px;line-height:18px;padding:8px 12px;margin:2px 0 6px">cache:<br>&nbsp;&nbsp;ttl: 30s<br>&nbsp;&nbsp;size: 10000</div>
+        <div style="display:flex;margin:0 0 6px"><div style="width:3px;flex:none;background:var(--line2)"></div><div style="padding:0 10px;color:var(--tx2)">не забудьте <span style="font-family:'PT Mono',monospace;font-size:13px;background:var(--surf2);color:var(--tx)">make migrate</span></div></div>
+        <div><span style="background:var(--men-bg);color:var(--men-tx);font-weight:600">@alice</span> глянь <a href="#" style="color:var(--acc);text-decoration:underline">~town-square</a> 👍</div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ img }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:6px;display:flex;flex-direction:column;align-self:flex-start;max-width:100%">
+        <div style="position:relative;width:{{ img.w }}px;height:{{ img.h }}px;max-width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:{{ img.radius }};overflow:hidden;background:repeating-linear-gradient(135deg,var(--surf2) 0 10px,var(--ph) 10px 20px);display:flex;align-items:center;justify-content:center;cursor:zoom-in">
+          <sc-if value="{{ img.isLoading }}" hint-placeholder-val="{{ false }}">
+            <span style="display:flex;align-items:center;gap:6px;padding:2px 8px;background:var(--surf);font-size:12px;line-height:16px;color:var(--tx2)"><span style="width:14px;height:14px;background:var(--tx2);-webkit-mask:url(assets/icons/loader-circle.svg) center/14px no-repeat;mask:url(assets/icons/loader-circle.svg) center/14px no-repeat"></span>превью загружается</span>
+          </sc-if>
+          <sc-if value="{{ img.notLoading }}" hint-placeholder-val="{{ false }}">
+            <span style="font-family:'PT Mono',monospace;font-size:12px;line-height:16px;color:var(--tx2);background:var(--surf);padding:2px 6px">{{ img.label }}</span>
+          </sc-if>
+          <sc-if value="{{ img.isGif }}" hint-placeholder-val="{{ false }}">
+            <span style="position:absolute;left:6px;bottom:6px;font-size:11px;line-height:14px;font-weight:600;padding:1px 5px;border-radius:3px;background:rgba(20,18,16,0.72);color:#fcfbf9">GIF</span>
+          </sc-if>
+          <sc-if value="{{ img.isVideo }}" hint-placeholder-val="{{ false }}">
+            <span style="position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(20,18,16,0.72);display:flex;align-items:center;justify-content:center"><span style="width:22px;height:22px;margin-left:3px;background:#fcfbf9;-webkit-mask:url(assets/icons/play.svg) center/22px no-repeat;mask:url(assets/icons/play.svg) center/22px no-repeat"></span></span>
+            <span style="position:absolute;right:6px;bottom:6px;font-family:'PT Mono',monospace;font-size:11px;line-height:14px;padding:1px 5px;border-radius:3px;background:rgba(20,18,16,0.72);color:#fcfbf9">1:04</span>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ m.file }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:6px;display:flex;align-items:flex-start;gap:10px;align-self:flex-start;max-width:100%;box-sizing:border-box;padding:8px 14px 8px 10px;background:var(--surf2)">
+        <span style="width:20px;height:20px;flex:none;margin-top:4px;background:var(--tx2);-webkit-mask:url(assets/icons/file-text.svg) center/20px no-repeat;mask:url(assets/icons/file-text.svg) center/20px no-repeat"></span>
+        <div style="min-width:0;display:flex;flex-direction:column">
+          <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="font-weight:500">{{ m.file.name }}</span><span style="font-size:12px;color:var(--tx2)">&nbsp;&nbsp;{{ m.file.meta }}</span></div>
+          <div style="font-size:13px;line-height:18px;white-space:nowrap"><sc-if value="{{ m.file.canOpen }}" hint-placeholder-val="{{ false }}"><a href="#" style="color:var(--acc);text-decoration:underline">Открыть</a><span style="color:var(--tx2)"> · </span></sc-if><a href="#" style="color:var(--acc);text-decoration:underline">Сохранить…</a><sc-if value="{{ m.file.note }}" hint-placeholder-val="{{ false }}"><span style="color:var(--tx2)"> · {{ m.file.note }}</span></sc-if></div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ a }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:4px;max-width:520px;display:flex">
+      <div style="width:4px;flex:none;background:{{ a.color }}"></div>
+      <div style="flex:1;min-width:0;box-sizing:border-box;background:var(--surf2);padding:8px 12px 10px;display:flex;flex-direction:column;gap:4px">
+        <sc-if value="{{ a.author }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ a.author }}</div></sc-if>
+        <sc-if value="{{ a.title }}" hint-placeholder-val="{{ false }}"><a href="#" style="font-weight:600;color:var(--acc);text-decoration:underline">{{ a.title }}</a></sc-if>
+        <sc-if value="{{ a.hasText }}" hint-placeholder-val="{{ false }}"><div>{{ a.text }}<b style="font-weight:600">{{ a.bold }}</b>{{ a.text2 }}<span style="font-family:'PT Mono',monospace;font-size:13px;background:var(--surf2)">{{ a.code }}</span></div></sc-if>
+        <sc-if value="{{ a.hasFields }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:2px">
+            <sc-for list="{{ a.fields }}" as="f" hint-placeholder-count="2"><div style="width:{{ f.w }};display:flex;flex-direction:column"><span style="font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">{{ f.k }}</span><span>{{ f.v }}</span></div></sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ a.footer }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;line-height:16px;color:var(--tx2);margin-top:2px">{{ a.footer }}</div></sc-if>
+      </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ hasReacts }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+        <sc-for list="{{ reacts }}" as="r" hint-placeholder-count="2">
+          <div title="{{ r.tip }}" style="height:24px;box-sizing:border-box;display:flex;align-items:center;gap:4px;padding:0 8px 0 6px;border-radius:12px;border:1px solid {{ r.bd }};background:{{ r.bg }};color:{{ r.c }};font-size:12px;line-height:16px;font-weight:600;cursor:pointer">
+            <sc-if value="{{ r.custom }}" hint-placeholder-val="{{ false }}"><span style="width:16px;height:16px;border-radius:3px;background:repeating-linear-gradient(135deg,var(--acc-w) 0 3px,var(--acc) 3px 5px)"></span></sc-if>
+            <sc-if value="{{ r.isEmoji }}" hint-placeholder-val="{{ false }}"><span style="font-size:15px;line-height:16px;width:16px;text-align:center">{{ r.e }}</span></sc-if>
+            <span>{{ r.n }}</span>
+          </div>
+        </sc-for>
+        <div title="Добавить реакцию" style="height:24px;width:32px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--line);background:var(--surf);cursor:pointer" style-hover="background:var(--hover);border-color:var(--line2)"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/smile-plus.svg) center/16px no-repeat;mask:url(assets/icons/smile-plus.svg) center/16px no-repeat"></span></div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ m.replies }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;line-height:18px;cursor:pointer">
+        <span style="width:16px;height:16px;flex:none;background:var(--acc);-webkit-mask:url(assets/icons/messages-square.svg) center/16px no-repeat;mask:url(assets/icons/messages-square.svg) center/16px no-repeat"></span>
+        <span style="flex:none;white-space:nowrap;color:var(--acc);font-weight:600">{{ m.replies.label }}</span>
+        <span style="color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.replies.last }}</span>
+        <sc-if value="{{ m.replies.unread }}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;flex:none;border-radius:50%;background:var(--acc)"></span></sc-if>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:640,&quot;height&quot;:160},&quot;m&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;object&quot;},&quot;avatars&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;cozy&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const m = this.props.m || {
+      who: 'dave', author: 'dave', ini: 'ДВ', time: '2026-11-01 08:23:08', header: true, mentionMe: true,
+      segs: [{ t: '@', v: '@alice', me: true }, { t: 't', v: ' приложи туда логи nginx, пожалуйста' }],
+      reactions: [{ e: '👍', n: 2, mine: true, tip: 'alice, bob' }, { e: '🎉', n: 1, tip: 'carol' }],
+      replies: { label: '3 ответа', last: 'последний 08:35' }
+    };
+    const av = this.props.avatars === true;
+    const cozy = this.props.cozy === true;
+    const top = m.sys ? 4 : m.header ? (cozy ? 12 : 6) : 0;
+    const segs = (m.segs || []).map(s => ({
+      ...s, isT: s.t === 't', isBr: s.t === 'br', isA: s.t === 'a', isM: s.t === '@', isB: s.t === 'b', isCode: s.t === 'code',
+      bg: s.sel ? 'var(--selbg)' : s.me ? 'var(--men-bg)' : 'transparent', c: s.me ? 'var(--men-tx)' : 'var(--acc)',
+      selBg: s.sel ? 'var(--selbg)' : 'transparent'
+    }));
+    const reacts = (m.reactions || []).map(r => ({
+      ...r, isEmoji: !r.custom,
+      bd: r.mine ? 'var(--acc)' : r.hover ? 'var(--line2)' : 'var(--line)',
+      bg: r.mine ? (r.hover ? 'var(--acc-w)' : 'var(--acc-w)') : r.hover ? 'var(--hover)' : 'var(--surf)',
+      c: r.mine ? 'var(--sel-tx)' : 'var(--tx)'
+    }));
+    const i = m.image;
+    const img = i ? {
+      ...i, isGif: i.kind === 'gif', isVideo: i.kind === 'video', isLoading: i.kind === 'loading', notLoading: i.kind !== 'loading',
+      radius: i.kind === 'video' ? '4px 4px 0 0' : '4px'
+    } : null;
+    const al = m.alert;
+    const a = al ? {
+      text: '', bold: '', text2: '', code: '', author: '', title: '', footer: '', ...al, hasText: !!(al.text || al.bold || al.code), hasFields: !!(al.fields && al.fields.length),
+      fields: (al.fields || []).map(f => ({ ...f, w: f.short ? 'calc(50% - 8px)' : '100%' }))
+    } : null;
+    const who = m.who || 'alice';
+    return {
+      m, av, segs, hasSegs: segs.length > 0, hSelBg: m.selHeader ? 'var(--selbg)' : 'transparent', reacts, hasReacts: reacts.length > 0, img, a,
+      showAvatar: av && !!m.header,
+      avBg: `var(--av-${who})`, avTx: `var(--av-${who}-t)`,
+      pad: `${top}px 16px ${cozy ? 6 : 4}px`,
+      bg: m.hover ? 'var(--hover)' : m.mentionMe ? 'var(--men-row)' : m.sel ? 'var(--acc-w)' : 'transparent',
+      lh: cozy ? '22px' : '20px'
+    };
+  }
+}
+</script>
+</body>
+</html>

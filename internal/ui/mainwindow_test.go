@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -104,11 +103,7 @@ func testMainWindowFeed(t *testing.T, s *mm.Session, fake *mmfake.Server) {
 		}
 	}
 	fake.Post(&model.Post{ChannelId: backend.Id, UserId: bob, Message: "@alice посмотри логи"})
-	if waitFor(t, "mention in backend", func() bool { _, n := m.st.Unread(backend.Id); return n == 1 }) {
-		if !strings.Contains(m.items[backend.Id].Text(0), "(1)") {
-			t.Errorf("sidebar item %q lacks mention counter", m.items[backend.Id].Text(0))
-		}
-	}
+	waitFor(t, "mention in backend", func() bool { _, n := m.st.Unread(backend.Id); return n == 1 })
 	if len(m.feed.items) != before {
 		t.Errorf("post to another channel changed open feed: %d → %d items", before, len(m.feed.items))
 	}

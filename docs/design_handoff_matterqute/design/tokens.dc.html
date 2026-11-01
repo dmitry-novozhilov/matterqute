@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+<style>body{margin:0;background:#f6f4f1}a{color:#007255}a:hover{color:#006145}</style>
+</helmet>
+<div style="max-width:1200px;margin:0 auto;padding:48px 32px 96px;display:flex;flex-direction:column;gap:64px;font-family:'IBM Plex Sans',sans-serif;font-size:14px;line-height:20px;color:#211d18">
+
+  <header style="display:flex;flex-direction:column;gap:14px">
+    <nav style="display:flex;flex-wrap:wrap;gap:20px;font-size:15px"><span style="font-weight:600">Токены</span><a href="components.dc.html">Компоненты</a><a href="screens.dc.html">Экраны</a><a href="decisions.dc.html">Открытые вопросы</a></nav>
+    <h1 style="margin:0;font-size:36px;line-height:44px;font-weight:600">matterqute — токены</h1>
+    <p style="margin:0;max-width:780px;font-size:16px;line-height:24px;color:#5f5a53;text-wrap:pretty">Значения в px и HEX для QSS, QPalette и HTML ленты. Нейтральные тёплые, акцент один, теней нет: поверхности разделяются фоном и рамкой 1 px. В документе ленты скруглений нет. Подсветка там рисуется прямоугольником, блоки собираются из ячеек таблицы.</p>
+  </header>
+
+  <section style="display:flex;flex-direction:column;gap:16px">
+    <h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Цвета</h2>
+    <div style="display:grid;grid-template-columns:120px minmax(0,1fr) 150px 150px;border-top:1px solid #d9d5cf">
+      <div style="padding:8px 12px 8px 0;font-size:12px;line-height:16px;font-weight:600;color:#5f5a53;border-bottom:1px solid #d9d5cf">Токен</div>
+      <div style="padding:8px 12px;font-size:12px;line-height:16px;font-weight:600;color:#5f5a53;border-bottom:1px solid #d9d5cf">Где используется</div>
+      <div style="padding:8px 12px;font-size:12px;line-height:16px;font-weight:600;color:#5f5a53;border-bottom:1px solid #d9d5cf">Светлая</div>
+      <div style="padding:8px 12px;font-size:12px;line-height:16px;font-weight:600;color:#5f5a53;border-bottom:1px solid #d9d5cf">Тёмная</div>
+      <sc-for list="{{ colors }}" as="c" hint-placeholder-count="8">
+        <sc-if value="{{ c.group }}" hint-placeholder-val="{{ false }}">
+          <div style="grid-column:1 / -1;padding:18px 0 6px;font-size:13px;line-height:18px;font-weight:600;border-bottom:1px solid #d9d5cf">{{ c.group }}</div>
+        </sc-if>
+        <sc-if value="{{ c.token }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:8px 12px 8px 0;font-family:'PT Mono',monospace;font-size:13px;border-bottom:1px solid #e9e5e0">{{ c.token }}</div>
+          <div style="padding:8px 12px;color:#5f5a53;border-bottom:1px solid #e9e5e0;text-wrap:pretty">{{ c.use }}</div>
+          <div style="padding:6px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e9e5e0"><span style="width:28px;height:28px;flex:none;border-radius:4px;border:1px solid rgba(0,0,0,0.12);background:{{ c.l }}"></span><span style="font-family:'PT Mono',monospace;font-size:13px">{{ c.l }}</span></div>
+          <div style="padding:6px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e9e5e0"><span style="width:28px;height:28px;flex:none;border-radius:4px;border:1px solid rgba(0,0,0,0.12);background:{{ c.d }}"></span><span style="font-family:'PT Mono',monospace;font-size:13px">{{ c.d }}</span></div>
+        </sc-if>
+      </sc-for>
+    </div>
+    <p style="margin:0;font-size:13px;line-height:18px;color:#5f5a53;max-width:780px;text-wrap:pretty">Тема выбирается в меню «Вид → Тема». По умолчанию стоит «Системная» — она следует QStyleHints::colorScheme(); можно также выбрать «Светлая» или «Тёмная». Выбор хранится в QSettings. Цвет вложения интеграции бот присылает сам. Значения good, warning и danger заменяются семантическими токенами, произвольный HEX рисуется как есть. Пару цветов для аватара выбирает хэш имени пользователя.</p>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:16px">
+    <h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Шрифты</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+      <div style="display:flex;flex-direction:column;gap:8px;padding:20px;background:#fcfbf9;border:1px solid #d9d5cf;border-radius:6px">
+        <div style="font-size:30px;line-height:40px;font-weight:600">IBM Plex Sans</div>
+        <div style="font-size:13px;line-height:18px;color:#5f5a53;text-wrap:pretty">Интерфейс и текст сообщений. Начертания 400, 500, 600 и курсив 400. Лицензия OFL, встраивается через QFontDatabase::addApplicationFont.</div>
+        <div style="font-size:15px;line-height:22px">Съешь же ещё этих мягких французских булок · 0123456789</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:20px;background:#fcfbf9;border:1px solid #d9d5cf;border-radius:6px">
+        <div style="font-family:'PT Mono',monospace;font-size:28px;line-height:40px">PT Mono</div>
+        <div style="font-size:13px;line-height:18px;color:#5f5a53;text-wrap:pretty">Время сообщений, код строкой и блоком, подробности ошибок. Одно начертание 400, OFL.</div>
+        <div style="font-family:'PT Mono',monospace;font-size:14px;line-height:22px">2026-11-01 08:14:04 · dial tcp</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:20px;background:#fcfbf9;border:1px solid #d9d5cf;border-radius:6px">
+        <div style="font-size:28px;line-height:40px">👍 🎉 🔥 👀</div>
+        <div style="font-size:13px;line-height:18px;color:#5f5a53;text-wrap:pretty">Noto Color Emoji встраивается и стоит в fallback после Plex Sans. Монохромные эмодзи на текущих скриншотах — ошибка выбора шрифта, в макетах эмодзи цветные.</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr) 230px;border-top:1px solid #d9d5cf">
+      <sc-for list="{{ type }}" as="t" hint-placeholder-count="8">
+        <div style="padding:12px 12px 12px 0;color:#5f5a53;border-bottom:1px solid #e9e5e0">{{ t.role }}</div>
+        <div style="padding:12px;border-bottom:1px solid #e9e5e0;display:flex;align-items:center;min-width:0"><span style="font-family:{{ t.ff }};font-size:{{ t.fs }}px;line-height:{{ t.lh }}px;font-weight:{{ t.fw }};font-style:{{ t.st }};color:{{ t.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.sample }}</span></div>
+        <div style="padding:12px 0 12px 12px;font-family:'PT Mono',monospace;font-size:12px;line-height:18px;color:#5f5a53;border-bottom:1px solid #e9e5e0">{{ t.spec }}</div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:48px">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Отступы</h2>
+      <div style="display:flex;flex-direction:column;border-top:1px solid #d9d5cf">
+        <sc-for list="{{ space }}" as="s" hint-placeholder-count="9">
+          <div style="display:grid;grid-template-columns:52px 40px minmax(0,1fr);gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #e9e5e0">
+            <span style="font-family:'PT Mono',monospace;font-size:13px">{{ s.v }} px</span>
+            <span style="height:12px;width:{{ s.v }}px;background:#007255"></span>
+            <span style="color:#5f5a53;font-size:13px;line-height:18px">{{ s.use }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Радиусы</h2>
+      <div style="display:flex;flex-direction:column;border-top:1px solid #d9d5cf">
+        <sc-for list="{{ radii }}" as="r" hint-placeholder-count="6">
+          <div style="display:grid;grid-template-columns:52px 40px minmax(0,1fr);gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #e9e5e0">
+            <span style="font-family:'PT Mono',monospace;font-size:13px">{{ r.v }}</span>
+            <span style="width:32px;height:24px;box-sizing:border-box;border:1px solid #bcb6b0;background:#fcfbf9;border-radius:{{ r.css }}"></span>
+            <span style="color:#5f5a53;font-size:13px;line-height:18px">{{ r.use }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <h2 style="margin:16px 0 0;font-size:22px;line-height:28px;font-weight:600">Рамки</h2>
+      <div style="display:flex;flex-direction:column;border-top:1px solid #d9d5cf">
+        <sc-for list="{{ borders }}" as="b" hint-placeholder-count="6">
+          <div style="display:grid;grid-template-columns:52px 40px minmax(0,1fr);gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #e9e5e0">
+            <span style="font-family:'PT Mono',monospace;font-size:13px">{{ b.v }}</span>
+            <span style="width:32px;height:{{ b.w }}px;background:{{ b.c }}"></span>
+            <span style="color:#5f5a53;font-size:13px;line-height:18px">{{ b.use }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:16px">
+    <h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Размеры</h2>
+    <div style="display:grid;grid-template-columns:minmax(180px,260px) minmax(0,1fr);border-top:1px solid #d9d5cf">
+      <sc-for list="{{ sizes }}" as="s" hint-placeholder-count="10">
+        <sc-if value="{{ s.group }}" hint-placeholder-val="{{ false }}"><div style="grid-column:1 / -1;padding:18px 0 6px;font-size:13px;line-height:18px;font-weight:600;border-bottom:1px solid #d9d5cf">{{ s.group }}</div></sc-if>
+        <sc-if value="{{ s.k }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:8px 12px 8px 0;color:#5f5a53;border-bottom:1px solid #e9e5e0">{{ s.k }}</div>
+          <div style="padding:8px 0 8px 12px;border-bottom:1px solid #e9e5e0;text-wrap:pretty">{{ s.v }}</div>
+        </sc-if>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:16px">
+    <h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">Иконки</h2>
+    <p style="margin:0;font-size:13px;line-height:18px;color:#5f5a53;max-width:780px;text-wrap:pretty">Монохромные SVG в assets/icons. Почти все взяты из Lucide (лицензия ISC): сетка 24, штрих 2. Рисуем их в 16 px, в шапках и кнопках — в 18 px. Четыре иконки статуса собственные, на сетке 16. Цвет задаёт код через QIcon с подменой currentColor.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));border-top:1px solid #d9d5cf;border-left:1px solid #d9d5cf">
+      <sc-for list="{{ icons }}" as="i" hint-placeholder-count="12">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-right:1px solid #d9d5cf;border-bottom:1px solid #d9d5cf">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:16px;height:16px;background:{{ i.c }};-webkit-mask:url({{ i.src }}) center/16px no-repeat;mask:url({{ i.src }}) center/16px no-repeat"></span>
+            <span style="width:24px;height:24px;background:{{ i.c }};-webkit-mask:url({{ i.src }}) center/24px no-repeat;mask:url({{ i.src }}) center/24px no-repeat"></span>
+            <span style="width:32px;height:32px;border-radius:4px;background:#1b1916;display:flex;align-items:center;justify-content:center"><span style="width:16px;height:16px;background:{{ i.cd }};-webkit-mask:url({{ i.src }}) center/16px no-repeat;mask:url({{ i.src }}) center/16px no-repeat"></span></span>
+          </div>
+          <div style="display:flex;flex-direction:column"><span style="font-size:13px;line-height:18px;font-weight:600">{{ i.use }}</span><span style="font-family:'PT Mono',monospace;font-size:11px;line-height:16px;color:#5f5a53">{{ i.n }}.svg</span></div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:16px">
+    <h2 style="margin:0;font-size:22px;line-height:28px;font-weight:600">QSS — основа светлой темы</h2>
+    <p style="margin:0;font-size:13px;line-height:18px;color:#5f5a53;max-width:780px;text-wrap:pretty">Фрагмент для виджетов вне ленты. Тёмная тема — та же таблица стилей с подставленными значениями из правой колонки.</p>
+    <div style="background:#211d18;color:#e9e6e1;padding:20px 24px;border-radius:6px;font-family:'PT Mono',monospace;font-size:13px;line-height:20px;overflow:auto">
+      <sc-for list="{{ qss }}" as="q" hint-placeholder-count="10"><div style="white-space:pre;min-height:20px;color:{{ q.c }}">{{ q.v }}</div></sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const C = (token, use, l, d) => ({ token, use, l, d });
+    const G = group => ({ group });
+    const colors = [
+      G('Поверхности'),
+      C('--win', 'Окно: меню, строка состояния, фон формы входа', '#f6f4f1', '#1b1916'),
+      C('--side', 'Сайдбар, полоса команд', '#f1ede9', '#151311'),
+      C('--surf', 'Лента, шапка канала, панель треда, поля, карточки, меню', '#fcfbf9', '#201e1b'),
+      C('--surf2', 'Код, файлы, вложения интеграций, шапка таблицы, неактивные поля', '#eeebe6', '#2b2825'),
+      C('--hover', 'Наведение на виджеты: строки сайдбара, кнопки, пункты меню', '#e9e5e0', '#282623'),
+      G('Текст'),
+      C('--tx', 'Основной текст, автор, непрочитанный канал', '#211d18', '#e9e6e1'),
+      C('--tx2', 'Время, назначение канала, прочитанные каналы, подписи', '#5f5a53', '#a8a49e'),
+      C('--tx3', 'Плейсхолдер, неактивный текст', '#847f79', '#78746e'),
+      G('Рамки'),
+      C('--line', 'Разделители колонок, строки списков, рамки карточек', '#d9d5cf', '#383531'),
+      C('--line2', 'Рамки полей и кнопок, полоса цитаты, ползунок прокрутки', '#bcb6b0', '#504c47'),
+      G('Акцент и выделение'),
+      C('--acc', 'Ссылки, основная кнопка, счётчик упоминаний, фокус', '#007255', '#5ec4a1'),
+      C('--acc-h', 'Наведение и нажатие основной кнопки', '#006145', '#7cd6b5'),
+      C('--acc-w', 'Выбранная строка сайдбара и списка тредов, своя реакция', '#d4f2e5', '#193a2e'),
+      C('--sel-tx', 'Текст выбранной строки, число в своей реакции', '#003927', '#cff1e3'),
+      C('--on-acc', 'Текст и иконки на акценте', '#fcfcfc', '#071a13'),
+      C('--selbg', 'Выделение текста в ленте и полях (QPalette::Highlight)', '#afe2cd', '#285847'),
+      G('Упоминания'),
+      C('--men-bg', 'Фон фрагмента @alice, @channel, @all, @here', '#f6dd90', '#755914'),
+      C('--men-tx', 'Текст на этом фоне', '#4f3005', '#fef2cc'),
+      C('--men-row', 'Фон сообщения, в котором упомянули меня', '#fdf6e0', '#2b2417'),
+      G('Семантические'),
+      C('--good', 'Статус «в сети», алерт good', '#428731', '#71be60'),
+      C('--warn', 'Статус «отошёл», алерт warning, «нет соединения»', '#b77610', '#e8aa4e'),
+      C('--dang', 'Ошибки, «не беспокоить», алерт danger, отметка «Новые сообщения»', '#c13c36', '#ea6b60'),
+      C('--good-bg', 'Фон плашки успеха', '#e3f5df', '#1c2b18'),
+      C('--warn-bg', 'Плашка «нет соединения», «сессия истекла»', '#fdefd2', '#332710'),
+      C('--dang-bg', 'Плашка ошибки, файл с ошибкой загрузки', '#ffe7e4', '#3a211e'),
+      G('Аватары: фон / буквы'),
+      C('--av-1', 'alice', '#c9cdf9', '#464873'), C('--av-1-t', '', '#35366b', '#d7dbff'),
+      C('--av-2', 'bob', '#a5dbec', '#115667'), C('--av-2-t', '', '#00475d', '#bae7f5'),
+      C('--av-3', 'carol', '#edc2dd', '#663d59'), C('--av-3-t', '', '#5b284c', '#f6d2e9'),
+      C('--av-4', 'dave', '#b6ddbd', '#2f5838'), C('--av-4-t', '', '#0d4a22', '#c8e8cd'),
+      C('--av-5', 'боты', '#f5c5b4', '#6d3f2f'), C('--av-5-t', '', '#632914', '#fdd4c6')
+    ];
+    const P = "'IBM Plex Sans',sans-serif", Mo = "'PT Mono',monospace";
+    const T = (role, sample, ff, fs, lh, fw, spec, o = {}) => ({ role, sample, ff, fs, lh, fw, spec, st: 'normal', c: '#211d18', ...o });
+    const type = [
+      T('Имя канала, заголовок панели', '# Town Square', P, 16, 22, 600, 'Plex 16/22 · 600'),
+      T('Автор', 'carol', P, 14, 20, 600, 'Plex 14/20 · 600'),
+      T('Текст сообщения', 'Да, всё ок, графики ровные.', P, 14, 20, 400, 'Plex 14/20 · 400 (простор. 14/22)'),
+      T('Время', '08:14', Mo, 12, 16, 400, 'PT Mono 12/16 · --tx2 · полное в подсказке', { c: '#5f5a53' }),
+      T('Назначение, подписи', 'Общий канал команды', P, 13, 18, 400, 'Plex 13/18 · --tx2', { c: '#5f5a53' }),
+      T('Системное сообщение', 'dave joined the channel.', P, 13, 18, 400, 'Plex 13/18 · курсив · --tx2', { st: 'italic', c: '#5f5a53' }),
+      T('Группа сайдбара, разделитель дней', 'Личные сообщения', P, 12, 16, 600, 'Plex 12/16 · 600 · --tx2', { c: '#5f5a53' }),
+      T('Строка сайдбара', 'backend', P, 14, 20, 400, 'Plex 14/20 · 400, непрочит. 600'),
+      T('Код строкой и блоком', 'cache: ttl: 30s', Mo, 13, 18, 400, 'PT Mono 13/18'),
+      T('Заголовок 1 в сообщении', 'Релиз 2.4', P, 20, 26, 600, 'Plex 20/26 · 600 · отступ 8/4'),
+      T('Заголовок 2', 'Что вошло', P, 17, 24, 600, 'Plex 17/24 · 600 · отступ 6/4'),
+      T('Заголовок 3', 'Конфиг', P, 15, 20, 600, 'Plex 15/20 · 600 · отступ 4/2'),
+      T('Кнопка, ссылка-действие', 'Сохранить…', P, 13, 18, 500, 'Plex 13/18 · 500'),
+      T('Счётчик, метки', '12', P, 11, 18, 600, 'Plex 11/18 · 600'),
+      T('Заголовок формы входа', 'matterqute', P, 20, 26, 600, 'Plex 20/26 · 600')
+    ];
+    const space = [
+      [2, 'Между иконкой и счётчиком в реакции, между строками продолжения'],
+      [4, 'Между реакциями, полями формы и подписью, отступ строки сайдбара от края'],
+      [6, 'Над блоком вложений и реакций, сверху у группы сообщений (компакт.)'],
+      [8, 'Между иконкой и текстом, кнопками, между группами сайдбара'],
+      [10, 'Поля кнопок и полей ввода по горизонтали, строка состояния'],
+      [12, 'Сверху у группы сообщений (простор.), поля вложения интеграции'],
+      [16, 'Поля ленты, шапки и панели треда слева и справа, карточка'],
+      [24, 'Поля формы входа'],
+      [32, 'Пустые состояния: отступ от краёв колонки']
+    ].map(([v, use]) => ({ v, use }));
+    const radii = [
+      ['0', '0', 'Всё в тексте ленты: упоминания, код, цитаты, интеграции, файлы'],
+      ['3', '3px', 'Метки на превью (GIF, длительность), кнопки-иконки 22 px'],
+      ['4', '4px', 'Кнопки, поля, строки сайдбара, превью картинок'],
+      ['6', '6px', 'Поле ввода сообщения, форма входа, карточка, меню, плитка команды'],
+      ['12', '12px', 'Реакции и «+» (картинки, нарисованные кодом)'],
+      ['50%', '50%', 'Аватары, статус, счётчик']
+    ].map(([v, css, use]) => ({ v, css, use }));
+    const borders = [
+      ['1 line', 1, '#d9d5cf', 'Разделители колонок и шапок, строки списков'],
+      ['1 line2', 1, '#bcb6b0', 'Поля, вторичные кнопки, «+» в реакциях'],
+      ['2 acc', 2, '#007255', 'Фокус поля: рамка 2 px, внутренний отступ меньше на 1 px'],
+      ['1 dang', 1, '#c13c36', 'Ошибка в поле, отметка «Новые сообщения»'],
+      ['3 line2', 3, '#bcb6b0', 'Полоса цитаты (ячейка таблицы шириной 3)'],
+      ['4 цвет', 4, '#c13c36', 'Полоса вложения интеграции (ячейка таблицы шириной 4)']
+    ].map(([v, w, c, use]) => ({ v, w, c, use }));
+    const S = (k, v) => ({ k, v });
+    const sizes = [
+      G('Окно'),
+      S('Меню', '26'), S('Строка состояния', '24'), S('Шапка канала и треда', '52, в одну или две строки'),
+      S('Сайдбар', '240 в окне 1280, 200 в окне 900; от 180 до 360'),
+      S('Панель треда', '380 в окне 1280, 300 в окне 900; от 280'),
+      S('Колонка канала', 'Остаток ширины, не меньше 360'),
+      S('Полоса команд (вариант)', '56, плитка 36×36'),
+      G('Сайдбар'),
+      S('Строка', '28 в компактном режиме, 32 в просторном; поля 0 6, отступ от края 6'),
+      S('Группа', '28; вложенные строки сдвинуты на 24'),
+      S('Иконка типа', '16; точка статуса 10, на аватаре 8'),
+      S('Счётчик', 'Высота 18, от 18 в ширину, поля 0 5'),
+      G('Лента'),
+      S('Поля', '16 слева и справа; с аватарами текст сдвинут на 42 (аватар 32 + 10)'),
+      S('Группа сообщений', 'Сверху 6 и снизу 4 в компактном режиме, 12 и 6 в просторном; продолжение — 0 сверху'),
+      S('Превью картинки', 'Не увеличивать. Ширина не больше ширины ленты − 32 (с аватарами − 74), высота не больше 400, пропорции сохраняются. Картинка меньше этих пределов — 1:1. Рамка-заглушка не меньше 48×48.'),
+      S('GIF и видео', 'Те же пределы; метка GIF, кнопка воспроизведения 48'),
+      S('Эмодзи в тексте', 'Системные — шрифтом, по кеглю строки (14). Кастомные — картинка 20×20. Сообщение из одних эмодзи — 32.'),
+      S('Реакция', 'Картинка высотой 24, радиус 12, эмодзи 16, поля 6 и 8; «+» 32×24; между реакциями 4'),
+      S('Аватар', '32 в ленте, 20 в сайдбаре, 56 в карточке'),
+      G('Виджеты'),
+      S('Кнопка', 'Высота 32, поля 0 14…18; малая 28; кнопка-иконка 28×28 или 32×32'),
+      S('Поле', 'Высота 32, поля 0 10'),
+      S('Поле ввода сообщения', 'От 40 (одна строка) до 7 строк (около 168), дальше прокрутка; 📎 32×32'),
+      S('Плашка файла над полем', 'Высота 36, полоса прогресса 2'),
+      S('Карточка пользователя', 'Ширина 280, поля 16'),
+      S('Форма входа', 'Ширина 360, поля 24')
+    ];
+    const ic = [
+      ['hash', 'Открытый канал'], ['lock', 'Приватный канал'], ['status-online', 'Личка (тип = статус)'], ['users', 'Группа'],
+      ['messages-square', 'Треды, N ответов'], ['reply', 'Ответить в треде'], ['corner-down-right', 'Ответ в канале'],
+      ['smile-plus', 'Реакция'], ['paperclip', 'Прикрепить'], ['external-link', 'Открыть'], ['download', 'Сохранить'], ['x', 'Закрыть'],
+      ['status-online', 'В сети', '#428731', '#71be60'], ['status-away', 'Отошёл', '#b77610', '#e8aa4e'], ['status-dnd', 'Не беспокоить', '#c13c36', '#ea6b60'], ['status-offline', 'Не в сети', '#847f79', '#78746e'],
+      ['bell-off', 'Заглушённый канал'], ['chevron-down', 'Группа раскрыта'], ['chevron-right', 'Группа свёрнута'], ['file-text', 'Файл'],
+      ['play', 'Воспроизвести'], ['volume-2', 'Звук'], ['maximize', 'На весь экран'], ['loader-circle', 'Загрузка'],
+      ['wifi-off', 'Нет связи'], ['refresh-cw', 'Повторить'], ['triangle-alert', 'Ошибка, предупреждение'], ['message-circle', 'Написать'],
+      ['copy', 'Копировать'], ['log-out', 'Выйти из аккаунта'], ['server', 'Сервер'], ['check', 'Чек-лист']
+    ];
+    const icons = ic.map(([n, use, c, cd]) => ({ n, use, src: 'assets/icons/' + n + '.svg', c: c || '#211d18', cd: cd || '#e9e6e1' }));
+    const qssSrc = [
+      ['/* сайдбар: QTreeView, делегат рисует иконку и счётчик */', 'c'],
+      ['QTreeView#sidebar { background: #f1ede9; border: none; border-right: 1px solid #d9d5cf; }', ''],
+      ['QTreeView#sidebar::item { height: 28px; padding: 0 6px; margin: 0 6px; border-radius: 4px; color: #5f5a53; }', ''],
+      ['QTreeView#sidebar::item:hover { background: #e9e5e0; }', ''],
+      ['QTreeView#sidebar::item:selected { background: #d4f2e5; color: #003927; }', ''],
+      ['', ''],
+      ['/* поля */', 'c'],
+      ['QLineEdit { height: 32px; padding: 0 10px; background: #fcfbf9; color: #211d18;', ''],
+      ['            border: 1px solid #bcb6b0; border-radius: 4px; selection-background-color: #afe2cd; }', ''],
+      ['QLineEdit:focus { border: 2px solid #007255; padding: 0 9px; }', ''],
+      ['QLineEdit[error="true"] { border-color: #c13c36; }', ''],
+      ['QLineEdit:disabled { background: #eeebe6; color: #5f5a53; border-color: #d9d5cf; }', ''],
+      ['', ''],
+      ['/* кнопки */', 'c'],
+      ['QPushButton { height: 32px; padding: 0 14px; border: 1px solid #bcb6b0; border-radius: 4px;', ''],
+      ['              background: #fcfbf9; color: #211d18; font-weight: 500; }', ''],
+      ['QPushButton:hover { background: #e9e5e0; }', ''],
+      ['QPushButton:pressed { background: #d9d5cf; }', ''],
+      ['QPushButton[primary="true"] { background: #007255; border-color: #007255; color: #fcfcfc; }', ''],
+      ['QPushButton[primary="true"]:hover, QPushButton[primary="true"]:pressed { background: #006145; }', ''],
+      ['QPushButton:disabled { background: #eeebe6; border-color: #d9d5cf; color: #847f79; }', ''],
+      ['', ''],
+      ['/* поле ввода сообщения: QFrame с QTextEdit без рамки внутри */', 'c'],
+      ['QFrame#composer { background: #fcfbf9; border: 1px solid #bcb6b0; border-radius: 6px; padding: 1px; }', ''],
+      ['QFrame#composer[focus="true"] { border: 2px solid #007255; padding: 0; }', ''],
+      ['', ''],
+      ['/* лента: QTextBrowser, один документ */', 'c'],
+      ['QTextBrowser#feed { background: #fcfbf9; border: none; selection-background-color: #afe2cd; }', ''],
+      ['QScrollBar:vertical { width: 10px; background: transparent; }', ''],
+      ['QScrollBar::handle:vertical { background: #bcb6b0; border-radius: 4px; min-height: 32px; margin: 2px 2px 2px 0; }', '']
+    ];
+    const qss = qssSrc.map(([v, k]) => ({ v: v || ' ', c: k === 'c' ? '#a8a49e' : '#e9e6e1' }));
+    return { colors, type, space, radii, borders, sizes, icons, qss };
+  }
+}
+</script>
+</body>
+</html>

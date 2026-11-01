@@ -8,6 +8,7 @@ package markdown
 
 import (
 	"bytes"
+	"fmt"
 	"html"
 	"net/url"
 	"regexp"
@@ -24,6 +25,7 @@ import (
 	"github.com/yuin/goldmark/util"
 
 	"matterqute/internal/emoji"
+	"matterqute/internal/theme"
 )
 
 // Ссылки на сущности Mattermost внутри текста; их обрабатывает UI, а не браузер.
@@ -40,15 +42,21 @@ type Options struct {
 	// CustomEmoji — путь к картинке кастомного эмодзи на диске, "" — нет (или ещё
 	// не загружена: вызывающий сам решает, догружать ли и перерисовывать).
 	CustomEmoji func(name string) string
+	// Palette — цвета темы для упоминаний, кода, цитат, таблиц; пусто — светлая.
+	Palette theme.Palette
 }
 
 // Renderer не потокобезопасен: держите по одному на поток (у нас — главный).
 type Renderer struct {
-	md goldmark.Markdown
+	md  goldmark.Markdown
+	pal theme.Palette
 }
 
 func New(o Options) *Renderer {
-	return &Renderer{md: goldmark.New(
+	if o.Palette.Acc == "" {
+		o.Palette = theme.Light
+	}
+	return &Renderer{pal: o.Palette, md: goldmark.New(
 		goldmark.WithExtensions(extension.Strikethrough, extension.Table, extension.Linkify, extension.TaskList),
 		goldmark.WithParserOptions(parser.WithASTTransformers(util.Prioritized(mergeText{}, 10000))),
 		goldmark.WithRendererOptions(
@@ -60,8 +68,16 @@ func New(o Options) *Renderer {
 
 var plainRenderer = New(Options{})
 
-// Render — разметка без упоминаний и каналов (заголовки каналов и т. п.).
+// Render — разметка без ~каналов и кастомных эмодзи, светлая тема.
 func Render(text string) string { return plainRenderer.Render(text) }
+
+// RenderInline — короткий текст в одну строку (заголовок канала): без
+// обёртки-абзаца, переносы строк — пробелами.
+func RenderInline(text string, pal theme.Palette) string {
+	out := New(Options{Palette: pal}).Render(strings.Join(strings.Fields(text), " "))
+	out = strings.TrimPrefix(out, `<p style="margin:0">`)
+	return strings.TrimSuffix(out, "</p>")
+}
 
 func (r *Renderer) Render(text string) string {
 	var buf bytes.Buffer
@@ -113,7 +129,9 @@ func (r *qtRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(ast.KindRawHTML, r.rawHTML)
 	reg.Register(ast.KindImage, r.image)
 	reg.Register(ast.KindBlockquote, r.blockquote)
+	reg.Register(ast.KindHeading, r.heading)
 	reg.Register(east.KindTable, r.table)
+	reg.Register(east.KindTableCell, r.tableCell)
 	reg.Register(east.KindTaskCheckBox, r.taskCheckBox)
 }
 
@@ -198,19 +216,20 @@ func (r *qtRenderer) writeEntities(w util.BufWriter, value []byte) {
 }
 
 func (r *qtRenderer) mention(name string) string {
+	p := r.o.Palette
 	lower := strings.ToLower(name)
-	switch {
-	case lower == "channel" || lower == "all" || lower == "here" || (r.o.Me != "" && lower == strings.ToLower(r.o.Me)):
-		return `<span style="background-color:#ffe58f"><b>@` + html.EscapeString(name) + `</b></span>`
+	style := fmt.Sprintf("color:%s;font-weight:600;text-decoration:none", p.Acc)
+	if lower == "channel" || lower == "all" || lower == "here" || (r.o.Me != "" && lower == strings.ToLower(r.o.Me)) {
+		style = fmt.Sprintf("background-color:%s;color:%s;font-weight:600;text-decoration:none", p.MenBg, p.MenTx)
 	}
-	return `<a href="` + UserLinkScheme + url.PathEscape(lower) + `" style="text-decoration:none"><b>@` + html.EscapeString(name) + `</b></a>`
+	return `<a href="` + UserLinkScheme + url.PathEscape(lower) + `" style="` + style + `">@` + html.EscapeString(name) + `</a>`
 }
 
 func (r *qtRenderer) channel(name string) string {
 	if r.o.ChannelExists == nil || !r.o.ChannelExists(name) {
 		return ""
 	}
-	return `<a href="` + ChannelLinkScheme + url.PathEscape(name) + `">~` + html.EscapeString(name) + `</a>`
+	return `<a href="` + ChannelLinkScheme + url.PathEscape(name) + `" style="color:` + r.o.Palette.Acc + `">~` + html.EscapeString(name) + `</a>`
 }
 
 func (r *qtRenderer) emoji(name string) string {
@@ -239,7 +258,7 @@ func (r *qtRenderer) codeSpan(w util.BufWriter, source []byte, n ast.Node, enter
 	if !entering {
 		return ast.WalkContinue, nil
 	}
-	w.WriteString(`<code style="background-color:#ececec">`)
+	w.WriteString(`<span style="font-family:'PT Mono';font-size:13px;background-color:` + r.o.Palette.Surf2 + `">`)
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		v := c.(*ast.Text).Segment.Value(source)
 		r.Writer.RawWrite(w, bytes.TrimSuffix(v, []byte("\n")))
@@ -247,7 +266,7 @@ func (r *qtRenderer) codeSpan(w util.BufWriter, source []byte, n ast.Node, enter
 			w.WriteByte(' ')
 		}
 	}
-	w.WriteString("</code>")
+	w.WriteString("</span>")
 	return ast.WalkSkipChildren, nil
 }
 
@@ -257,8 +276,8 @@ func (r *qtRenderer) codeBlock(w util.BufWriter, source []byte, n ast.Node, ente
 	if !entering {
 		return ast.WalkContinue, nil
 	}
-	w.WriteString(`<table width="100%" cellspacing="0" cellpadding="6" bgcolor="#f4f4f4" style="margin-top:4px;margin-bottom:4px"><tr><td>` +
-		`<p style="margin:0;white-space:pre-wrap;font-family:monospace">`)
+	w.WriteString(`<table width="100%" cellspacing="0" cellpadding="8" bgcolor="` + r.o.Palette.Surf2 + `" style="margin-top:4px;margin-bottom:4px"><tr><td>` +
+		`<p style="margin:0;white-space:pre-wrap;font-family:'PT Mono';font-size:13px">`)
 	lines := n.Lines()
 	for i := range lines.Len() {
 		seg := lines.At(i)
@@ -325,22 +344,63 @@ func (r *qtRenderer) image(w util.BufWriter, source []byte, node ast.Node, enter
 	return ast.WalkSkipChildren, nil
 }
 
+// blockquote — полоса 3 px отдельной ячейкой: рамки у абзаца Qt не рисует.
 func (r *qtRenderer) blockquote(w util.BufWriter, _ []byte, _ ast.Node, entering bool) (ast.WalkStatus, error) {
+	p := r.o.Palette
 	if entering {
-		w.WriteString(`<blockquote style="color:#555555;margin-left:16px;margin-top:4px;margin-bottom:4px">` + "\n")
+		fmt.Fprintf(w, `<table cellspacing="0" cellpadding="0" style="margin-top:4px;margin-bottom:4px"><tr><td width="3" bgcolor="%s"></td><td style="padding-left:10px;padding-right:10px;color:%s">`+"\n", p.Line2, p.Tx2)
 	} else {
-		w.WriteString("</blockquote>\n")
+		w.WriteString("</td></tr></table>\n")
 	}
 	return ast.WalkContinue, nil
 }
 
+// table — сетка 1 px из фона таблицы, просвечивающего через cellspacing:
+// border-collapse в Qt 6.8 прячет рамки целиком.
 func (r *qtRenderer) table(w util.BufWriter, _ []byte, _ ast.Node, entering bool) (ast.WalkStatus, error) {
 	if entering {
-		// border-collapse в Qt 6.8 прячет рамки целиком — не использовать.
-		w.WriteString(`<table border="1" cellspacing="0" cellpadding="4" style="border-style:solid;border-color:#c0c0c0;margin-top:4px;margin-bottom:4px">` + "\n")
+		fmt.Fprintf(w, `<table cellspacing="1" cellpadding="3" bgcolor="%s" style="margin-top:4px;margin-bottom:4px">`+"\n", r.o.Palette.Line)
 	} else {
 		w.WriteString("</table>\n")
 	}
+	return ast.WalkContinue, nil
+}
+
+func (r *qtRenderer) tableCell(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	n := node.(*east.TableCell)
+	tag, bg := "td", r.o.Palette.Surf
+	if n.Parent().Kind() == east.KindTableHeader {
+		tag, bg = "th", r.o.Palette.Surf2
+	}
+	if !entering {
+		w.WriteString("</" + tag + ">\n")
+		return ast.WalkContinue, nil
+	}
+	align := "left"
+	switch n.Alignment {
+	case east.AlignCenter:
+		align = "center"
+	case east.AlignRight:
+		align = "right"
+	}
+	fmt.Fprintf(w, `<%s bgcolor="%s" align="%s">`, tag, bg, align)
+	return ast.WalkContinue, nil
+}
+
+// heading — абзацем со своим кеглем: у <h1>…<h3> в Qt слишком крупные поля.
+func (r *qtRenderer) heading(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		w.WriteString("</p>\n")
+		return ast.WalkContinue, nil
+	}
+	size, top, bottom := 15, 4, 2
+	switch node.(*ast.Heading).Level {
+	case 1:
+		size, top, bottom = 20, 8, 4
+	case 2:
+		size, top, bottom = 17, 6, 4
+	}
+	fmt.Fprintf(w, `<p style="font-size:%dpx;font-weight:600;margin-top:%dpx;margin-bottom:%dpx">`, size, top, bottom)
 	return ast.WalkContinue, nil
 }
 

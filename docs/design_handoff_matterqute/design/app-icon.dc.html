@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+<style>body{margin:0;background:#e4e0da}a{color:#007255}a:hover{color:#006145}</style>
+</helmet>
+<div style="padding:80px;display:flex;flex-direction:column;gap:56px;font-family:'IBM Plex Sans',sans-serif;font-size:16px;line-height:24px;color:#211d18;width:max-content">
+  <div style="display:flex;flex-direction:column;gap:16px;max-width:1100px">
+    <div style="display:flex;gap:20px;font-size:16px;line-height:22px"><a href="tokens.dc.html">Токены</a><a href="components.dc.html">Компоненты</a><a href="screens.dc.html">Экраны</a><a href="decisions.dc.html">Открытые вопросы</a><span style="font-weight:600">Иконка</span></div>
+    <div style="font-size:44px;line-height:52px;font-weight:600">Иконка приложения — идеи</div>
+    <div style="font-size:20px;line-height:30px;color:#5f5a53;text-wrap:pretty">Пять направлений на одном зелёном #008A67, том же оттенке, что новый акцент интерфейса. Каждая идея показана в размерах 192, 64, 32 и 16, а также монохромно в трее: на тёмной и светлой панели, со счётчиком и без. Это эскизы из простых фигур. После выбора направления финальную иконку стоит отрисовать в векторе. Выбран вариант 1b: он уже стоит в форме входа, в трее и в уведомлении на странице «Компоненты».</div>
+  </div>
+
+  <section style="display:flex;gap:40px;align-items:stretch">
+    <sc-for list="{{ ideas }}" as="i" hint-placeholder-count="5">
+      <div id="{{ i.id }}" data-screen-label="{{ i.id }} {{ i.name }}" style="width:360px;box-sizing:border-box;padding:28px;background:#fcfbf9;border:1px solid #d9d5cf;border-radius:8px;display:flex;flex-direction:column;gap:22px">
+        <div style="display:flex;align-items:center;gap:12px"><span style="font-family:'PT Mono',monospace;font-size:18px;font-weight:600;padding:2px 10px;background:#211d18;color:#f6f4f1;border-radius:4px">{{ i.id }}</span><span style="font-size:22px;line-height:28px;font-weight:600">{{ i.name }}</span><sc-if value="{{ i.chosen }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;line-height:18px;font-weight:600;padding:2px 10px;border-radius:12px;background:#428731;color:#fcfcfc">выбрано</span></sc-if></div>
+        <div style="display:flex;justify-content:center;padding:8px 0"><dc-import name="AppIcon" concept="{{ i.c }}" size="192" hint-size="192px,192px"></dc-import></div>
+        <div style="display:flex;align-items:flex-end;gap:20px;justify-content:center">
+          <dc-import name="AppIcon" concept="{{ i.c }}" size="64" hint-size="64px,64px"></dc-import>
+          <dc-import name="AppIcon" concept="{{ i.c }}" size="32" hint-size="32px,32px"></dc-import>
+          <dc-import name="AppIcon" concept="{{ i.c }}" size="16" hint-size="16px,16px"></dc-import>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div style="flex:1;height:44px;display:flex;align-items:center;justify-content:center;gap:22px;background:#1b1916;border-radius:4px">
+            <dc-import name="AppIcon" concept="{{ i.c }}" size="22" mode="dark" hint-size="22px,22px"></dc-import>
+            <dc-import name="AppIcon" concept="{{ i.c }}" size="22" mode="dark" badge="2" hint-size="22px,22px"></dc-import>
+          </div>
+          <div style="flex:1;height:44px;display:flex;align-items:center;justify-content:center;gap:22px;background:#eeebe6;border:1px solid #d9d5cf;border-radius:4px;box-sizing:border-box">
+            <dc-import name="AppIcon" concept="{{ i.c }}" size="22" mode="light" hint-size="22px,22px"></dc-import>
+            <dc-import name="AppIcon" concept="{{ i.c }}" size="22" mode="light" badge="2" hint-size="22px,22px"></dc-import>
+          </div>
+        </div>
+        <div style="font-size:15px;line-height:22px;color:#5f5a53;text-wrap:pretty">{{ i.text }}</div>
+      </div>
+    </sc-for>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const ideas = [
+      ['1a', 'Q-пузырь', 'q', 'Облачко-кольцо с острым углом: одновременно буква Q (Qt, «qute») и облачко чата. Силуэт простой, держится в 16 px и в трее.'],
+      ['1b', 'Канал', 'hash', 'Облачко с решёткой: канал и разговор в одном знаке. Знакомо пользователям Mattermost и Slack, поэтому отличается от них меньше остальных.'],
+      ['1c', 'Лента', 'feed', 'Три строки с точками-аватарами, нижняя — свежее сообщение. Повторяет устройство окна: новое снизу. В 16 px строки сливаются.'],
+      ['1d', 'mq', 'mq', 'Буквенный знак набран тем же Plex Sans, что интерфейс. Самый нейтральный вариант. Читается в 32 px и выше, в трее остаются только буквы.'],
+      ['1e', 'Диалог', 'duo', 'Два облачка, переднее с тремя точками «печатает». Тёплый и дружелюбный знак. В трее точки превращаются в прорези.']
+    ].map(([id, name, c, text]) => ({ id, name, c, text, chosen: id === '1b' }));
+    return { ideas };
+  }
+}
+</script>
+</body>
+</html>

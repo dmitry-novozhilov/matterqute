@@ -24,7 +24,8 @@ type Server struct {
 
 type Config struct {
 	Servers []Server `json:"servers"`
-	Active  string   `json:"active"` // URL сервера, открытого последним
+	Active  string   `json:"active"`          // URL сервера, открытого последним
+	Theme   string   `json:"theme,omitempty"` // system, light, dark; пусто — system
 
 	path string
 }

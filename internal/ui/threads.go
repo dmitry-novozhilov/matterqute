@@ -6,6 +6,7 @@ import (
 	"html"
 	"slices"
 	"strings"
+	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
@@ -22,36 +23,38 @@ const threadIDRole = int(qt.UserRole) + 2
 // ThreadPanel — правая панель с открытым тредом.
 type ThreadPanel struct {
 	w        *qt.QWidget
-	title    *qt.QLabel
+	head     *header
 	feed     *Feed
 	composer *Composer
 }
 
 func NewThreadPanel(deps FeedDeps, onClose func()) *ThreadPanel {
 	p := &ThreadPanel{w: qt.NewQWidget2()}
-	p.title = newTextLabel(qt.RichText)
-	p.title.SetMargin(10)
-	closeBtn := qt.NewQPushButton3("✕")
-	closeBtn.SetFlat(true)
-	closeBtn.SetToolTip("Закрыть тред")
-	closeBtn.OnClicked(onClose)
-	head := qt.NewQHBoxLayout2()
-	head.AddWidget2(p.title.QWidget, 1)
-	head.AddWidget(closeBtn.QWidget)
-
+	p.head = newHeader("threadHeader", true, nil)
+	p.head.close.OnClicked(onClose)
 	p.feed = NewFeed(deps)
 	p.composer = NewComposer()
-	p.composer.edit.SetPlaceholderText("Ответить в тред… Enter — отправить")
+	p.composer.SetPlaceholder("Ответить в треде")
 
 	lay := qt.NewQVBoxLayout(p.w)
 	lay.SetContentsMargins(0, 0, 0, 0)
 	lay.SetSpacing(0)
-	lay.AddLayout(head.QLayout)
+	lay.AddWidget(p.head.f.QWidget)
 	lay.AddWidget2(p.feed.Widget(), 1)
 	lay.AddWidget(p.composer.Widget())
-	p.w.SetMinimumWidth(320)
 	p.w.SetVisible(false)
+	OnThemeChanged(p.restyle)
+	p.restyle()
 	return p
+}
+
+func (p *ThreadPanel) restyle() {
+	p.head.close.SetIcon(icon("x", Pal().Tx2, 18))
+}
+
+func (p *ThreadPanel) dispose() {
+	p.feed.dispose()
+	p.composer.dispose()
 }
 
 // threadView — открытый в панели тред.
@@ -65,8 +68,9 @@ type threadView struct {
 func (m *MainWindow) openThread(rootID string) {
 	t := &threadView{rootID: rootID, tl: &store.Timeline{}}
 	m.thread = t
-	m.panel.title.SetText("<b>Тред</b>")
-	m.panel.feed.Reset("Загрузка…")
+	m.panel.head.set(nil, m.threadTitleHTML(t), "")
+	m.panel.feed.Loading()
+	m.panel.feed.OnRetry = func() { m.openThread(rootID) }
 	m.panel.w.SetVisible(true)
 	m.panel.composer.SetEnabled(false)
 	m.panel.composer.SwitchTo(rootID)
@@ -82,7 +86,7 @@ func (m *MainWindow) openThread(rootID string) {
 			if err != nil {
 				err = fmt.Errorf("load thread %s: %w", rootID, err)
 				m.fail("load thread", err)
-				m.panel.feed.Reset(err.Error())
+				m.panel.feed.Error(err.Error())
 				return
 			}
 			posts := store.PostsOf(list)
@@ -96,7 +100,7 @@ func (m *MainWindow) openThread(rootID string) {
 				if root := t.tl.Get(rootID); root != nil {
 					t.channelID = root.ChannelId
 				}
-				m.panel.title.SetText(m.threadTitleHTML(t))
+				m.panel.head.set(nil, m.threadTitleHTML(t), "")
 				m.panel.feed.SetPosts(t.tl.Posts, false)
 				m.panel.composer.SetEnabled(t.channelID != "")
 				m.panel.composer.Focus()
@@ -108,10 +112,11 @@ func (m *MainWindow) openThread(rootID string) {
 	}()
 }
 
+// threadTitleHTML — «Тред · # Town Square» в шапке панели.
 func (m *MainWindow) threadTitleHTML(t *threadView) string {
-	s := "<b>Тред</b>"
+	s := "Тред"
 	if ch := m.st.Channel(t.channelID); ch != nil {
-		s += ` <span style="color:gray">` + html.EscapeString(channelPrefix(ch)+m.st.Title(ch)) + "</span>"
+		s += fmt.Sprintf(` <span style="font-size:13px;font-weight:400;color:%s">· %s</span>`, Pal().Tx2, html.EscapeString(channelPrefix(ch)+m.st.Title(ch)))
 	}
 	return s
 }
@@ -227,10 +232,37 @@ func (m *MainWindow) applyReaction(channelID string, r *model.Reaction, added bo
 func (m *MainWindow) showThreads() {
 	m.current = threadsID
 	m.center.SetCurrentWidget(m.threadsPage)
+	m.refreshHeader()
 	m.refreshThreads()
 	if m.OnChannelOpened != nil {
 		m.OnChannelOpened(threadsID)
 	}
+}
+
+// setupThreadsList — список тредов (QListWidget#threads): строки рисует
+// делегат, фон выбора и разделители — QSS.
+func (m *MainWindow) setupThreadsList() {
+	l := m.threadsList
+	setName(l.QObject, "threads")
+	l.SetFrameShape(qt.QFrame__NoFrame)
+	l.SetUniformItemSizes(true)
+	l.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
+	d := qt.NewQStyledItemDelegate2(l.QObject)
+	d.OnPaint(func(super func(*qt.QPainter, *qt.QStyleOptionViewItem, *qt.QModelIndex), p *qt.QPainter, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) {
+		super(p, opt, idx)
+		if it := l.ItemFromIndex(idx); it != nil {
+			m.paintThreadRow(p, opt, it.Data(threadIDRole).ToString())
+		}
+	})
+	d.OnSizeHint(func(super func(*qt.QStyleOptionViewItem, *qt.QModelIndex) *qt.QSize, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) *qt.QSize {
+		return qt.NewQSize2(opt.Rect().Width(), 80)
+	})
+	l.SetItemDelegate(d.QAbstractItemDelegate)
+	l.OnItemClicked(func(it *qt.QListWidgetItem) {
+		if id := it.Data(threadIDRole).ToString(); id != "" {
+			m.openThread(id)
+		}
+	})
 }
 
 // refreshThreads перерисовывает пункт «Треды» в сайдбаре и, если открыт, список.
@@ -239,40 +271,95 @@ func (m *MainWindow) refreshThreads() {
 	if m.current != threadsID {
 		return
 	}
+	selected := ""
+	if it := m.threadsList.CurrentItem(); it != nil {
+		selected = it.Data(threadIDRole).ToString()
+	}
 	m.threadsList.Clear()
 	threads := m.st.Threads()
 	if len(threads) == 0 {
-		m.threadsList.AddItem("Вы не подписаны ни на один тред.")
+		it := qt.NewQListWidgetItem()
+		it.SetFlags(qt.NoItemFlags)
+		m.threadsList.AddItemWithItem(it)
 		return
 	}
 	for _, t := range threads {
-		it := qt.NewQListWidgetItem2(m.threadItemText(t))
+		it := qt.NewQListWidgetItem()
 		it.SetData(threadIDRole, qt.NewQVariant11(t.PostId))
-		if t.UnreadReplies > 0 || t.UnreadMentions > 0 {
-			font := it.Font()
-			font.SetBold(true)
-			it.SetFont(font)
-		}
 		m.threadsList.AddItemWithItem(it)
+		if t.PostId == selected {
+			m.threadsList.SetCurrentItem(it)
+		}
 	}
 }
 
-func (m *MainWindow) threadItemText(t *model.ThreadResponse) string {
-	var head, snippet string
-	if p := t.Post; p != nil {
-		if ch := m.st.Channel(p.ChannelId); ch != nil {
+func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, id string) {
+	pal := Pal()
+	r := opt.Rect()
+	x, y, w := r.X()+16, r.Y(), r.Width()-32
+	text := func(s string, x, y, width, h int, f *qt.QFont, color string, align qt.AlignmentFlag) int {
+		fm := qt.NewQFontMetrics(f)
+		s = fm.ElidedText(s, qt.ElideRight, width)
+		p.SetFont(f)
+		p.SetPen(qt.NewQColor6(color))
+		p.DrawText7(x, y, width, h, int(align|qt.AlignVCenter), s)
+		return fm.HorizontalAdvance(s)
+	}
+	t := m.st.Thread(id)
+	if t == nil {
+		text("Тредов пока нет", r.X(), y, r.Width(), r.Height(), pixelFont(14, qt.QFont__Normal), pal.Tx2, qt.AlignHCenter)
+		return
+	}
+	unread := t.UnreadReplies > 0 || t.UnreadMentions > 0
+	small := pixelFont(12, qt.QFont__Normal)
+	mono := pixelFont(12, qt.QFont__Normal)
+	mono.SetFamilies([]string{"PT Mono"})
+
+	head, msg := "", ""
+	if root := t.Post; root != nil {
+		if ch := m.st.Channel(root.ChannelId); ch != nil {
 			head = channelPrefix(ch) + m.st.Title(ch) + " · "
 		}
-		head += m.st.Username(p.UserId)
-		snippet = firstLine(p.Message, 140)
+		head += m.st.Username(root.UserId)
+		msg = firstLine(root.Message, 200)
 	}
-	tail := pluralReplies(t.ReplyCount) + " · последний " + formatTime(t.LastReplyAt)
+	timeW := text(time.UnixMilli(t.LastReplyAt).Format("15:04"), x, y+10, w, 16, mono, pal.Tx2, qt.AlignRight)
+	text(head, x, y+10, w-timeW-8, 16, small, pal.Tx2, qt.AlignLeft)
+	weight := qt.QFont__Normal
+	if unread {
+		weight = qt.QFont__DemiBold
+	}
+	text(msg, x, y+28, w, 22, pixelFont(14, weight), pal.Tx, qt.AlignLeft)
+
+	meta, metaColor := pluralReplies(t.ReplyCount)+" · последний "+time.UnixMilli(t.LastReplyAt).Format("15:04"), pal.Tx2
+	mx := x
+	if unread {
+		metaColor = pal.Acc
+		p.Save()
+		p.SetRenderHint(qt.QPainter__Antialiasing)
+		p.SetPenWithStyle(qt.NoPen)
+		p.SetBrush(qt.NewQBrush3(qt.NewQColor6(pal.Acc)))
+		p.DrawEllipse2(mx, y+55, 6, 6)
+		p.Restore()
+		mx += 12
+	}
+	right := x + w
 	if t.UnreadMentions > 0 {
-		tail += fmt.Sprintf("  (упоминаний: %d)", t.UnreadMentions)
-	} else if t.UnreadReplies > 0 {
-		tail += fmt.Sprintf("  (новых: %d)", t.UnreadReplies)
+		badge := fmt.Sprintf("@ %d", t.UnreadMentions)
+		bf := pixelFont(11, qt.QFont__DemiBold)
+		bw := qt.NewQFontMetrics(bf).HorizontalAdvance(badge) + 14
+		p.Save()
+		p.SetRenderHint(qt.QPainter__Antialiasing)
+		p.SetPenWithStyle(qt.NoPen)
+		p.SetBrush(qt.NewQBrush3(qt.NewQColor6(pal.Acc)))
+		p.DrawRoundedRect(qt.NewQRectF4(float64(right-bw), float64(y+49), float64(bw), 18), 9, 9)
+		p.SetFont(bf)
+		p.SetPen(qt.NewQColor6(pal.OnAcc))
+		p.DrawText7(right-bw, y+49, bw, 18, int(qt.AlignCenter), badge)
+		p.Restore()
+		right -= bw + 8
 	}
-	return head + "\n" + snippet + "\n" + tail
+	text(meta, mx, y+50, right-mx, 16, small, metaColor, qt.AlignLeft)
 }
 
 func firstLine(s string, n int) string {

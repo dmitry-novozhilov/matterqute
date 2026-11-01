@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&amp;family=PT+Mono&amp;display=swap">
+</helmet>
+<div style="width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:var(--win);color:var(--tx);font-family:'IBM Plex Sans',sans-serif;font-size:14px;line-height:20px;overflow:hidden;border:1px solid var(--line2)">
+  <div style="height:26px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:2px;padding:0 4px;border-bottom:1px solid var(--line);font-size:13px;line-height:18px">
+    <span style="padding:2px 8px;border-radius:3px" style-hover="background:var(--hover)"><u>Ф</u>айл</span>
+    <span style="padding:2px 8px;border-radius:3px" style-hover="background:var(--hover)"><u>В</u>ид</span>
+    <span style="padding:2px 8px;border-radius:3px" style-hover="background:var(--hover)"><u>С</u>ервер</span>
+  </div>
+
+  <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
+      <dc-import name="LoginForm" state="{{ loginState }}" hint-size="360px,360px"></dc-import>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;min-height:0;display:flex">
+      <sc-if value="{{ teams }}" hint-placeholder-val="{{ false }}">
+        <div style="width:56px;flex:none;box-sizing:border-box;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0">
+          <div title="Разработка" style="width:36px;height:36px;border-radius:6px;background:var(--acc);color:var(--on-acc);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600">Р</div>
+          <div title="Эксплуатация" style="position:relative;width:36px;height:36px;box-sizing:border-box;border-radius:6px;border:1px solid var(--line2);background:var(--surf);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:var(--tx2)">Э</div>
+        </div>
+      </sc-if>
+
+      <div style="width:{{ sideW }}px;flex:none;box-sizing:border-box;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:6px 0;overflow:hidden">
+        <sc-if value="{{ teams }}" hint-placeholder-val="{{ false }}">
+          <div style="height:36px;flex:none;display:flex;align-items:center;gap:6px;padding:0 14px;margin-bottom:4px;font-size:15px;line-height:20px;font-weight:600">Разработка<span style="width:14px;height:14px;background:var(--tx2);-webkit-mask:url(assets/icons/chevron-down.svg) center/14px no-repeat;mask:url(assets/icons/chevron-down.svg) center/14px no-repeat"></span></div>
+        </sc-if>
+        <sc-for list="{{ side }}" as="r" hint-placeholder-count="12">
+          <sc-if value="{{ r.g }}" hint-placeholder-val="{{ false }}">
+            <div style="height:28px;flex:none;display:flex;align-items:center;gap:4px;padding:0 10px;margin-top:{{ r.mt }}px;font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)">
+              <span style="width:12px;height:12px;flex:none;background:var(--tx2);-webkit-mask:url(assets/icons/chevron-down.svg) center/12px no-repeat;mask:url(assets/icons/chevron-down.svg) center/12px no-repeat"></span><span>{{ r.label }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r.i }}" hint-placeholder-val="{{ true }}">
+            <div style="height:{{ rowH }}px;flex:none;display:flex;align-items:center;gap:8px;margin:0 6px;padding:0 6px 0 {{ r.pl }}px;border-radius:4px;background:{{ r.bg }};color:{{ r.c }};font-weight:{{ r.fw }};cursor:pointer" style-hover="background:var(--hover)">
+              <sc-if value="{{ r.showAv }}" hint-placeholder-val="{{ false }}">
+                <span style="position:relative;width:20px;height:20px;flex:none;border-radius:50%;background:{{ r.avBg }};color:{{ r.avTx }};display:flex;align-items:center;justify-content:center;font-size:9px;line-height:10px;font-weight:600">{{ r.ini }}<span style="position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;background:var(--side);display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;background:{{ r.ic }};-webkit-mask:url({{ r.icon }}) center/8px no-repeat;mask:url({{ r.icon }}) center/8px no-repeat"></span></span></span>
+              </sc-if>
+              <sc-if value="{{ r.showIcon }}" hint-placeholder-val="{{ true }}">
+                <span style="width:16px;height:16px;flex:none;background:{{ r.ic }};-webkit-mask:url({{ r.icon }}) center/{{ r.isz }} no-repeat;mask:url({{ r.icon }}) center/{{ r.isz }} no-repeat"></span>
+              </sc-if>
+              <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}<span style="font-weight:400;color:var(--tx2)">{{ r.suffix }}</span></span>
+              <sc-if value="{{ r.badge }}" hint-placeholder-val="{{ false }}"><span style="min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600;text-align:center">{{ r.badge }}</span></sc-if>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surf)">
+        <div style="height:52px;flex:none;box-sizing:border-box;padding:0 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;font-size:16px;line-height:22px;font-weight:600">
+            <span style="width:16px;height:16px;flex:none;background:var(--tx2);-webkit-mask:url({{ ch.icon }}) center/16px no-repeat;mask:url({{ ch.icon }}) center/16px no-repeat"></span><span style="white-space:nowrap">{{ ch.name }}</span>
+          </div>
+          <sc-if value="{{ ch.purpose }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;line-height:18px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ch.purpose }}<sc-if value="{{ ch.header }}" hint-placeholder-val="{{ false }}"><span> · Дежурный: </span><span style="color:var(--acc);font-weight:600">@carol</span><span> · </span><a href="#" style="color:var(--acc);text-decoration:underline">Runbook</a></sc-if></div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ offline }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:none;display:flex;align-items:center;gap:8px;padding:6px 16px;background:var(--warn-bg);border-bottom:1px solid var(--line);font-size:13px;line-height:18px;min-width:0">
+            <span style="width:16px;height:16px;flex:none;background:var(--warn);-webkit-mask:url(assets/icons/wifi-off.svg) center/16px no-repeat;mask:url(assets/icons/wifi-off.svg) center/16px no-repeat"></span>
+            <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Нет соединения с mm.example.com. Переподключаемся через 8 с…</span>
+            <span style="flex:none;color:var(--acc);font-weight:600;cursor:pointer">Повторить сейчас</span>
+          </div>
+        </sc-if>
+
+        <div style="flex:1;min-height:0;display:flex">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:{{ feedJustify }};overflow:hidden;padding:{{ feedPad }};position:relative">
+            <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--tx2);font-size:13px;line-height:18px">
+                <span style="width:20px;height:20px;background:var(--tx2);-webkit-mask:url(assets/icons/loader-circle.svg) center/20px no-repeat;mask:url(assets/icons/loader-circle.svg) center/20px no-repeat"></span>
+                <span>Загружаем сообщения…</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:0 24px">
+                <span style="width:24px;height:24px;margin-bottom:4px;background:var(--tx3);-webkit-mask:url(assets/icons/lock.svg) center/24px no-repeat;mask:url(assets/icons/lock.svg) center/24px no-repeat"></span>
+                <span style="font-size:15px;line-height:20px;font-weight:600">В канале «Релизы» пока нет сообщений</span>
+                <span style="font-size:13px;line-height:18px;color:var(--tx2)">Канал приватный: сообщения видят только участники.</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isThreads }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column">
+                <div style="display:flex;flex-direction:column;gap:2px;padding:10px 16px 12px;background:var(--acc-w);border-bottom:1px solid var(--line);cursor:pointer">
+                  <div style="display:flex;align-items:center;gap:8px;font-size:12px;line-height:16px;color:var(--tx2)"><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"># Town Square · dave</span><span style="font-family:'PT Mono',monospace">{{ tl.time }}</span></div>
+                  <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="background:var(--men-bg);color:var(--men-tx)">@alice</span> приложи туда логи nginx, пожалуйста</div>
+                  <div style="display:flex;align-items:center;gap:8px;font-size:12px;line-height:16px"><span style="flex:1;color:var(--tx2)">{{ tl.meta }}</span><span style="height:18px;box-sizing:border-box;padding:0 6px;border-radius:9px;background:var(--acc);color:var(--on-acc);font-size:11px;line-height:18px;font-weight:600">@ 1</span></div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-for list="{{ feed }}" as="it" hint-placeholder-count="0">
+              <sc-if value="{{ it.isDay }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;padding:12px 16px 4px;font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)"><span style="white-space:nowrap">{{ it.label }}</span><span style="flex:1;height:1px;background:var(--line)"></span></div>
+              </sc-if>
+              <sc-if value="{{ it.isNew }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 16px 2px;font-size:12px;line-height:16px;font-weight:600;color:var(--dang)"><span style="flex:1;height:1px;background:var(--dang)"></span><span>Новые сообщения</span></div>
+              </sc-if>
+              <sc-if value="{{ it.isMsg }}" hint-placeholder-val="{{ false }}">
+                <dc-import name="Message" m="{{ it.m }}" avatars="{{ av }}" cozy="{{ cozy }}" hint-size="100%,24px"></dc-import>
+              </sc-if>
+            </sc-for>
+            <sc-if value="{{ isCard }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;left:{{ cardLeft }}px;bottom:{{ cardBottom }}px;width:280px;box-sizing:border-box;background:var(--surf);border:1px solid var(--line2);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;gap:12px;align-items:center">
+                  <div style="width:56px;height:56px;flex:none;border-radius:50%;background:var(--av-dave);color:var(--av-dave-t);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600">ДВ</div>
+                  <div style="display:flex;flex-direction:column;min-width:0"><span style="font-size:16px;line-height:22px;font-weight:600">Денис Ветров</span><span style="font-size:13px;line-height:18px;color:var(--tx2)">@dave</span></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:18px">
+                  <div style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;background:var(--good);-webkit-mask:url(assets/icons/status-online.svg) center/12px no-repeat;mask:url(assets/icons/status-online.svg) center/12px no-repeat"></span>В сети</div>
+                  <div style="color:var(--tx2)">Инженер эксплуатации</div>
+                </div>
+                <div style="height:32px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:4px;background:var(--acc);color:var(--on-acc);font-size:13px;font-weight:500;cursor:pointer"><span style="width:14px;height:14px;background:var(--on-acc);-webkit-mask:url(assets/icons/message-circle.svg) center/14px no-repeat;mask:url(assets/icons/message-circle.svg) center/14px no-repeat"></span>Написать</div>
+              </div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ scroll }}" hint-placeholder-val="{{ false }}">
+            <div style="width:10px;flex:none;display:flex;flex-direction:column;justify-content:flex-end;padding:2px 2px 4px 0;box-sizing:border-box"><div style="height:{{ scrollH }}%;border-radius:4px;background:var(--line2)"></div></div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ composer }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:none;padding:4px 16px 12px">
+            <dc-import name="Composer" state="{{ compState }}" placeholder="{{ compPh }}" hint-size="100%,40px"></dc-import>
+          </div>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ threadOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="width:{{ threadW }}px;flex:none;box-sizing:border-box;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--surf)">
+          <div style="height:52px;flex:none;box-sizing:border-box;padding:0 8px 0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;min-width:0">
+            <span style="font-size:16px;line-height:22px;font-weight:600">Тред</span>
+            <span style="flex:1;min-width:0;font-size:13px;line-height:18px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">· # Town Square</span>
+            <span title="Закрыть тред" style="width:28px;height:28px;flex:none;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:var(--hover)"><span style="width:16px;height:16px;background:var(--tx2);-webkit-mask:url(assets/icons/x.svg) center/16px no-repeat;mask:url(assets/icons/x.svg) center/16px no-repeat"></span></span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;padding:6px 0">
+            <sc-for list="{{ thread }}" as="it" hint-placeholder-count="0">
+              <sc-if value="{{ it.isSep }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 2px;font-size:12px;line-height:16px;font-weight:600;color:var(--tx2)"><span>{{ it.label }}</span><span style="flex:1;height:1px;background:var(--line)"></span></div>
+              </sc-if>
+              <sc-if value="{{ it.isMsg }}" hint-placeholder-val="{{ false }}">
+                <dc-import name="Message" m="{{ it.m }}" avatars="{{ av }}" cozy="{{ cozy }}" hint-size="100%,24px"></dc-import>
+              </sc-if>
+            </sc-for>
+          </div>
+          <div style="flex:none;padding:4px 12px 12px">
+            <dc-import name="Composer" state="focus" placeholder="Ответить в треде" hint-size="100%,40px"></dc-import>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <div style="height:24px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 10px;border-top:1px solid var(--line);font-size:12px;line-height:16px;color:var(--tx2)">
+    <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}"><span style="color:var(--tx);font-weight:600">@alice</span><span>mm.example.com</span></sc-if>
+    <span style="flex:1"></span>
+    <span style="width:8px;height:8px;border-radius:50%;background:{{ connColor }}"></span><span>{{ connText }}</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;screen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;login&quot;,&quot;channel&quot;,&quot;thread&quot;,&quot;threads&quot;,&quot;usercard&quot;,&quot;attachments&quot;,&quot;integration&quot;,&quot;loading&quot;,&quot;empty&quot;,&quot;offline&quot;],&quot;default&quot;:&quot;channel&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;login&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;empty&quot;,&quot;session&quot;,&quot;signing&quot;,&quot;mfa&quot;,&quot;badCreds&quot;,&quot;badCode&quot;,&quot;unreachable&quot;,&quot;expired&quot;],&quot;default&quot;:&quot;empty&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;size&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;wide&quot;,&quot;narrow&quot;],&quot;default&quot;:&quot;wide&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;time&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;full&quot;,&quot;short&quot;],&quot;default&quot;:&quot;short&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;avatars&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;cozy&quot;],&quot;default&quot;:&quot;compact&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;sidebar&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;tree&quot;,&quot;teams&quot;],&quot;default&quot;:&quot;tree&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;viewMenu&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props;
+    const key = [p.screen, p.login, p.size, p.time, p.avatars, p.density, p.sidebar, p.viewMenu].join('|');
+    if (this._key === key && this._vals) return this._vals;
+    this._key = key;
+    this._vals = this.compute(p);
+    return this._vals;
+  }
+  compute(p) {
+    const scr = p.screen || 'channel';
+    const narrow = p.size === 'narrow';
+    const full = p.time === 'full';
+    const av = p.avatars !== false;
+    const cozy = p.density === 'cozy';
+    const teams = p.sidebar === 'teams';
+    const W = narrow ? 900 : 1280;
+    const isLogin = scr === 'login';
+    const threadOpen = scr === 'thread' || scr === 'threads';
+    const sideW = narrow ? (teams ? 184 : 200) : (teams ? 224 : 240);
+    const threadW = narrow ? 300 : 380;
+    const centerW = W - 2 - (teams ? 56 : 0) - sideW - (threadOpen ? threadW : 0);
+    const T = h => full ? '2026-11-01 ' + h : h.slice(0, 5);
+    const I = n => 'assets/icons/' + n + '.svg';
+    const ini = { alice: 'АК', bob: 'БИ', carol: 'КО', dave: 'ДВ', grafana: 'G' };
+    const msg = (who, h, segs, x = {}) => ({ who: who === 'grafana' ? 'bot' : who, author: who === 'grafana' ? 'Grafana' : who, ini: ini[who], time: T(h), tip: '2026-11-01 ' + h, header: true, segs, ...x });
+    const cont = (who, h, segs, x = {}) => ({ ...msg(who, h, segs, x), header: false });
+    const t = v => ({ t: 't', v }), br = { t: 'br' }, a = v => ({ t: 'a', v }), me = v => ({ t: '@', v, me: true });
+    const M = m => ({ isMsg: true, m });
+    const reactions = [{ e: '👍', n: 2, mine: true, tip: 'alice, bob' }, { e: '🎉', n: 1, tip: 'carol' }];
+    const daveRoot = x => msg('dave', '08:23:08', [me('@alice'), t(' приложи туда логи nginx, пожалуйста')], { mentionMe: true, reactions, ...x });
+
+    const tsFeed = [
+      { isDay: true, label: 'Суббота, 31 октября' },
+      M(msg('bob', '18:12:40', [t('Кто-нибудь смотрел вчерашний релиз?')])),
+      { isDay: true, label: 'Сегодня, 1 ноября' },
+      M(msg('carol', '07:48:08', [t('Да, всё ок, графики ровные.'), br, t('Но p99 на /api/v4/posts подрос, гляньте '), a('https://grafana.example.com/d/abc')])),
+      M(msg('alice', '08:02:08', [t('Напоминаю: в 15:00 созвон по планированию.')])),
+      M(cont('alice', '08:03:15', [t('Ссылка на встречу та же.')], { edited: true })),
+      M(msg('bob', '08:09:08', [t('Доброе утро!')])),
+      { isNew: true },
+      M({ sys: true, text: 'dave joined the channel.', tip: '2026-11-01 08:20:51' }),
+      M(daveRoot({ replies: { label: '3 ответа', last: 'последний ' + T('08:35:40') } }))
+    ];
+    const contentW = centerW - 10 - 32 - (av ? 42 : 0);
+    const s = Math.min(1, contentW / 640, 400 / 360);
+    const backendFeed = [
+      M(msg('carol', '08:04:04', [], { release: true, mentionMe: true })),
+      M(msg('bob', '08:09:04', [t('Схема нового кэша')], { image: { w: Math.round(640 * s), h: Math.round(360 * s), label: 'картинка 640×360' } })),
+      M(msg('dave', '08:14:04', [t('Отчёт по нагрузке')], { file: { name: 'load-report.pdf', meta: 'PDF · 1,2 МБ', canOpen: true } }))
+    ];
+    const alertsFeed = [
+      { isDay: true, label: 'Сегодня, 1 ноября' },
+      M(msg('grafana', '07:14:04', [], { bot: true, alert: { color: 'var(--dang)', title: '[FIRING:1] DiskSpaceLow', text: 'Свободно ', bold: '3%', text2: ' на ', code: '/var/lib/postgresql', fields: [{ k: 'host', v: 'db-2', short: true }, { k: 'severity', v: 'critical', short: true }], footer: 'Grafana v11' } }))
+    ];
+    const thread = [
+      M(daveRoot({})),
+      { isSep: true, label: '3 ответа' },
+      M(msg('bob', '08:31:18', [t('Посмотрел, на staging то же самое.')])),
+      M(msg('alice', '08:33:28', [t('Ок, заведу задачу.')])),
+      M(cont('alice', '08:35:40', [t('Логи nginx за утро приложила к задаче.')]))
+    ];
+
+    const selMap = { attachments: 'backend', integration: 'alerts', empty: 'releases', threads: 'threads' };
+    const sel = selMap[scr] || 'ts-dev';
+    const item = (id, label, icon, o = {}) => ({ i: true, id, label, icon, ...o });
+    const dms = [
+      item('bob', 'bob', I('status-online'), { badge: '1', unread: true, status: 'good', who: 'bob' }),
+      item('alice', 'alice', I('status-online'), { suffix: ' (вы)', status: 'good', who: 'alice' }),
+      item('gm', 'alice, bob, carol', I('users')),
+      item('carol', 'carol', I('status-away'), { status: 'warn', who: 'carol' })
+    ];
+    const threadsRow = item('threads', 'Треды', I('messages-square'), { badge: '1', unread: true, pl: 8 });
+    let side = teams ? [
+      threadsRow,
+      { g: true, label: 'Избранное', mt: 6 },
+      item('ts-dev', 'Town Square', I('hash')),
+      { g: true, label: 'Каналы', mt: 6 },
+      item('backend', 'backend', I('hash'), { unread: sel !== 'backend' }),
+      item('releases', 'Релизы', I('lock')),
+      { g: true, label: 'Личные сообщения', mt: 6 },
+      ...dms
+    ] : [
+      threadsRow,
+      { g: true, label: 'Разработка', mt: 6 },
+      item('backend', 'backend', I('hash'), { unread: sel !== 'backend' }),
+      item('ts-dev', 'Town Square', I('hash')),
+      item('releases', 'Релизы', I('lock')),
+      { g: true, label: 'Эксплуатация', mt: 6 },
+      item('alerts', 'alerts', I('hash')),
+      item('ts-ops', 'Town Square', I('hash')),
+      { g: true, label: 'Личные сообщения', mt: 6 },
+      ...dms
+    ];
+    side = side.map(r => {
+      if (!r.i) return r;
+      const on = r.id === sel;
+      if (on) r.unread = false;
+      const showAv = av && !!r.who;
+      return {
+        suffix: '', ...r, badge: on ? '' : r.badge,
+        bg: on ? 'var(--acc-w)' : 'transparent',
+        c: on ? 'var(--sel-tx)' : r.unread ? 'var(--tx)' : 'var(--tx2)',
+        fw: on || r.unread ? 600 : 400,
+        ic: r.status ? `var(--${r.status})` : on ? 'var(--acc)' : 'var(--tx2)',
+        isz: r.status ? '10px' : '16px',
+        pl: r.pl != null ? r.pl : teams ? 8 : 24,
+        showAv, showIcon: !showAv,
+        avBg: `var(--av-${r.who})`, avTx: `var(--av-${r.who}-t)`, ini: ini[r.who] || ''
+      };
+    });
+
+    const chans = {
+      'ts-dev': { name: 'Town Square', icon: I('hash'), purpose: 'Общий канал команды' },
+      backend: { name: 'backend', icon: I('hash'), purpose: 'Сервисы и API', header: true },
+      alerts: { name: 'alerts', icon: I('hash'), purpose: 'Алерты из Grafana' },
+      releases: { name: 'Релизы', icon: I('lock'), purpose: '' },
+      threads: { name: 'Треды', icon: I('messages-square'), purpose: 'Треды, на которые вы подписаны' }
+    };
+    const feeds = { channel: tsFeed, thread: tsFeed, usercard: tsFeed, offline: tsFeed, attachments: backendFeed, integration: alertsFeed };
+    const comp = {
+      channel: ['empty', 'Сообщение в # Town Square'], thread: ['empty', 'Сообщение в # Town Square'],
+      usercard: ['empty', 'Сообщение в # Town Square'], loading: ['empty', 'Сообщение в # Town Square'],
+      attachments: ['uploaded', 'Сообщение в # backend'], integration: ['empty', 'Сообщение в # alerts'],
+      empty: ['focus', 'Сообщение в Релизы'], offline: ['disabled', 'Нет соединения — отправка недоступна']
+    }[scr] || ['empty', ''];
+    const offline = scr === 'offline';
+    const loginState = p.login || 'empty';
+    const loginConn = { unreachable: ['var(--dang)', 'сервер недоступен'], session: ['var(--warn)', 'подключаемся…'], signing: ['var(--warn)', 'подключаемся…'] }[loginState] || ['var(--tx3)', 'не подключено'];
+    return {
+      isLogin, isApp: !isLogin, loginState, teams, av, cozy, viewMenu: p.viewMenu === true,
+      sideW, threadW, threadOpen, rowH: cozy ? 32 : 28, side,
+      ch: chans[sel], offline,
+      feed: feeds[scr] || [], thread,
+      isLoading: scr === 'loading', isEmpty: scr === 'empty', isThreads: scr === 'threads', isCard: scr === 'usercard',
+      tl: { time: T('08:35:40'), meta: '3 ответа · последний ' + T('08:35:40') },
+      feedJustify: scr === 'threads' ? 'flex-start' : (scr === 'loading' || scr === 'empty') ? 'center' : 'flex-end',
+      feedPad: scr === 'threads' ? '0' : '8px 0 8px',
+      scroll: ['channel', 'thread', 'usercard', 'offline', 'attachments'].includes(scr), scrollH: scr === 'attachments' ? 38 : 62,
+      cardLeft: av ? 58 : 16, cardBottom: cozy ? 118 : 108,
+      composer: scr !== 'threads', compState: comp[0], compPh: comp[1],
+      connColor: isLogin ? loginConn[0] : offline ? 'var(--warn)' : 'var(--good)',
+      connText: isLogin ? loginConn[1] : offline ? 'нет соединения, переподключаемся…' : 'в сети'
+    };
+  }
+}
+</script>
+</body>
+</html>

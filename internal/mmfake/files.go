@@ -2,10 +2,13 @@ package mmfake
 
 import (
 	"bytes"
+	"encoding/json"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/png"
 	"io"
+	"math"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -149,6 +152,29 @@ func gradientPNG(w, h int) []byte {
 	return b.Bytes()
 }
 
+// spinnerGIF — анимированная картинка для сидов: точка бежит по кругу, 8 кадров.
+func spinnerGIF(w, h int) []byte {
+	pal := color.Palette{color.RGBA{238, 235, 230, 255}, color.RGBA{0, 114, 85, 255}}
+	anim := &gif.GIF{}
+	for i := range 8 {
+		img := image.NewPaletted(image.Rect(0, 0, w, h), pal)
+		cx := w/2 + int(float64(h)/3*math.Cos(float64(i)*math.Pi/4))
+		cy := h/2 + int(float64(h)/3*math.Sin(float64(i)*math.Pi/4))
+		for y := cy - 6; y <= cy+6; y++ {
+			for x := cx - 6; x <= cx+6; x++ {
+				if dx, dy := x-cx, y-cy; dx*dx+dy*dy <= 36 {
+					img.SetColorIndex(x, y, 1)
+				}
+			}
+		}
+		anim.Image = append(anim.Image, img)
+		anim.Delay = append(anim.Delay, 10)
+	}
+	var b bytes.Buffer
+	gif.EncodeAll(&b, anim)
+	return b.Bytes()
+}
+
 func circlePNG(size int, c color.Color) []byte {
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	r := size / 2
@@ -162,4 +188,67 @@ func circlePNG(size int, c color.Color) []byte {
 	var b bytes.Buffer
 	png.Encode(&b, img)
 	return b.Bytes()
+}
+
+func (s *Server) statusesByIDs(w http.ResponseWriter, r *http.Request, _ *model.User) {
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []*model.Status{}
+	for _, id := range ids {
+		if st := s.statuses[id]; st != "" {
+			out = append(out, &model.Status{UserId: id, Status: st, LastActivityAt: model.GetMillis() - 3600_000})
+		}
+	}
+	s.json(w, out)
+}
+
+func (s *Server) userRoute(w http.ResponseWriter, r *http.Request, _ *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, b := r.PathValue("a"), r.PathValue("b")
+	switch {
+	case a == "username":
+		if u := s.byName(b); u != nil {
+			s.json(w, u)
+			return
+		}
+	case b == "status":
+		if st := s.statuses[a]; st != "" {
+			s.json(w, &model.Status{UserId: a, Status: st, LastActivityAt: model.GetMillis() - 3600_000})
+			return
+		}
+	}
+	s.fail(w, http.StatusNotFound, "app.user.missing_account.const")
+}
+
+func (s *Server) createDirect(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil || len(ids) != 2 {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	name := model.GetDMNameFromIds(ids[0], ids[1])
+	for _, c := range s.channels {
+		if c.Name == name {
+			s.json(w, c)
+			return
+		}
+	}
+	var users []*model.User
+	for _, id := range ids {
+		if u := s.users[id]; u != nil {
+			users = append(users, u)
+		}
+	}
+	c := &model.Channel{Id: model.NewId(), Type: model.ChannelTypeDirect, Name: name}
+	s.addChannel(c, users)
+	w.WriteHeader(http.StatusCreated)
+	s.json(w, c)
 }

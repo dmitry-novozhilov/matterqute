@@ -11,20 +11,16 @@ import (
 
 var hexColorRe = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
 
-// attachmentColor — цвет полосы слева; именованные — как у Mattermost.
-func attachmentColor(c string) string {
-	switch c {
-	case "good":
-		return "#2eb886"
-	case "warning":
-		return "#daa038"
-	case "danger":
-		return "#a30200"
+// attachmentColor — цвет полосы слева: именованные — семантические цвета темы,
+// свой HEX — как есть, остальное — цвет рамок.
+func (r *Renderer) attachmentColor(c string) string {
+	if named := r.pal.AttachmentColor(c); named != "" {
+		return named
 	}
 	if hexColorRe.MatchString(c) {
 		return c
 	}
-	return "#c8c8c8"
+	return r.pal.Line2
 }
 
 // Attachments рисует вложения интеграций (props.attachments, «Slack-вложения»):
@@ -35,31 +31,36 @@ func (r *Renderer) Attachments(atts []*model.MessageAttachment) string {
 		if a.Pretext != "" {
 			b.WriteString(r.Render(a.Pretext))
 		}
-		fmt.Fprintf(&b, `<table cellspacing="0" cellpadding="0" style="margin-top:4px;margin-bottom:4px"><tr>`+
-			`<td width="4" bgcolor="%s"></td><td><table cellspacing="0" cellpadding="6"><tr><td>`, attachmentColor(a.Color))
+		// width="520" у таблицы внутри ячейки поста Qt не соблюдает и растягивает
+		// её на всю ленту; ширину держит ячейка внешней таблицы с пустой соседкой.
+		fmt.Fprintf(&b, `<table cellspacing="0" cellpadding="0" style="margin-top:6px;margin-bottom:2px"><tr><td width="520">`+
+			`<table cellspacing="0" cellpadding="0" width="100%%"><tr>`+
+			`<td width="4" bgcolor="%s"></td><td bgcolor="%s" style="padding-top:8px;padding-left:12px;padding-right:12px;padding-bottom:10px">`,
+			r.attachmentColor(a.Color), r.pal.Surf2)
 		body := r.attachmentBody(a)
 		if body == "" {
 			body = html.EscapeString(a.Fallback)
 		}
 		b.WriteString(body)
-		b.WriteString("</td></tr></table></td></tr></table>\n")
+		b.WriteString("</td></tr></table></td><td></td></tr></table>\n")
 	}
 	return b.String()
 }
 
 func (r *Renderer) attachmentBody(a *model.MessageAttachment) string {
+	p := r.pal
 	var b strings.Builder
 	if a.AuthorName != "" {
-		b.WriteString(`<p style="margin:0;color:gray">` + linkOrText(a.AuthorName, a.AuthorLink) + "</p>")
+		fmt.Fprintf(&b, `<p style="margin:0;font-size:12px;color:%s">%s</p>`, p.Tx2, linkOrText(a.AuthorName, a.AuthorLink))
 	}
 	if a.Title != "" {
-		b.WriteString(`<p style="margin:0"><b>` + linkOrText(a.Title, a.TitleLink) + "</b></p>")
+		fmt.Fprintf(&b, `<p style="margin:0;font-weight:600">%s</p>`, linkOrText(a.Title, a.TitleLink))
 	}
 	if a.Text != "" {
 		b.WriteString(r.Render(a.Text))
 	}
 	if len(a.Fields) > 0 {
-		b.WriteString(`<table cellspacing="0" cellpadding="3" style="margin-top:4px">`)
+		b.WriteString(`<table cellspacing="0" cellpadding="0" width="100%" style="margin-top:6px">`)
 		// Короткие поля — по два в строку, длинные — на всю ширину.
 		for i := 0; i < len(a.Fields); i++ {
 			f := a.Fields[i]
@@ -76,7 +77,7 @@ func (r *Renderer) attachmentBody(a *model.MessageAttachment) string {
 		b.WriteString(`<p style="margin:0">` + linkOrText("🖼 изображение", a.ImageURL) + "</p>")
 	}
 	if a.Footer != "" {
-		b.WriteString(`<p style="margin-top:4px;margin-bottom:0;color:gray">` + html.EscapeString(a.Footer) + "</p>")
+		fmt.Fprintf(&b, `<p style="margin-top:6px;margin-bottom:0;font-size:12px;color:%s">%s</p>`, p.Tx2, html.EscapeString(a.Footer))
 	}
 	return b.String()
 }
@@ -86,7 +87,12 @@ func (r *Renderer) field(f *model.MessageAttachmentField, span int) string {
 	if f.Value != nil {
 		value = r.Render(fmt.Sprint(f.Value))
 	}
-	return fmt.Sprintf(`<td colspan="%d" valign="top"><b>%s</b><br>%s</td>`, span, html.EscapeString(f.Title), value)
+	width := ""
+	if span == 1 {
+		width = ` width="50%"`
+	}
+	return fmt.Sprintf(`<td colspan="%d"%s valign="top" style="padding-bottom:4px"><span style="font-size:12px;font-weight:600;color:%s">%s</span>%s</td>`,
+		span, width, r.pal.Tx2, html.EscapeString(f.Title), value)
 }
 
 func linkOrText(text, link string) string {

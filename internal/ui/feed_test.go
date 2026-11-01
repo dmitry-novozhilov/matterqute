@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"strings"
@@ -19,7 +21,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("QT_QPA_PLATFORM") == "" {
 		os.Setenv("QT_QPA_PLATFORM", "offscreen")
 	}
-	qt.NewQApplication(os.Args)
+	app := qt.NewQApplication(os.Args)
+	// Шрифты и стили приложения — чтобы раскладка и скриншоты были как в жизни.
+	InitStyle(app, ThemeLight, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	// Тесты закрывают свои окна; по умолчанию Qt на этом вышел бы из цикла событий.
 	qt.QGuiApplication_SetQuitOnLastWindowClosed(false)
 	code := make(chan int, 1)

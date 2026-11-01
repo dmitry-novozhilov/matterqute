@@ -24,6 +24,7 @@ type Store struct {
 	users       map[string]*model.User
 	timelines   map[string]*Timeline
 	threads     map[string]*model.ThreadResponse // CRT: треды, на которые подписан пользователь
+	statuses    map[string]string                // присутствие: online, away, dnd, offline
 	// Посты, уже учтённые в счётчиках: свой пост приходит дважды — ответом
 	// на CreatePost и по WebSocket.
 	applied map[string]bool
@@ -37,6 +38,7 @@ func New(me *model.User) *Store {
 		users:     map[string]*model.User{me.Id: me},
 		timelines: map[string]*Timeline{},
 		threads:   map[string]*model.ThreadResponse{},
+		statuses:  map[string]string{},
 		applied:   map[string]bool{},
 	}
 }
@@ -59,6 +61,7 @@ type Sidebar struct {
 	Members     []*model.ChannelMember
 	Users       []*model.User
 	Threads     []*model.ThreadResponse // только при CRT; DM-треды приходят в каждой команде
+	Statuses    []*model.Status         // присутствие собеседников в личках
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
@@ -79,7 +82,21 @@ func (s *Store) SetSidebar(sb *Sidebar) {
 		s.ApplyThread(t)
 	}
 	s.AddUsers(sb.Users)
+	for _, st := range sb.Statuses {
+		s.statuses[st.UserId] = st.Status
+	}
 }
+
+// Status — присутствие пользователя: online, away, dnd, offline (по умолчанию).
+func (s *Store) Status(userID string) string {
+	if st := s.statuses[userID]; st != "" {
+		return st
+	}
+	return model.StatusOffline
+}
+
+// SetStatus — пришло событие status_change.
+func (s *Store) SetStatus(userID, status string) { s.statuses[userID] = status }
 
 func (s *Store) Teams() []*model.Team { return s.teams }
 
@@ -184,6 +201,20 @@ func (s *Store) Unread(channelID string) (unread bool, mentions int64) {
 	return unread, mentions
 }
 
+// Muted — канал заглушён: непрочитанным считается только упоминание.
+func (s *Store) Muted(channelID string) bool {
+	m := s.members[channelID]
+	return m != nil && m.NotifyProps[model.MarkUnreadNotifyProp] == model.ChannelMarkUnreadMention
+}
+
+// LastViewed — когда канал был прочитан в последний раз (мс); 0 — неизвестно.
+func (s *Store) LastViewed(channelID string) int64 {
+	if m := s.members[channelID]; m != nil {
+		return m.LastViewedAt
+	}
+	return 0
+}
+
 // MarkViewed — локально то же, что делает сервер на ViewChannel.
 func (s *Store) MarkViewed(channelID string) {
 	ch, m := s.channels[channelID], s.members[channelID]
@@ -212,6 +243,16 @@ func (s *Store) AddUsers(us []*model.User) {
 	for _, u := range us {
 		s.users[u.Id] = u
 	}
+}
+
+// UserByName — загруженный профиль по имени пользователя (без учёта регистра) или nil.
+func (s *Store) UserByName(username string) *model.User {
+	for _, u := range s.users {
+		if strings.EqualFold(u.Username, username) {
+			return u
+		}
+	}
+	return nil
 }
 
 // MissingUsers — id из списка, чьих профилей нет, без повторов.

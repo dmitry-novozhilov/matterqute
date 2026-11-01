@@ -27,6 +27,11 @@ func TestLoginViewStates(t *testing.T) {
 		if l.submit.IsEnabled() || l.notice.IsHidden() || l.server.IsEnabled() {
 			t.Error("resuming: form editable or notice hidden")
 		}
+		frame := l.spin.frame
+		settleFor(200e6)
+		if !l.spin.timer.IsActive() || l.spin.frame == frame {
+			t.Errorf("resuming: spinner stands still (active=%v, frame %d → %d)", l.spin.timer.IsActive(), frame, l.spin.frame)
+		}
 		l.SetBusy()
 		if l.submit.IsEnabled() || l.submit.Text() != "Входим…" {
 			t.Errorf("busy: submit enabled=%v text=%q", l.submit.IsEnabled(), l.submit.Text())
@@ -52,6 +57,9 @@ func TestLoginViewStates(t *testing.T) {
 			t.Error("unavailable: retry or notice hidden")
 		}
 		l.SetUnavailable("resume session https://mm.example.com: dial tcp: connection refused", true)
+		if l.spin.timer.IsActive() {
+			t.Error("spinner still runs under «сервер недоступен»")
+		}
 		save("login-error")
 	})
 }

@@ -33,6 +33,7 @@ type LoginView struct {
 
 	noticeKind  string
 	noticeIconN string
+	spin        *spinner // крутит иконку плашки «Подключаемся…»
 	mfaStage    bool
 	unsubscribe func()
 
@@ -79,6 +80,7 @@ func NewLoginView(server, loginID string) *LoginView {
 	l.notice = qt.NewQFrame2()
 	setName(l.notice.QObject, "loginNotice")
 	l.nIcon, l.nTitle, l.nText = qt.NewQLabel2(), qt.NewQLabel2(), qt.NewQLabel2()
+	l.spin = newSpinner(l.nIcon.QObject, l.nIcon.SetPixmap)
 	l.nTitle.SetFont(pixelFont(13, qt.QFont__DemiBold))
 	l.nTitle.SetWordWrap(true)
 	l.nText.SetWordWrap(true)
@@ -190,9 +192,14 @@ func (l *LoginView) Focus() {
 func (l *LoginView) restyle() {
 	p := Pal()
 	l.logo.SetPixmap(appIconPixmap(40))
+	l.spin.stop()
 	if l.noticeIconN != "" {
 		color := map[string]string{"info": p.Tx2, "warn": p.Warn, "danger": p.Dang}[l.noticeKind]
-		l.nIcon.SetPixmap(iconPixmap(l.noticeIconN, color, 16))
+		if l.noticeIconN == "loader-circle" && l.noticeKind != "" {
+			l.spin.start(color, 16)
+		} else {
+			l.nIcon.SetPixmap(iconPixmap(l.noticeIconN, color, 16))
+		}
 	}
 	l.retry.SetIcon(icon("refresh-cw", p.Tx, 16))
 	l.nText.SetStyleSheet("color:" + p.Tx2)
@@ -210,6 +217,7 @@ func (l *LoginView) showNotice(kind, iconName, title, text string, mono bool) {
 	l.noticeKind, l.noticeIconN = kind, iconName
 	l.notice.SetVisible(kind != "")
 	if kind == "" {
+		l.spin.stop()
 		return
 	}
 	setProp(l.notice.QWidget, "kind", kind)

@@ -41,6 +41,7 @@ const (
 	imageLink     = "mm-img:"        // mm-img:<файл> — картинка целиком
 	retryLink     = "mm-retry:"      // повторить загрузку ленты
 	hookLink      = "mm-hook:"       // mm-hook:<post> — карточка интеграции, написавшей пост
+	spinnerSrc    = "spinner:24"     // ресурс с текущим кадром крутилки
 )
 
 type postItem struct {
@@ -85,6 +86,7 @@ type Feed struct {
 	newMarker   string         // id поста, над которым отметка
 	lastWidth   int            // ширина, под которую вписаны картинки
 	refit       *qt.QTimer     // отложенная перерисовка картинок после ресайза
+	spin        *spinner       // крутилка заглушки «Загружаем сообщения…»
 	unsubscribe func()
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
@@ -127,6 +129,10 @@ func NewFeed(d FeedDeps) *Feed {
 	f.refit.SetSingleShot(true)
 	f.refit.SetInterval(50)
 	f.refit.OnTimeout(f.fitImages)
+	f.spin = newSpinner(f.view.QObject, func(pm *qt.QPixmap) {
+		f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(spinnerSrc), pm.ToQVariant())
+		f.view.Viewport().Update()
+	})
 	f.bar = f.view.VerticalScrollBar()
 	f.bar.OnValueChanged(f.onScroll)
 	f.bar.OnRangeChanged(f.onRange)
@@ -152,6 +158,9 @@ func (f *Feed) restyle() {
 	f.restyleRenderer()
 	f.resources = map[string][2]int{}
 	f.pills = map[string]pill{}
+	if f.spin.timer.IsActive() {
+		f.spin.start(Pal().Tx3, 24)
+	}
 	for i := range f.items {
 		f.render(i)
 	}
@@ -189,7 +198,13 @@ func (f *Feed) placeholderHTML(iconName, title, text, extra string) {
 	f.placeholder = true
 	var b strings.Builder
 	if iconName != "" {
-		fmt.Fprintf(&b, `<p align="center" style="margin-bottom:8px"><img src="%s" width="24" height="24"></p>`, f.iconSrc(iconName, p.Tx3, 24))
+		src := spinnerSrc
+		if iconName == "loader-circle" {
+			f.spin.start(p.Tx3, 24) // кадр ложится в ресурс spinnerSrc
+		} else {
+			src = f.iconSrc(iconName, p.Tx3, 24)
+		}
+		fmt.Fprintf(&b, `<p align="center" style="margin-bottom:8px"><img src="%s" width="24" height="24"></p>`, src)
 	}
 	if title != "" {
 		fmt.Fprintf(&b, `<p align="center" style="margin:0;font-weight:600;color:%s">%s</p>`, p.Tx, html.EscapeString(title))
@@ -207,6 +222,7 @@ func (f *Feed) placeholderHTML(iconName, title, text, extra string) {
 // обработчики ходят по f.items и f.history.
 func (f *Feed) clearDoc() {
 	f.stopMovies()
+	f.spin.stop()
 	f.items = nil
 	f.history = nil
 	f.placeholder = false

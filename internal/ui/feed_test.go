@@ -277,3 +277,31 @@ func testFeedClearWithImagesAfterResize(t *testing.T) {
 		t.Errorf("images fitted to %d px, viewport is %d", f.lastWidth, w)
 	}
 }
+
+func TestFeedLoadingSpinner(t *testing.T) { onMain(func() { testFeedLoadingSpinner(t) }) }
+
+func testFeedLoadingSpinner(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	f.Widget().Resize(500, 300)
+	f.Widget().Show()
+	defer f.Widget().Close()
+
+	f.Loading()
+	if !strings.Contains(f.doc.ToHtml(), spinnerSrc) {
+		t.Error("loading placeholder does not show the spinner resource")
+	}
+	frame := f.spin.frame
+	settleFor(200 * time.Millisecond)
+	if !f.spin.timer.IsActive() || f.spin.frame == frame {
+		t.Errorf("spinner stands still while loading (active=%v, frame %d → %d)", f.spin.timer.IsActive(), frame, f.spin.frame)
+	}
+	f.SetPosts(makePosts(1, 3), false)
+	if f.spin.timer.IsActive() {
+		t.Error("spinner runs after posts arrived")
+	}
+	f.Loading()
+	f.Error("load posts: timeout")
+	if f.spin.timer.IsActive() {
+		t.Error("spinner runs under the error placeholder")
+	}
+}

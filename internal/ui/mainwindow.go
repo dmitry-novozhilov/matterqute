@@ -53,9 +53,12 @@ type MainWindow struct {
 	notifier    Notifier           // nil — уведомлений нет (нет шины или сервера уведомлений)
 	notes       map[string]uint32  // показанное уведомление по каналу или треду: следующее его заменит
 	players     map[string]*player // открытые плееры по id файла
-	mentions    int64              // последнее отданное в OnMentions; -1 — ещё не отдавали
-	retryNow    chan struct{}
-	unsubscribe func()
+
+	suggestTimer   *qt.QTimer // запрос подсказок к серверу — после паузы в наборе
+	suggestPending func()
+	mentions       int64 // последнее отданное в OnMentions; -1 — ещё не отдавали
+	retryNow       chan struct{}
+	unsubscribe    func()
 
 	current         string // открытый канал или threadsID
 	initialChannel  string // открыть после первой загрузки сайдбара
@@ -134,7 +137,16 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.feed.OnOpenThread = m.openThread
 	m.wireFeed(m.feed)
 
+	m.suggestTimer = qt.NewQTimer2(m.w.QObject)
+	m.suggestTimer.SetSingleShot(true)
+	m.suggestTimer.OnTimeout(func() {
+		if f := m.suggestPending; f != nil {
+			m.suggestPending = nil
+			f()
+		}
+	})
 	m.composer = NewComposer()
+	m.composer.Suggest = m.suggester(func() string { return m.current })
 	m.composer.OnSend = m.send
 	m.composer.OnUpload = func(id int, name, path string, data []byte, progress func(int)) {
 		m.upload(m.composer, m.current, id, name, path, data, progress)
@@ -169,6 +181,12 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.panel = NewThreadPanel(deps, m.closeThread)
 	m.wireFeed(m.panel.feed)
 	m.panel.composer.OnSend = m.sendReply
+	m.panel.composer.Suggest = m.suggester(func() string {
+		if t := m.thread; t != nil {
+			return t.channelID
+		}
+		return ""
+	})
 	m.panel.composer.OnUpload = func(id int, name, path string, data []byte, progress func(int)) {
 		if t := m.thread; t != nil {
 			m.upload(m.panel.composer, t.channelID, id, name, path, data, progress)

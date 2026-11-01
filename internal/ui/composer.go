@@ -10,6 +10,8 @@ import (
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
+
+	"matterqute/internal/complete"
 )
 
 // attachment — файл в поле ввода: грузится (percent), загружен (fileID) или
@@ -57,6 +59,14 @@ type Composer struct {
 	sent        *draft // отправляется: вернуть в черновик, если отправка не удалась
 	unsubscribe func()
 
+	// Suggest — подсказки для слова под курсором (@, #, ~, :); show можно
+	// звать несколько раз (сначала известное, потом с сервера). nil — без подсказок.
+	Suggest   func(tok complete.Token, show func([]Suggestion))
+	popup     *suggestPopup
+	tok       complete.Token // слово, для которого показан список
+	tokGen    int            // ответы для прежних слов отбрасываются
+	dismissed string         // Esc: для этого слова список больше не открывать
+
 	OnSend func(text string, fileIDs []string)
 	// OnUpload — загрузить файл (path с диска или data — вставленная картинка);
 	// progress(0…100) по ходу, результат — Uploaded или UploadFailed.
@@ -73,8 +83,13 @@ func NewComposer() *Composer {
 	c.edit.SetToolTip("Enter — отправить, Shift+Enter — новая строка")
 	c.edit.Document().SetDocumentMargin(4)
 	c.edit.Document().OnContentsChanged(c.fitHeight)
+	c.edit.OnTextChanged(c.updateSuggest)
+	c.edit.OnCursorPositionChanged(c.updateSuggest)
 	c.edit.OnKeyPressEvent(func(super func(*qt.QKeyEvent), e *qt.QKeyEvent) {
 		k := qt.Key(e.Key())
+		if c.suggestKey(k) {
+			return
+		}
 		if (k == qt.Key_Return || k == qt.Key_Enter) && e.Modifiers()&qt.ShiftModifier == 0 {
 			c.send()
 			return
@@ -88,6 +103,7 @@ func NewComposer() *Composer {
 	c.edit.OnFocusOutEvent(func(super func(*qt.QFocusEvent), e *qt.QFocusEvent) {
 		super(e)
 		setProp(c.frame.QWidget, "focus", "false")
+		c.hideSuggest() // список не берёт фокус: клик по нему фокус не уводит
 	})
 	// Перетаскивание и вставка: файлы и картинки — во вложения, остальное — текстом.
 	c.edit.OnCanInsertFromMimeData(func(super func(*qt.QMimeData) bool, m *qt.QMimeData) bool {
@@ -461,3 +477,106 @@ func (c *Composer) Restore() {
 
 // Sent — отправка прошла, возвращать нечего.
 func (c *Composer) Sent() { c.sent = nil }
+
+// token — слово под курсором для подсказок и позиция его начала.
+func (c *Composer) token() (complete.Token, int, bool) {
+	cur := c.edit.TextCursor()
+	if cur.HasSelection() {
+		return complete.Token{}, 0, false
+	}
+	pos := cur.Position()
+	cur.MovePosition2(qt.QTextCursor__StartOfBlock, qt.QTextCursor__KeepAnchor)
+	tok, ok := complete.At(cur.SelectedText())
+	return tok, pos - tok.Len, ok
+}
+
+// updateSuggest — текст или курсор изменились: открыть, обновить или закрыть список.
+func (c *Composer) updateSuggest() {
+	if c.Suggest == nil {
+		return
+	}
+	tok, start, ok := c.token()
+	if !ok {
+		c.dismissed = ""
+		c.hideSuggest()
+		return
+	}
+	key := fmt.Sprintf("%d:%d", tok.Kind, start)
+	if key == c.dismissed {
+		return
+	}
+	if tok == c.tok && c.popup != nil && c.popup.visible() {
+		return
+	}
+	c.tok = tok
+	c.tokGen++
+	gen := c.tokGen
+	c.Suggest(tok, func(items []Suggestion) {
+		if gen != c.tokGen {
+			return // уже набрали другое
+		}
+		c.suggestPopup().show(items, c.frame.QWidget)
+	})
+}
+
+// suggestPopup — список живёт в окне поля ввода, поверх всего над полем.
+func (c *Composer) suggestPopup() *suggestPopup {
+	win := c.w.Window()
+	if c.popup == nil || c.popup.frame.ParentWidget().UnsafePointer() != win.UnsafePointer() {
+		if c.popup != nil {
+			c.popup.frame.DeleteLater()
+		}
+		c.popup = newSuggestPopup(win)
+		c.popup.onPick = c.acceptSuggestion
+	}
+	return c.popup
+}
+
+func (c *Composer) hideSuggest() {
+	c.tokGen++
+	c.tok = complete.Token{}
+	if c.popup != nil {
+		c.popup.hide()
+	}
+}
+
+// suggestKey — клавиши, пока открыт список: стрелки, Enter и Tab — выбрать, Esc — закрыть.
+func (c *Composer) suggestKey(k qt.Key) bool {
+	if c.popup == nil || !c.popup.visible() {
+		return false
+	}
+	switch k {
+	case qt.Key_Up:
+		c.popup.move(-1)
+	case qt.Key_Down:
+		c.popup.move(1)
+	case qt.Key_Return, qt.Key_Enter, qt.Key_Tab:
+		s, ok := c.popup.current()
+		if !ok {
+			return false
+		}
+		c.acceptSuggestion(s)
+	case qt.Key_Escape:
+		if tok, start, ok := c.token(); ok {
+			c.dismissed = fmt.Sprintf("%d:%d", tok.Kind, start)
+		}
+		c.hideSuggest()
+	default:
+		return false
+	}
+	return true
+}
+
+// acceptSuggestion заменяет набранное слово выбранным.
+func (c *Composer) acceptSuggestion(s Suggestion) {
+	tok, _, ok := c.token()
+	c.hideSuggest()
+	if !ok {
+		return
+	}
+	cur := c.edit.TextCursor()
+	cur.MovePosition3(qt.QTextCursor__PreviousCharacter, qt.QTextCursor__KeepAnchor, tok.Len)
+	cur.InsertText(s.Insert)
+	c.edit.SetTextCursor(cur)
+	c.edit.SetFocus()
+}

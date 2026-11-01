@@ -2,8 +2,10 @@
 package emoji
 
 import (
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -35,3 +37,13 @@ func Display(name string) string {
 	}
 	return ":" + name + ":"
 }
+
+// Names — имена всех системных эмодзи по алфавиту (для автодополнения :).
+var Names = sync.OnceValue(func() []string {
+	out := make([]string, 0, len(model.SystemEmojis))
+	for name := range model.SystemEmojis {
+		out = append(out, name)
+	}
+	slices.Sort(out)
+	return out
+})

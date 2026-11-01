@@ -106,6 +106,41 @@ func (s *Server) emojiRoute(w http.ResponseWriter, r *http.Request, me *model.Us
 	}
 }
 
+// usersAutocomplete — поиск для @: в канале (in_channel) и остальные, по началу
+// имени пользователя, имени или фамилии.
+func (s *Server) usersAutocomplete(w http.ResponseWriter, r *http.Request, _ *model.User) {
+	q := strings.ToLower(r.URL.Query().Get("name"))
+	channel := r.URL.Query().Get("in_channel")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	res := &model.UserAutocomplete{Users: []*model.User{}, OutOfChannel: []*model.User{}}
+	for _, u := range s.users {
+		if !strings.HasPrefix(u.Username, q) && !strings.HasPrefix(strings.ToLower(u.FirstName), q) && !strings.HasPrefix(strings.ToLower(u.LastName), q) {
+			continue
+		}
+		if channel != "" && s.members[u.Id][channel] != nil {
+			res.Users = append(res.Users, u)
+		} else {
+			res.OutOfChannel = append(res.OutOfChannel, u)
+		}
+	}
+	s.json(w, res)
+}
+
+// emojiAutocomplete — кастомные эмодзи по началу имени.
+func (s *Server) emojiAutocomplete(w http.ResponseWriter, r *http.Request, _ *model.User) {
+	q := r.URL.Query().Get("name")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []*model.Emoji{}
+	for _, e := range s.emoji {
+		if strings.HasPrefix(e.Name, q) {
+			out = append(out, e)
+		}
+	}
+	s.json(w, out)
+}
+
 func (s *Server) emojiByName(w http.ResponseWriter, name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

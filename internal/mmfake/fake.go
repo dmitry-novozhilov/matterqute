@@ -82,6 +82,8 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
 	s.mux.HandleFunc("POST /api/v4/users/logout", s.auth(s.logout))
 	s.mux.HandleFunc("GET /api/v4/users/me", s.auth(s.me))
+	s.mux.HandleFunc("GET /api/v4/users/autocomplete", s.auth(s.usersAutocomplete))
+	s.mux.HandleFunc("GET /api/v4/emoji/autocomplete", s.auth(s.emojiAutocomplete))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams", s.auth(s.userTeams))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/channels", s.auth(s.teamChannels))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/channels/members", s.auth(s.teamMembers))
@@ -133,6 +135,11 @@ func (s *Server) seed() {
 	}
 	alice, bob, carol, dave := s.byName("alice"), s.byName("bob"), s.byName("carol"), s.byName("dave")
 	everyone := []*model.User{alice, bob, carol, dave}
+	// erin только в Town Square команды dev и ничего не писала: клиент узнаёт
+	// о ней лишь из поиска пользователей (автодополнение @).
+	erin := &model.User{Id: model.NewId(), Username: "erin", Email: "erin@example.com", FirstName: "Эрин", LastName: "Смирнова"}
+	s.users[erin.Id] = erin
+	s.statuses[erin.Id] = model.StatusOffline
 
 	dev := &model.Team{Id: model.NewId(), Name: "dev", DisplayName: "Разработка"}
 	ops := &model.Team{Id: model.NewId(), Name: "ops", DisplayName: "Эксплуатация"}
@@ -149,6 +156,7 @@ func (s *Server) seed() {
 		return c
 	}
 	town := ch(dev, model.ChannelTypeOpen, "town-square", "Town Square", "Общий канал команды")
+	s.addChannel(town, []*model.User{erin})
 	backend := ch(dev, model.ChannelTypeOpen, "backend", "backend", "Сервисы и API")
 	ch(dev, model.ChannelTypePrivate, "releases", "Релизы", "Планирование релизов")
 	ch(ops, model.ChannelTypeOpen, "town-square", "Town Square", "")

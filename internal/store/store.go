@@ -231,6 +231,15 @@ func (s *Store) MarkViewed(channelID string) {
 
 func (s *Store) User(id string) *model.User { return s.users[id] }
 
+// KnownUsers — все пользователи, о которых знаем (для автодополнения @).
+func (s *Store) KnownUsers() []*model.User {
+	out := make([]*model.User, 0, len(s.users))
+	for _, u := range s.users {
+		out = append(out, u)
+	}
+	return out
+}
+
 // Username — имя пользователя или его id, если профиль ещё не загружен.
 func (s *Store) Username(id string) string {
 	if u := s.users[id]; u != nil {

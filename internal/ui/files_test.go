@@ -90,6 +90,8 @@ func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload 
 	if !waitFor(t, "upload", func() bool { return len(m.composer.files) == 1 && m.composer.files[0].fileID != "" }) {
 		return
 	}
+	m.composer.edit.SetPlainText("Заметки со встречи")
+	shot(t, m, "composer-attachment")
 	m.composer.send()
 	waitFor(t, "post with file", func() bool {
 		for _, it := range m.feed.items {

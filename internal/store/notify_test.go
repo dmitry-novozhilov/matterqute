@@ -72,6 +72,8 @@ func TestShouldNotify(t *testing.T) {
 		{"CRT: ответ в чужом треде", opts{known: true, crt: true}, NewPost{Post: post("bob", "root")}, false},
 		{"CRT: ответ в своём треде", opts{known: true, crt: true}, NewPost{Post: post("bob", "root"), Following: true}, true},
 		{"CRT: упоминание в чужом треде", opts{known: true, crt: true}, NewPost{Post: post("bob", "root"), Mentioned: true}, true},
+		{"CRT: профиль на упоминаниях, подписанный тред", opts{known: true, crt: true, userLevel: "mention"}, NewPost{Post: post("bob", "root"), Following: true}, true},
+		{"CRT: канал без уведомлений, подписанный тред", opts{known: true, crt: true, chLevel: "none"}, NewPost{Post: post("bob", "root"), Following: true}, false},
 		{"без CRT: ответ — как пост", opts{known: true}, NewPost{Post: post("bob", "root")}, true},
 		{"неизвестный канал", opts{}, NewPost{Post: post("bob", ""), ChannelType: "O"}, false},
 		{"новая личка", opts{}, NewPost{Post: post("bob", ""), ChannelType: "D"}, true},

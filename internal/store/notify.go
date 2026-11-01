@@ -15,8 +15,8 @@ type NewPost struct {
 // (notification_actions.tsx): свои посты, системные, заглушённые каналы и
 // «не беспокоить» молчат; уровень — настройка канала, иначе профиля, иначе
 // «все»; в группе «по умолчанию» при «упоминаниях» в профиле — «все»; на
-// «упоминаниях» — только упоминания и лички; при CRT ответ на «всех» — только
-// в треде, на который подписан.
+// «упоминаниях» — только упоминания и лички. Ответ при CRT — если упомянули
+// или сервер включил нас в followers.
 func (s *Store) ShouldNotify(e NewPost) bool {
 	p := e.Post
 	if (p.UserId == s.me.Id && p.GetProp(model.PostPropsFromWebhook) != "true") || p.IsSystemMessage() {
@@ -51,14 +51,16 @@ func (s *Store) ShouldNotify(e NewPost) bool {
 	if level == "" {
 		level = model.UserNotifyAll
 	}
-	switch level {
-	case model.UserNotifyNone:
+	switch {
+	case level == model.UserNotifyNone:
 		return false
-	case model.UserNotifyMention:
-		return e.Mentioned || chType == model.ChannelTypeDirect
-	}
-	if s.crt && p.RootId != "" {
+	case s.crt && p.RootId != "":
+		// В followers сервер кладёт только тех подписчиков треда, кому по их
+		// desktop и desktop_threads положено уведомление (notification.go,
+		// addFollowerToNotify), — уровень канала здесь уже учтён.
 		return e.Following || e.Mentioned
+	case level == model.UserNotifyMention:
+		return e.Mentioned || chType == model.ChannelTypeDirect
 	}
 	return true
 }

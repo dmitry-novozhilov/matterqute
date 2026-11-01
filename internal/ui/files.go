@@ -20,6 +20,8 @@ import (
 func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnToggleReaction = m.toggleReaction
 	f.OnPickReaction = m.pickReaction
+	f.OnPermalink = m.openPermalink
+	f.OnRemovePreview = m.removePreview
 	f.OnLink = m.handleLink
 	f.OnIntegration = m.showIntegrationCard
 	f.OnFullscreenVideo = m.fullscreenVideo

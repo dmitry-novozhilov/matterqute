@@ -34,8 +34,9 @@ func CRTEnabled(clientConfig map[string]string, displayPrefs model.Preferences) 
 
 // Settings — настройки сервера и пользователя, от которых зависит поведение клиента.
 type Settings struct {
-	CRT         bool
-	MaxFileSize int64 // байт; 0 — сервер не сказал
+	CRT          bool
+	MaxFileSize  int64 // байт; 0 — сервер не сказал
+	LinkPreviews bool  // показывать предпросмотр ссылок (display_settings/link_previews, по умолчанию да)
 }
 
 // FetchSettings читает клиентский конфиг сервера и настройки отображения пользователя.
@@ -48,7 +49,12 @@ func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 	if err != nil {
 		return Settings{}, describe(s.ServerURL, fmt.Sprintf("load %s preferences", model.PreferenceCategoryDisplaySettings), resp, err)
 	}
-	st := Settings{CRT: CRTEnabled(cfg, prefs)}
+	st := Settings{CRT: CRTEnabled(cfg, prefs), LinkPreviews: true}
+	for _, p := range prefs {
+		if p.Name == "link_previews" && p.Value == "false" {
+			st.LinkPreviews = false
+		}
+	}
 	if v := cfg["MaxFileSize"]; v != "" {
 		if st.MaxFileSize, err = strconv.ParseInt(v, 10, 64); err != nil {
 			return st, fmt.Errorf("client config of %s: MaxFileSize %q: %w", s.ServerURL, truncate(v, 50), err)

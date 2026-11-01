@@ -40,14 +40,7 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		if err != nil {
 			return nil, err
 		}
-		return func() {
-			if m.st.ApplyEdited(p) && p.ChannelId == m.current && m.feed.Has(p.Id) {
-				m.feed.Upsert(p)
-			}
-			if t := m.thread; t != nil && t.tl.Replace(p) && t.tl.Loaded {
-				m.panel.feed.Upsert(p)
-			}
-		}, nil
+		return func() { m.applyEdited(p) }, nil
 
 	case model.WebsocketEventPostDeleted:
 		p, err := eventPost(data)
@@ -112,8 +105,8 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		return m.reloadSidebar, nil
 
 	case model.WebsocketEventPreferencesChanged:
-		// Пользователь мог включить или выключить свёрнутые треды.
-		if raw, _ := data["preferences"].(string); strings.Contains(raw, model.PreferenceNameCollapsedThreadsEnabled) {
+		// Пользователь мог включить или выключить свёрнутые треды или предпросмотр ссылок.
+		if raw, _ := data["preferences"].(string); strings.Contains(raw, model.PreferenceNameCollapsedThreadsEnabled) || strings.Contains(raw, `"link_previews"`) {
 			return m.reloadSidebar, nil
 		}
 
@@ -218,4 +211,14 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// applyEdited — пост изменили (здесь или в другом клиенте).
+func (m *MainWindow) applyEdited(p *model.Post) {
+	if m.st.ApplyEdited(p) && p.ChannelId == m.current && m.feed.Has(p.Id) {
+		m.feed.Upsert(p)
+	}
+	if t := m.thread; t != nil && t.tl.Replace(p) && t.tl.Loaded {
+		m.panel.feed.Upsert(p)
+	}
 }

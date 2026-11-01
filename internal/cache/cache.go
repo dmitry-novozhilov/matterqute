@@ -152,38 +152,61 @@ func (c *Cache) FetchAvatar(ctx context.Context, userID string, version int64) (
 	})
 }
 
-// maxIconSize — предел для иконки интеграции: это аватар, а не вложение.
-const maxIconSize = 1 << 20
+// Пределы для сторонних картинок: иконка интеграции — это аватар, картинка
+// предпросмотра ссылки — уже побольше.
+const (
+	maxIconSize = 1 << 20
+	maxLinkSize = 10 << 20
+)
 
 // IconPath — иконка интеграции (override_icon_url поста вебхука) на диске или "".
 func (c *Cache) IconPath(rawURL string) string {
-	return existing(c.iconBase(rawURL), imageExts)
+	return existing(c.urlBase("icons", rawURL), imageExts)
 }
 
-func (c *Cache) iconBase(rawURL string) string {
-	sum := sha256.Sum256([]byte(rawURL))
-	return filepath.Join(c.dir, "icons", hex.EncodeToString(sum[:16]))
-}
-
-// FetchIcon качает иконку интеграции. Адрес задал автор вебхука, и он на чужом
-// сервере, поэтому запрос — без токена Mattermost, как у веб-клиента без прокси
-// картинок. Ответ не картинку, слишком большой или 4xx — ErrNotFound: повторять
-// без толку.
+// FetchIcon качает иконку интеграции.
 func (c *Cache) FetchIcon(ctx context.Context, rawURL string) (string, error) {
+	return c.fetchImageURL(ctx, "icons", "integration icon", rawURL, maxIconSize)
+}
+
+// LinkImagePath — картинка предпросмотра ссылки (OpenGraph или ссылка прямо на
+// картинку) на диске или "".
+func (c *Cache) LinkImagePath(rawURL string) string {
+	return existing(c.urlBase("links", rawURL), imageExts)
+}
+
+// FetchLinkImage качает картинку предпросмотра ссылки.
+func (c *Cache) FetchLinkImage(ctx context.Context, rawURL string) (string, error) {
+	return c.fetchImageURL(ctx, "links", "link preview image", rawURL, maxLinkSize)
+}
+
+func (c *Cache) urlBase(dir, rawURL string) string {
+	sum := sha256.Sum256([]byte(rawURL))
+	return filepath.Join(c.dir, dir, hex.EncodeToString(sum[:16]))
+}
+
+// fetchImageURL качает картинку по адресу из поста. Чужой сервер — без токена
+// Mattermost, как веб-клиент без прокси картинок; сам сервер (его прокси
+// картинок /api/v4/image) — с токеном. Ответ не картинку, больше max или 4xx —
+// ErrNotFound: повторять без толку.
+func (c *Cache) fetchImageURL(ctx context.Context, dir, what, rawURL string, max int) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", fmt.Errorf("integration icon url %q: want http(s): %w", truncate(rawURL, 200), ErrNotFound)
+		return "", fmt.Errorf("%s url %q: want http(s): %w", what, truncate(rawURL, 200), ErrNotFound)
 	}
-	return c.do("icon:"+rawURL, func() (string, error) {
-		if p := c.IconPath(rawURL); p != "" {
+	return c.do(dir+":"+rawURL, func() (string, error) {
+		if p := existing(c.urlBase(dir, rawURL), imageExts); p != "" {
 			return p, nil
 		}
 		fail := func(format string, args ...any) (string, error) {
-			return "", fmt.Errorf("get integration icon %s: "+format, append([]any{truncate(rawURL, 200)}, args...)...)
+			return "", fmt.Errorf("get %s %s: "+format, append([]any{what, truncate(rawURL, 200)}, args...)...)
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
 			return fail("%w", err)
+		}
+		if c.c != nil && c.c.AuthToken != "" && strings.HasPrefix(rawURL, c.server+"/") {
+			req.Header.Set(model.HeaderAuth, model.HeaderBearer+" "+c.c.AuthToken)
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -196,17 +219,17 @@ func (c *Cache) FetchIcon(ctx context.Context, rawURL string) (string, error) {
 		if resp.StatusCode != http.StatusOK {
 			return fail("HTTP %d", resp.StatusCode)
 		}
-		data, err := io.ReadAll(io.LimitReader(resp.Body, maxIconSize+1))
+		data, err := io.ReadAll(io.LimitReader(resp.Body, int64(max)+1))
 		if err != nil {
 			return fail("%w", err)
 		}
-		if len(data) > maxIconSize {
-			return fail("larger than %d bytes: %w", maxIconSize, ErrNotFound)
+		if len(data) > max {
+			return fail("larger than %d bytes: %w", max, ErrNotFound)
 		}
 		if ct := http.DetectContentType(data); !strings.HasPrefix(ct, "image/") {
 			return fail("content is %s, not an image: %w", ct, ErrNotFound)
 		}
-		return c.save(c.iconBase(rawURL)+imageExt(data), data)
+		return c.save(c.urlBase(dir, rawURL)+imageExt(data), data)
 	})
 }
 

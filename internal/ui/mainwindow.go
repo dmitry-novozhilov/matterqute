@@ -58,6 +58,7 @@ type MainWindow struct {
 	suggestTimer   *qt.QTimer // запрос подсказок к серверу — после паузы в наборе
 	suggestPending func()
 
+	scrollTo    string       // после загрузки ленты прокрутить к этому посту (ссылка на сообщение)
 	picker      *emojiPicker // последнее открытое окно выбора эмодзи
 	recent      emoji.Recent // недавние эмодзи (настройка recent_emojis)
 	customEmoji []string     // имена кастомных эмодзи сервера
@@ -137,7 +138,8 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		}
 	}
 
-	deps := FeedDeps{Names: m.st.Username, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists}
+	deps := FeedDeps{Names: m.st.Username, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists,
+		LinkPreviews: m.st.LinkPreviews}
 	m.feed = NewFeed(deps)
 	m.feed.OnNeedOlder = m.loadOlder
 	m.feed.OnOpenThread = m.openThread
@@ -361,7 +363,12 @@ func (m *MainWindow) reloadSidebar() {
 				m.fail("load sidebar", err)
 			} else {
 				crtChanged := sb.CRT != m.st.CRT()
+				previewsChanged := sb.LinkPreviews != m.st.LinkPreviews()
 				m.st.SetSidebar(sb)
+				if previewsChanged && !crtChanged {
+					m.feed.renderAll()
+					m.panel.feed.renderAll()
+				}
 				if crtChanged {
 					// Ленты загружены в другом режиме (с ответами или без).
 					m.st.DropTimelines()
@@ -396,8 +403,9 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 	settings, err := m.s.FetchSettings(ctx)
 	if err != nil {
 		m.log.Warn("load server settings", "err", err)
+		settings.LinkPreviews = true
 	}
-	sb.CRT, sb.MaxFileSize = settings.CRT, settings.MaxFileSize
+	sb.CRT, sb.MaxFileSize, sb.LinkPreviews = settings.CRT, settings.MaxFileSize, settings.LinkPreviews
 	peers := map[string]bool{}
 	for _, t := range teams {
 		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")
@@ -543,6 +551,12 @@ func (m *MainWindow) refreshHeader() {
 // showTimeline показывает загруженную ленту канала или заглушку пустого канала.
 func (m *MainWindow) showTimeline(id string, tl *store.Timeline) {
 	m.feed.SetPosts(tl.Posts, tl.HasMore)
+	if to := m.scrollTo; to != "" {
+		m.scrollTo = ""
+		if m.feed.Has(to) {
+			m.feed.ScrollToPost(to) // перешли по ссылке на сообщение
+		}
+	}
 	if len(tl.Posts) > 0 {
 		return
 	}

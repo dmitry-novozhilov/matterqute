@@ -161,6 +161,10 @@ func TestIcon(t *testing.T) {
 	if a, _ := auth.Load("/icon.png"); a != "" {
 		t.Errorf("Mattermost token sent to the integration's host: %q", a)
 	}
+	// Картинка предпросмотра ссылки — та же загрузка, свой каталог и предел.
+	if p, err := c.FetchLinkImage(ctx, ext.URL+"/icon.png"); err != nil || p != c.LinkImagePath(ext.URL+"/icon.png") || p == path {
+		t.Errorf("FetchLinkImage = %q, %v", p, err)
+	}
 	for _, u := range []string{ext.URL + "/page", ext.URL + "/big", ext.URL + "/missing", "file:///etc/passwd", "/relative.png"} {
 		if p, err := c.FetchIcon(ctx, u); !errors.Is(err, ErrNotFound) || p != "" || c.IconPath(u) != "" {
 			t.Errorf("FetchIcon(%s) = %q, %v; want ErrNotFound and nothing on disk", u, p, err)

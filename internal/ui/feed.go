@@ -59,9 +59,9 @@ type FeedDeps struct {
 	Thread        bool    // лента треда: без счётчиков ответов и пометок «в треде»
 	Assets        *Assets // nil — без картинок и кастомных эмодзи (тесты прокрутки)
 	ChannelExists func(name string) bool
+	LinkPreviews  func() bool // показывать предпросмотр ссылок; nil — да
 }
 
-// pill — картинки реакции: обычная и при наведении.
 // pill — плашка реакции: обычная и под курсором. render рисует её заново —
 // для анимированного эмодзи на каждом кадре.
 type pill struct {
@@ -111,6 +111,8 @@ type Feed struct {
 	OnOpenThread     func(rootID string)               // открыть тред поста
 	OnToggleReaction func(p *model.Post, emoji string) // поставить или снять свою реакцию
 	OnPickReaction   func(p *model.Post)               // окно выбора эмодзи для реакции
+	OnPermalink      func(channelID, postID string)    // «Перейти к сообщению» в предпросмотре ссылки
+	OnRemovePreview  func(p *model.Post)               // автор убирает предпросмотр ссылки
 	OnLink           func(url string)                  // клик по ссылке в тексте
 	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
 	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
@@ -713,6 +715,7 @@ func (f *Feed) postHTML(i int) string {
 	b.WriteString(f.replyHTML(p))
 	b.WriteString(f.bodyHTML(p))
 	b.WriteString(f.filesHTML(p))
+	b.WriteString(f.embedsHTML(p))
 	b.WriteString(f.reactionsHTML(p))
 	b.WriteString(f.threadHTML(p))
 	b.WriteString("</td></tr></table>")
@@ -1238,6 +1241,11 @@ func (f *Feed) onAnchor(link string) {
 		if f.OnRetry != nil {
 			f.OnRetry()
 		}
+	case strings.HasPrefix(link, permalinkLink):
+		ch, post, _ := strings.Cut(strings.TrimPrefix(link, permalinkLink), ":")
+		if f.OnPermalink != nil && ch != "" && post != "" {
+			f.OnPermalink(ch, post)
+		}
 	case strings.HasPrefix(link, videoLink):
 		if fi := f.file(strings.TrimPrefix(link, videoLink)); fi != nil {
 			f.playInline(fi)
@@ -1306,6 +1314,10 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 					f.OnPickReaction(p)
 				}
 			})
+			if p.UserId == f.d.Me.Id && store.HasLinkPreview(p) && f.OnRemovePreview != nil {
+				rm := menu.QWidget.AddActionWithText("Убрать предпросмотр ссылки")
+				rm.OnTriggered(func() { f.OnRemovePreview(p) })
+			}
 		}
 		menu.AddSeparator()
 		ct := menu.QWidget.AddActionWithText("Копировать текст сообщения")
@@ -1456,7 +1468,8 @@ func (f *Feed) fitImages() {
 	f.lastWidth = w
 	f.edit(func() {
 		for i, it := range f.items {
-			if it.post.Metadata != nil && slices.ContainsFunc(it.post.Metadata.Files, func(fi *model.FileInfo) bool { return isImage(fi) || isVideo(fi) }) {
+			if it.post.Metadata != nil && (len(it.post.Metadata.Embeds) > 0 ||
+				slices.ContainsFunc(it.post.Metadata.Files, func(fi *model.FileInfo) bool { return isImage(fi) || isVideo(fi) })) {
 				f.render(i)
 			}
 		}

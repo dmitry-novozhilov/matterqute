@@ -17,6 +17,7 @@ import (
 type Store struct {
 	me          *model.User
 	crt         bool
+	noPreviews  bool // пользователь выключил предпросмотр ссылок
 	maxFileSize int64
 	teams       []*model.Team
 	channels    map[string]*model.Channel
@@ -49,24 +50,29 @@ func (s *Store) Me() *model.User { return s.me }
 // непрочитанное в канале считается по корневым постам.
 func (s *Store) CRT() bool { return s.crt }
 
+// LinkPreviews — показывать ли предпросмотр ссылок (настройка пользователя).
+func (s *Store) LinkPreviews() bool { return !s.noPreviews }
+
 // MaxFileSize — лимит сервера на загрузку файла в байтах; 0 — неизвестен.
 func (s *Store) MaxFileSize() int64 { return s.maxFileSize }
 
 // Sidebar — всё, что нужно для списка каналов; собирается по REST целиком.
 type Sidebar struct {
-	CRT         bool
-	MaxFileSize int64 // лимит сервера на загрузку файла; 0 — неизвестен
-	Teams       []*model.Team
-	Channels    []*model.Channel // личные и групповые приходят в ответе каждой команды — дубли допустимы
-	Members     []*model.ChannelMember
-	Users       []*model.User
-	Threads     []*model.ThreadResponse // только при CRT; DM-треды приходят в каждой команде
-	Statuses    []*model.Status         // присутствие собеседников в личках
+	CRT          bool
+	MaxFileSize  int64 // лимит сервера на загрузку файла; 0 — неизвестен
+	LinkPreviews bool  // показывать предпросмотр ссылок
+	Teams        []*model.Team
+	Channels     []*model.Channel // личные и групповые приходят в ответе каждой команды — дубли допустимы
+	Members      []*model.ChannelMember
+	Users        []*model.User
+	Threads      []*model.ThreadResponse // только при CRT; DM-треды приходят в каждой команде
+	Statuses     []*model.Status         // присутствие собеседников в личках
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
 func (s *Store) SetSidebar(sb *Sidebar) {
 	s.crt = sb.CRT
+	s.noPreviews = !sb.LinkPreviews
 	s.maxFileSize = sb.MaxFileSize
 	s.teams = sb.Teams
 	s.channels = make(map[string]*model.Channel, len(sb.Channels))

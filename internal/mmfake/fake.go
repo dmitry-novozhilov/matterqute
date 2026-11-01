@@ -114,10 +114,25 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("POST /api/v4/channels/direct", s.auth(s.createDirect))
 	s.mux.HandleFunc("GET /api/v4/websocket", s.websocket)
 	// Иконка интеграции на «чужом» сервере: без авторизации, как у Grafana.
-	s.mux.HandleFunc("GET /static/integration.png", func(w http.ResponseWriter, _ *http.Request) {
+	// Картинки «чужих» сайтов: иконка интеграции, картинки предпросмотра ссылок.
+	// Без авторизации, как на настоящем стороннем сервере.
+	s.mux.HandleFunc("GET /static/{name}", func(w http.ResponseWriter, r *http.Request) {
+		var data []byte
+		switch r.PathValue("name") {
+		case "integration.png":
+			data = circlePNG(64, color.RGBA{244, 104, 0, 255})
+		case "og.png":
+			data = gradientPNG(1200, 630)
+		case "photo.png":
+			data = gradientPNG(640, 360)
+		default:
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "image/png")
-		w.Write(circlePNG(64, color.RGBA{244, 104, 0, 255}))
+		w.Write(data)
 	})
+	s.mux.HandleFunc("PUT /api/v4/posts/{pid}/patch", s.auth(s.patchPost))
 	return s
 }
 
@@ -208,6 +223,11 @@ func (s *Server) seed() {
 	doc := s.seedPost(backend, dave, now.Add(-30*time.Minute), "Отчёт по нагрузке")
 	doc.FileIds = model.StringArray{s.addFile(dave.Id, backend.Id, "load-report.pdf", []byte("%PDF-1.4\n% fake report\n")).Id}
 	s.attachFiles(doc)
+	// Ссылка с предпросмотром сайта (OpenGraph), как его добывает сервер.
+	link := s.seedPost(backend, bob, now.Add(-28*time.Minute), "Почитайте про кэш: https://go.dev/blog/maps")
+	link.Metadata = &model.PostMetadata{Embeds: []*model.PostEmbed{{Type: model.PostEmbedOpengraph, URL: "https://go.dev/blog/maps",
+		Data: map[string]any{"title": "Go maps in action", "site_name": "The Go Programming Language",
+			"description": "An introduction to Go maps: declaring, iterating, concurrency and ordering."}}}}
 	video := s.seedPost(backend, carol, now.Add(-27*time.Minute), "Запись бага")
 	video.FileIds = model.StringArray{s.addFile(carol.Id, backend.Id, "bug.avi", demoAVI(320, 180, 20, 10)).Id}
 	s.attachFiles(video)
@@ -576,6 +596,43 @@ func (s *Server) Chatter(interval time.Duration) {
 		time.Sleep(interval)
 		s.Post(&model.Post{ChannelId: town.Id, UserId: bob.Id, Message: fmt.Sprintf("Сообщение из chatter #%d", i)})
 	}
+}
+
+// patchPost — автор меняет текст или свойства поста; убранный предпросмотр
+// (remove_link_preview) сервер убирает и из метаданных. Всем в канале — post_edited.
+func (s *Server) patchPost(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var patch model.PostPatch
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.post(r.PathValue("pid"))
+	if p == nil || p.UserId != me.Id {
+		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
+		return
+	}
+	if patch.Message != nil {
+		p.Message = *patch.Message
+	}
+	if patch.Props != nil {
+		p.SetProps(*patch.Props)
+	}
+	if p.GetProp("remove_link_preview") == "true" && p.Metadata != nil {
+		p.Metadata.Embeds = slices.DeleteFunc(p.Metadata.Embeds, func(e *model.PostEmbed) bool {
+			return e.Type == model.PostEmbedOpengraph || e.Type == model.PostEmbedImage
+		})
+	}
+	p.EditAt, p.UpdateAt = model.GetMillis(), model.GetMillis()
+	postJSON, _ := json.Marshal(p)
+	for _, c := range s.connsIn(p.ChannelId) {
+		ev := model.NewWebSocketEvent(model.WebsocketEventPostEdited, "", p.ChannelId, "", nil, "")
+		ev.Add("post", string(postJSON))
+		data, _ := ev.ToJSON()
+		c.write(data)
+	}
+	s.json(w, p)
 }
 
 func (s *Server) connsIn(channelID string) []*wsConn {

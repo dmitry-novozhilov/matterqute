@@ -41,6 +41,7 @@ const (
 	imageLink     = "mm-img:"        // mm-img:<файл> — картинка целиком
 	retryLink     = "mm-retry:"      // повторить загрузку ленты
 	hookLink      = "mm-hook:"       // mm-hook:<post> — карточка интеграции, написавшей пост
+	videoLink     = "mm-video:"      // mm-video:<файл> — открыть плеер
 	spinnerSrc    = "spinner:24"     // ресурс с текущим кадром крутилки
 )
 
@@ -101,6 +102,7 @@ type Feed struct {
 	OnToggleReaction func(p *model.Post, emoji string) // поставить или снять свою реакцию
 	OnLink           func(url string)                  // клик по ссылке в тексте
 	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
+	OnOpenVideo      func(fi *model.FileInfo, p *model.Post)
 	OnOpenFile       func(fi *model.FileInfo)
 	OnSaveFile       func(fi *model.FileInfo)
 	OnRetry          func() // «Повторить» в заглушке ошибки
@@ -740,6 +742,10 @@ func (f *Feed) filesHTML(p *model.Post) string {
 	pal := Pal()
 	var b strings.Builder
 	for _, fi := range p.Metadata.Files {
+		if isVideo(fi) {
+			b.WriteString(f.videoHTML(fi))
+			continue
+		}
 		if isImage(fi) {
 			w, h := f.imageSize(fi)
 			fmt.Fprintf(&b, `<p style="margin-top:6px;margin-bottom:0"><a href="%s%s"><img src="%s" width="%d" height="%d" title="%s"></a></p>`,
@@ -1079,6 +1085,11 @@ func (f *Feed) onAnchor(link string) {
 		if f.OnRetry != nil {
 			f.OnRetry()
 		}
+	case strings.HasPrefix(link, videoLink):
+		id := strings.TrimPrefix(link, videoLink)
+		if fi := f.file(id); fi != nil && f.OnOpenVideo != nil {
+			f.OnOpenVideo(fi, f.fileOwner(id))
+		}
 	case strings.HasPrefix(link, hookLink):
 		if p := f.post(strings.TrimPrefix(link, hookLink)); p != nil && f.OnIntegration != nil {
 			f.OnIntegration(p)
@@ -1091,17 +1102,28 @@ func (f *Feed) onAnchor(link string) {
 }
 
 func (f *Feed) file(id string) *model.FileInfo {
+	fi, _ := f.fileAndPost(id)
+	return fi
+}
+
+// fileOwner — пост, к которому приложен файл.
+func (f *Feed) fileOwner(id string) *model.Post {
+	_, p := f.fileAndPost(id)
+	return p
+}
+
+func (f *Feed) fileAndPost(id string) (*model.FileInfo, *model.Post) {
 	for _, it := range f.items {
 		if it.post.Metadata == nil {
 			continue
 		}
 		for _, fi := range it.post.Metadata.Files {
 			if fi.Id == id {
-				return fi
+				return fi, it.post
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // reactionMenu — меню быстрых реакций; parent владеет меню.
@@ -1283,7 +1305,7 @@ func (f *Feed) fitImages() {
 	}
 	f.lastWidth = w
 	for i, it := range f.items {
-		if it.post.Metadata != nil && slices.ContainsFunc(it.post.Metadata.Files, isImage) {
+		if it.post.Metadata != nil && slices.ContainsFunc(it.post.Metadata.Files, func(fi *model.FileInfo) bool { return isImage(fi) || isVideo(fi) }) {
 			f.render(i)
 		}
 	}

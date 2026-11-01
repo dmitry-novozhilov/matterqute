@@ -50,9 +50,10 @@ type MainWindow struct {
 	panel       *ThreadPanel
 	thread      *threadView // открытый в панели тред; nil — панель закрыта
 	assets      *Assets
-	notifier    Notifier          // nil — уведомлений нет (нет шины или сервера уведомлений)
-	notes       map[string]uint32 // показанное уведомление по каналу или треду: следующее его заменит
-	mentions    int64             // последнее отданное в OnMentions; -1 — ещё не отдавали
+	notifier    Notifier           // nil — уведомлений нет (нет шины или сервера уведомлений)
+	notes       map[string]uint32  // показанное уведомление по каналу или треду: следующее его заменит
+	players     map[string]*player // открытые плееры по id файла
+	mentions    int64              // последнее отданное в OnMentions; -1 — ещё не отдавали
 	retryNow    chan struct{}
 	unsubscribe func()
 
@@ -92,6 +93,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		cancel:   cancel,
 		items:    map[string]*qt.QTreeWidgetItem{},
 		notes:    map[string]uint32{},
+		players:  map[string]*player{},
 		mentions: -1,
 		retryNow: make(chan struct{}, 1),
 
@@ -256,6 +258,9 @@ func (m *MainWindow) Close() {
 	m.panel.dispose()
 	m.feed.dispose()
 	m.composer.dispose()
+	for _, pl := range m.players {
+		pl.w.Close()
+	}
 	m.w.Close()
 }
 

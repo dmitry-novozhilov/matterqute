@@ -21,6 +21,7 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnToggleReaction = m.toggleReaction
 	f.OnLink = m.handleLink
 	f.OnIntegration = m.showIntegrationCard
+	f.OnOpenVideo = m.openVideo
 	f.OnOpenFile = m.openFile
 	f.OnSaveFile = m.saveFile
 }

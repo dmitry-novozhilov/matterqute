@@ -167,3 +167,20 @@ func TestIcon(t *testing.T) {
 		}
 	}
 }
+
+func TestVideoInfo(t *testing.T) {
+	c := New(t.TempDir(), "https://mm.example.com", nil)
+	id := model.NewId()
+	if _, ok := c.Video(id); ok {
+		t.Error("unknown video reported as probed")
+	}
+	path := c.VideoThumbPath(id, 64000, 1280, 720)
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	os.WriteFile(path, []byte("png"), 0o600)
+	if v, ok := c.Video(id); !ok || v.Thumb != path || v.Duration != 64000 || v.Width != 1280 || v.Height != 720 {
+		t.Errorf("Video = %+v, %v", v, ok)
+	}
+	if c.VideoThumbPath("../x", 1, 1, 1) != "" {
+		t.Error("thumb path for an invalid file id")
+	}
+}

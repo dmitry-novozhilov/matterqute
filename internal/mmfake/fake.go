@@ -196,6 +196,9 @@ func (s *Server) seed() {
 	doc := s.seedPost(backend, dave, now.Add(-30*time.Minute), "Отчёт по нагрузке")
 	doc.FileIds = model.StringArray{s.addFile(dave.Id, backend.Id, "load-report.pdf", []byte("%PDF-1.4\n% fake report\n")).Id}
 	s.attachFiles(doc)
+	video := s.seedPost(backend, carol, now.Add(-27*time.Minute), "Запись бага")
+	video.FileIds = model.StringArray{s.addFile(carol.Id, backend.Id, "bug.avi", demoAVI(320, 180, 20, 10)).Id}
+	s.attachFiles(video)
 	spin := s.seedPost(backend, bob, now.Add(-25*time.Minute), "Деплой идёт")
 	spin.FileIds = model.StringArray{s.addFile(bob.Id, backend.Id, "deploy.gif", spinnerGIF(160, 90)).Id}
 	s.attachFiles(spin)

@@ -210,6 +210,38 @@ func (c *Cache) FetchIcon(ctx context.Context, rawURL string) (string, error) {
 	})
 }
 
+// VideoInfo — что узнали о ролике, разобрав его: кадр-превью, длительность, размер.
+type VideoInfo struct {
+	Thumb    string // PNG первого кадра
+	Duration int64  // мс
+	Width    int
+	Height   int
+}
+
+// VideoThumbPath — куда сохранить кадр-превью ролика; длительность и размер — в имени файла.
+func (c *Cache) VideoThumbPath(fileID string, durationMs int64, w, h int) string {
+	if !model.IsValidId(fileID) {
+		return ""
+	}
+	return filepath.Join(c.dir, "videos", fmt.Sprintf("%s-%d-%dx%d.png", fileID, durationMs, w, h))
+}
+
+// Video — разобранный ранее ролик; ok=false — ещё не разбирали.
+func (c *Cache) Video(fileID string) (VideoInfo, bool) {
+	if !model.IsValidId(fileID) {
+		return VideoInfo{}, false
+	}
+	matches, _ := filepath.Glob(filepath.Join(c.dir, "videos", fileID+"-*.png"))
+	for _, m := range matches {
+		var v VideoInfo
+		if _, err := fmt.Sscanf(strings.TrimPrefix(filepath.Base(m), fileID+"-"), "%d-%dx%d.png", &v.Duration, &v.Width, &v.Height); err == nil {
+			v.Thumb = m
+			return v, true
+		}
+	}
+	return VideoInfo{}, false
+}
+
 // FilePath — где лежит (или будет лежать) вложение целиком.
 func (c *Cache) FilePath(fi *model.FileInfo) string {
 	return filepath.Join(c.dir, "files", fi.Id, SafeName(fi.Name, fi.Id))

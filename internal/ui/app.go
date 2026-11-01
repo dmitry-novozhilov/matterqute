@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
 	"matterqute/internal/config"
@@ -41,6 +42,8 @@ type server struct {
 	login    *LoginView
 	conn     ConnState
 	mentions int64
+	mood     *qt.QPixmap // свой статус на этом сервере (эмодзи) и подсказка
+	moodTip  string
 }
 
 // SetNotifier включает уведомления рабочего стола; звать до Start.
@@ -55,6 +58,11 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 	}
 	a.shell.OnSelectServer = func(i int) { a.activate(a.servers[i]) }
 	a.shell.OnAddServer = a.showAdd
+	a.shell.OnStatus = func(at *qt.QPoint) {
+		if sv := a.active; sv != nil && sv.main != nil {
+			sv.main.showStatusPanel(at)
+		}
+	}
 	OnThemeModeChosen = func(mode ThemeMode) {
 		a.cfg.Theme = string(mode)
 		a.saveConfig()
@@ -125,6 +133,7 @@ func (a *App) activate(sv *server) {
 		sv.main.SetColumns(a.cfg.Window.Sidebar, a.cfg.Window.Thread)
 		a.shell.SetPage(sv.main.Widget())
 		a.shell.SetUser(sv.main.s.Me.Username, sv.url)
+		a.shell.SetMood(sv.mood, sv.moodTip)
 	} else {
 		a.shell.SetPage(sv.login.Widget())
 		a.shell.SetUser("", "")
@@ -367,6 +376,12 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool) {
 		a.updateMentions()
 	}
 	m.OnConnection = func(c ConnState) { a.setConn(sv, c) }
+	m.OnOwnStatus = func(pm *qt.QPixmap, tip string) {
+		sv.mood, sv.moodTip = pm, tip
+		if sv == a.active {
+			a.shell.SetMood(pm, tip)
+		}
+	}
 	m.OnMessage = func(text string) {
 		if sv == a.active {
 			a.shell.ShowMessage(text)

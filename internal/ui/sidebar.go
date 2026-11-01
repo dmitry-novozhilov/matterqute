@@ -2,9 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"matterqute/internal/status"
 )
 
 // Роли данных строк сайдбара.
@@ -95,6 +98,13 @@ func (m *MainWindow) fillSidebar() {
 		addGroup(t.DisplayName, m.st.TeamChannels(t.Id))
 	}
 	addGroup("Личные сообщения", m.st.DirectChannels())
+	for _, ch := range m.st.DirectChannels() {
+		if it := m.items[ch.Id]; it != nil && ch.Type == model.ChannelTypeDirect {
+			if cs := status.Current(m.st.User(m.st.DMPeer(ch)), time.Now()); cs != nil {
+				it.SetToolTip(0, statusTip(cs))
+			}
+		}
+	}
 	if m.current == "" && m.initialChannel != "" {
 		toSelect = m.items[m.initialChannel]
 		m.initialChannel = ""
@@ -184,7 +194,7 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 		muted    bool
 		iconName string
 		avatar   *model.User
-		status   string
+		presence string
 	)
 	if id == threadsID {
 		label, iconName = "Треды", "messages-square"
@@ -207,7 +217,7 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 			iconName = "users"
 		case model.ChannelTypeDirect:
 			peer := m.st.DMPeer(ch)
-			avatar, status = m.st.User(peer), m.st.Status(peer)
+			avatar, presence = m.st.User(peer), m.st.Status(peer)
 			label = m.st.Username(peer)
 			if peer == m.s.Me.Id {
 				suffix = " (вы)"
@@ -237,7 +247,7 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 		if selected {
 			bg = pal.AccW
 		}
-		drawStatusDot(p, float64(x-2+20-7), float64(cy-10+20-7), 7, status, bg)
+		drawStatusDot(p, float64(x-2+20-7), float64(cy-10+20-7), 7, presence, bg)
 	} else {
 		p.DrawPixmap9(x, cy-8, iconPixmap(iconName, iconColor, 16))
 	}
@@ -270,6 +280,12 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 	}
 	used := text(label, tx, right-tx, color, weight)
 	if suffix != "" {
-		text(suffix, tx+used, right-tx-used, pal.Tx2, qt.QFont__Normal)
+		used += text(suffix, tx+used, right-tx-used, pal.Tx2, qt.QFont__Normal)
+	}
+	// Свой статус собеседника — эмодзи после имени (подсказка — у строки).
+	if avatar != nil && tx+used+20 <= right {
+		if cs := status.Current(avatar, time.Now()); cs != nil {
+			p.DrawPixmap9(tx+used+6, cy-8, m.emojiImage(cs.Emoji, 16, m.sidebar.Viewport().Update))
+		}
 	}
 }

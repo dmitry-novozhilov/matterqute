@@ -45,6 +45,7 @@ type Server struct {
 	emoji     []*model.Emoji
 	emojiData map[string][]byte            // id эмодзи → картинка
 	statuses  map[string]string            // user id → online, away, dnd, offline
+	dndEnd    map[string]int64             // user id → конец «не беспокоить», секунды
 	prefs     map[string]model.Preferences // user id → настройки
 	conns     map[*wsConn]bool
 }
@@ -78,6 +79,7 @@ func New(log *slog.Logger) *Server {
 		files:            map[string]*storedFile{},
 		emojiData:        map[string][]byte{},
 		statuses:         map[string]string{},
+		dndEnd:           map[string]int64{},
 		prefs:            map[string]model.Preferences{},
 	}
 	s.seed()
@@ -133,6 +135,9 @@ func New(log *slog.Logger) *Server {
 		w.Write(data)
 	})
 	s.mux.HandleFunc("PUT /api/v4/posts/{pid}/patch", s.auth(s.patchPost))
+	s.mux.HandleFunc("PUT /api/v4/users/{uid}/status", s.auth(s.setStatus))
+	s.mux.HandleFunc("PUT /api/v4/users/{uid}/status/custom", s.auth(s.setCustomStatus))
+	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/status/custom", s.auth(s.setCustomStatus))
 	return s
 }
 
@@ -154,6 +159,7 @@ func (s *Server) seed() {
 	}
 	alice, bob, carol, dave := s.byName("alice"), s.byName("bob"), s.byName("carol"), s.byName("dave")
 	everyone := []*model.User{alice, bob, carol, dave}
+	carol.SetCustomStatus(&model.CustomStatus{Emoji: "calendar", Text: "На встрече"})
 	// erin только в Town Square команды dev и ничего не писала: клиент узнаёт
 	// о ней лишь из поиска пользователей (автодополнение @).
 	erin := &model.User{Id: model.NewId(), Username: "erin", Email: "erin@example.com", FirstName: "Эрин", LastName: "Смирнова"}
@@ -633,6 +639,58 @@ func (s *Server) patchPost(w http.ResponseWriter, r *http.Request, me *model.Use
 		c.write(data)
 	}
 	s.json(w, p)
+}
+
+// setStatus — присутствие (и конец «не беспокоить»); всем — status_change.
+func (s *Server) setStatus(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var st model.Status
+	if err := json.NewDecoder(r.Body).Decode(&st); err != nil || st.Status == "" {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statuses[me.Id] = st.Status
+	s.dndEnd[me.Id] = st.DNDEndTime
+	ev := model.NewWebSocketEvent(model.WebsocketEventStatusChange, "", "", "", nil, "")
+	ev.Add("user_id", me.Id)
+	ev.Add("status", st.Status)
+	s.broadcast(ev)
+	st.UserId = me.Id
+	s.json(w, &st)
+}
+
+// setCustomStatus — свой статус (PUT) или его сброс (DELETE); всем — user_updated.
+func (s *Server) setCustomStatus(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var cs model.CustomStatus
+	if r.Method == http.MethodPut {
+		if err := json.NewDecoder(r.Body).Decode(&cs); err != nil {
+			s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+			return
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if r.Method == http.MethodDelete {
+		delete(me.Props, model.UserPropsKeyCustomStatus)
+	} else {
+		cs.PreSave()
+		me.SetCustomStatus(&cs)
+	}
+	ev := model.NewWebSocketEvent(model.WebsocketEventUserUpdated, "", "", "", nil, "")
+	ev.Add("user", me)
+	s.broadcast(ev)
+	s.json(w, map[string]string{"status": "OK"})
+}
+
+// broadcast — событие всем подключённым (под s.mu).
+func (s *Server) broadcast(ev *model.WebSocketEvent) {
+	data, _ := ev.ToJSON()
+	for c := range s.conns {
+		if err := c.write(data); err != nil {
+			s.log.Warn("websocket write", "user", c.userID, "err", err)
+		}
+	}
 }
 
 func (s *Server) connsIn(channelID string) []*wsConn {

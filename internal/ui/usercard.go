@@ -9,6 +9,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"matterqute/internal/status"
 	"matterqute/internal/store"
 )
 
@@ -40,22 +41,35 @@ func (m *MainWindow) openUserCard(u *model.User, pos *qt.QPoint) {
 	me := u.Id == m.s.Me.Id
 	c := m.newCard()
 
-	status := m.st.Status(u.Id)
+	presence := m.st.Status(u.Id)
 	avatar := qt.NewQLabel2()
 	drawAvatar := func() {
 		pm := avatarPixmap(m.assets, u, u.Username, u.IsBot, 56, nil)
 		withDot := qt.NewQPixmap5(pm)
 		p := qt.NewQPainter2(withDot.QPaintDevice)
-		drawStatusDot(p, 56-14, 56-14, 12, status, pal.Surf)
+		drawStatusDot(p, 56-14, 56-14, 12, presence, pal.Surf)
 		p.End()
 		avatar.SetPixmap(withDot)
 	}
 	drawAvatar()
 	c.header(avatar, displayName(u), "@"+u.Username)
+	if cs := status.Current(u, time.Now()); cs != nil {
+		// Свой статус: эмодзи, текст, срок.
+		mood := qt.NewQHBoxLayout2()
+		mood.SetSpacing(6)
+		ic := qt.NewQLabel2()
+		ic.SetPixmap(m.emojiImage(cs.Emoji, 18, nil))
+		tl := qt.NewQLabel3(statusTip(cs))
+		tl.SetWordWrap(true)
+		mood.AddWidget(ic.QWidget)
+		mood.AddWidget2(tl.QWidget, 1)
+		c.lay.AddSpacing(8)
+		c.lay.AddLayout(mood.QLayout)
+	}
 
 	dot := qt.NewQLabel2()
-	dot.SetPixmap(dotPixmap(statusColor(status), 8))
-	statusLabel := qt.NewQLabel3(statusText(status))
+	dot.SetPixmap(dotPixmap(statusColor(presence), 8))
+	statusLabel := qt.NewQLabel3(statusText(presence))
 	statusRow := qt.NewQHBoxLayout2()
 	statusRow.SetSpacing(6)
 	statusRow.AddWidget(dot.QWidget)
@@ -92,7 +106,7 @@ func (m *MainWindow) openUserCard(u *model.User, pos *qt.QPoint) {
 			if err != nil || c.closed {
 				return
 			}
-			status = st.Status
+			presence = st.Status
 			m.st.SetStatus(u.Id, st.Status)
 			statusLabel.SetText(html.EscapeString(statusLine(st, me)))
 			dot.SetPixmap(dotPixmap(statusColor(st.Status), 8))

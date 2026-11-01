@@ -58,14 +58,17 @@ type MainWindow struct {
 	suggestTimer   *qt.QTimer // запрос подсказок к серверу — после паузы в наборе
 	suggestPending func()
 
-	scrollTo    string       // после загрузки ленты прокрутить к этому посту (ссылка на сообщение)
-	picker      *emojiPicker // последнее открытое окно выбора эмодзи
-	recent      emoji.Recent // недавние эмодзи (настройка recent_emojis)
-	customEmoji []string     // имена кастомных эмодзи сервера
-	emojiLoaded bool
-	mentions    int64 // последнее отданное в OnMentions; -1 — ещё не отдавали
-	retryNow    chan struct{}
-	unsubscribe func()
+	scrollTo     string       // после загрузки ленты прокрутить к этому посту (ссылка на сообщение)
+	dndEnd       int64        // свой конец «не беспокоить», секунды; 0 — неизвестен или без срока
+	statusPanel  *card        // последняя открытая панель статуса (для тестов)
+	statusDialog *dialog      // последнее открытое окно своего статуса
+	picker       *emojiPicker // последнее открытое окно выбора эмодзи
+	recent       emoji.Recent // недавние эмодзи (настройка recent_emojis)
+	customEmoji  []string     // имена кастомных эмодзи сервера
+	emojiLoaded  bool
+	mentions     int64 // последнее отданное в OnMentions; -1 — ещё не отдавали
+	retryNow     chan struct{}
+	unsubscribe  func()
 
 	current         string // открытый канал или threadsID
 	initialChannel  string // открыть после первой загрузки сайдбара
@@ -77,10 +80,11 @@ type MainWindow struct {
 
 	OnChannelOpened  func(id string)
 	OnConnection     func(ConnState)
-	OnMessage        func(text string)         // короткое сообщение в строке состояния окна
-	OnColumnsChanged func(sidebar, thread int) // пользователь передвинул разделитель
-	OnRaise          func()                    // показать окно поверх остальных (клик по уведомлению)
-	OnMentions       func(n int64)             // изменилось число ждущих упоминаний (трей)
+	OnMessage        func(text string)                // короткое сообщение в строке состояния окна
+	OnColumnsChanged func(sidebar, thread int)        // пользователь передвинул разделитель
+	OnRaise          func()                           // показать окно поверх остальных (клик по уведомлению)
+	OnMentions       func(n int64)                    // изменилось число ждущих упоминаний (трей)
+	OnOwnStatus      func(pm *qt.QPixmap, tip string) // свой статус: эмодзи и подсказка, nil — нет
 }
 
 // Ширины колонок по дизайну: сайдбар 240 (от 180 до 360), тред 380 (от 280).
@@ -145,6 +149,13 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.feed.OnOpenThread = m.openThread
 	m.wireFeed(m.feed)
 
+	// Свои статусы со сроком истекают сами: раз в минуту перерисовываем, где они видны.
+	statusTimer := qt.NewQTimer2(m.w.QObject)
+	statusTimer.OnTimeout(func() {
+		m.ownStatusChanged()
+		m.refreshItem("")
+	})
+	statusTimer.Start(60_000)
 	m.suggestTimer = qt.NewQTimer2(m.w.QObject)
 	m.suggestTimer.SetSingleShot(true)
 	m.suggestTimer.OnTimeout(func() {
@@ -365,6 +376,12 @@ func (m *MainWindow) reloadSidebar() {
 				crtChanged := sb.CRT != m.st.CRT()
 				previewsChanged := sb.LinkPreviews != m.st.LinkPreviews()
 				m.st.SetSidebar(sb)
+				for _, st := range sb.Statuses {
+					if st.UserId == m.s.Me.Id {
+						m.dndEnd = st.DNDEndTime
+					}
+				}
+				m.ownStatusChanged()
 				if previewsChanged && !crtChanged {
 					m.feed.renderAll()
 					m.panel.feed.renderAll()

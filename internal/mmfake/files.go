@@ -288,7 +288,7 @@ func (s *Server) userRoute(w http.ResponseWriter, r *http.Request, _ *model.User
 		}
 	case b == "status":
 		if st := s.statuses[a]; st != "" {
-			s.json(w, &model.Status{UserId: a, Status: st, LastActivityAt: model.GetMillis() - 3600_000})
+			s.json(w, &model.Status{UserId: a, Status: st, LastActivityAt: model.GetMillis() - 3600_000, DNDEndTime: s.dndEnd[a]})
 			return
 		}
 	}

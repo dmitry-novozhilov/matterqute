@@ -21,13 +21,15 @@ const (
 // Shell — единственное окно приложения: меню, строка состояния, а в центре
 // вход или окно сервера.
 type Shell struct {
-	w      *qt.QMainWindow
-	stack  *qt.QStackedWidget
-	user   *qt.QLabel
-	server *qt.QLabel
-	dot    *qt.QLabel
-	status *qt.QLabel
-	conn   ConnState
+	w        *qt.QMainWindow
+	stack    *qt.QStackedWidget
+	user     *qt.QLabel
+	mood     *qt.QLabel // свой статус: эмодзи рядом с @user
+	server   *qt.QLabel
+	myStatus *qt.QAction
+	dot      *qt.QLabel
+	status   *qt.QLabel
+	conn     ConnState
 
 	logout     *qt.QAction
 	themeActs  map[ThemeMode]*qt.QAction
@@ -40,8 +42,9 @@ type Shell struct {
 	quitApp     func() // QCoreApplication::quit; в тестах — подделка
 
 	OnLogout       func()
-	OnClose        func()      // окно закрывается или прячется в трей: сохранить, что нужно
-	OnSelectServer func(i int) // выбран сервер в меню «Сервер»
+	OnClose        func()              // окно закрывается или прячется в трей: сохранить, что нужно
+	OnSelectServer func(i int)         // выбран сервер в меню «Сервер»
+	OnStatus       func(at *qt.QPoint) // открыть панель статуса (клик по @user или «Файл → Статус…»)
 	OnAddServer    func()
 }
 
@@ -66,6 +69,13 @@ func NewShell() *Shell {
 	s.logout.OnTriggered(func() {
 		if s.OnLogout != nil {
 			s.OnLogout()
+		}
+	})
+	s.myStatus = file.QWidget.AddActionWithText("Статус…")
+	s.myStatus.OnTriggered(func() {
+		if s.OnStatus != nil {
+			r := s.w.Geometry()
+			s.OnStatus(qt.NewQPoint2(r.X()+r.Width()/2-150, r.Y()+r.Height()/3))
 		}
 	})
 	file.AddSeparator()
@@ -109,7 +119,18 @@ func NewShell() *Shell {
 	s.SetServers(nil)
 
 	s.user = qt.NewQLabel2()
+	s.mood = qt.NewQLabel2()
 	s.server = qt.NewQLabel2()
+	// Клик по своему имени или статусу — панель статуса, как аватар в веб-клиенте.
+	for _, l := range []*qt.QLabel{s.user, s.mood} {
+		l.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
+		l.SetToolTip("Статус")
+		l.OnMousePressEvent(func(_ func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+			if e.Button() == qt.LeftButton && s.OnStatus != nil {
+				s.OnStatus(s.user.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0)))
+			}
+		})
+	}
 	s.dot = qt.NewQLabel2()
 	s.status = qt.NewQLabel2()
 	left := qt.NewQWidget2()
@@ -117,6 +138,7 @@ func NewShell() *Shell {
 	ll.SetContentsMargins(10, 0, 0, 0)
 	ll.SetSpacing(8)
 	ll.AddWidget(s.user.QWidget)
+	ll.AddWidget(s.mood.QWidget)
 	ll.AddWidget(s.server.QWidget)
 	right := qt.NewQWidget2()
 	rl := qt.NewQHBoxLayout(right)
@@ -156,13 +178,27 @@ func (s *Shell) RemovePage(w *qt.QWidget) {
 // SetUser — «@alice  mm.example.com» слева в строке состояния; пусто — окно входа.
 func (s *Shell) SetUser(username, serverURL string) {
 	s.logout.SetEnabled(username != "")
+	s.myStatus.SetEnabled(username != "")
 	if username == "" {
 		s.user.SetText("")
 		s.server.SetText("")
+		s.SetMood(nil, "")
 		return
 	}
 	s.user.SetText("@" + username)
 	s.server.SetText(hostOf(serverURL))
+}
+
+// SetMood — свой статус рядом с @user: эмодзи и подсказка; nil — статуса нет.
+func (s *Shell) SetMood(pm *qt.QPixmap, tip string) {
+	if pm == nil {
+		s.mood.Clear()
+		s.mood.SetVisible(false)
+		return
+	}
+	s.mood.SetPixmap(pm)
+	s.mood.SetToolTip(tip)
+	s.mood.SetVisible(true)
 }
 
 // SetServers — меню «Сервер» (решение 6d): текущий сервер с галочкой, у

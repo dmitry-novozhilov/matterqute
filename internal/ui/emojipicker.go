@@ -306,7 +306,16 @@ func emojiPixmapSized(char string, size int) *qt.QPixmap {
 // pickReaction — окно выбора у курсора; выбранное эмодзи ставится реакцией
 // (если уже стоит наша — ничего не меняем).
 func (m *MainWindow) pickReaction(p *model.Post) {
-	pos := qt.QCursor_Pos()
+	m.pickEmoji(m.w, qt.QCursor_Pos(), func(name string) {
+		if !HasReaction(p, m.s.Me.Id, name) {
+			m.toggleReaction(p, name)
+		}
+	})
+}
+
+// pickEmoji — окно выбора эмодзи у точки pos (глобальной); parent — чьё это
+// всплывающее окно (из модального диалога — сам диалог, иначе ввод заблокирован).
+func (m *MainWindow) pickEmoji(parent *qt.QWidget, pos *qt.QPoint, onPick func(name string)) {
 	var picker *emojiPicker
 	var stop []func()
 	update := func() {
@@ -314,7 +323,7 @@ func (m *MainWindow) pickReaction(p *model.Post) {
 			picker.grid.Update()
 		}
 	}
-	picker = newEmojiPicker(m.w, func(name string, size int) *qt.QPixmap {
+	picker = newEmojiPicker(parent, func(name string, size int) *qt.QPixmap {
 		return m.emojiImage(name, size, func() {
 			// Докачалось при открытом окне: если анимированное — пусть крутится сразу.
 			if !picker.closed {
@@ -324,11 +333,7 @@ func (m *MainWindow) pickReaction(p *model.Post) {
 		})
 	})
 	m.picker = picker
-	picker.onPick = func(name string) {
-		if !HasReaction(p, m.s.Me.Id, name) {
-			m.toggleReaction(p, name)
-		}
-	}
+	picker.onPick = onPick
 	picker.setSections(m.pickerSections())
 	// Анимированные эмодзи сервера крутятся, пока окно открыто.
 	animate := func() {

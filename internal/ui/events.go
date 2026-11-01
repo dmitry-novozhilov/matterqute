@@ -139,13 +139,7 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		if err := remarshal(data["user"], &u); err != nil {
 			return nil, fmt.Errorf("user: %w", err)
 		}
-		return func() {
-			m.st.AddUsers([]*model.User{&u})
-			m.feed.RefreshNames()
-			for id := range m.items {
-				m.refreshItem(id)
-			}
-		}, nil
+		return func() { m.applyUser(&u) }, nil
 
 	case model.WebsocketEventUserAdded, model.WebsocketEventUserRemoved:
 		// Шлётся всем участникам канала; сайдбар меняется, только если это мы.

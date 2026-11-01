@@ -791,7 +791,7 @@ func (f *Feed) authorHTML(p *model.Post) string {
 		bot = fmt.Sprintf(`&nbsp;<span style="font-size:11px;font-weight:600;background-color:%s;color:%s">&nbsp;БОТ&nbsp;</span>`, pal.Surf2, pal.Tx2)
 	}
 	return fmt.Sprintf(`<p style="margin:0"><a href="%s" style="color:%s;font-weight:600;text-decoration:none">%s</a>%s&nbsp;&nbsp;<span style="font-family:'PT Mono';font-size:12px;color:%s" title="%s">%s</span></p>`,
-		f.authorLink(p), pal.Tx, html.EscapeString(f.authorName(p)), bot,
+		f.authorLink(p), pal.Tx, html.EscapeString(f.authorName(p)), bot+f.statusHTML(p),
 		pal.Tx2, formatTime(p.CreateAt), time.UnixMilli(p.CreateAt).Format("15:04"))
 }
 

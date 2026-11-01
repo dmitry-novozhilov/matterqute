@@ -9,6 +9,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/svg"
 
+	"matterqute/internal/config"
 	"matterqute/internal/qtx"
 	"matterqute/internal/theme"
 )
@@ -35,7 +36,9 @@ var style = struct {
 	nextID    int
 	icons     map[string]*qt.QPixmap
 	avatars   map[string]*qt.QPixmap
-}{mode: ThemeSystem, pal: theme.Light, listeners: map[int]func(){}, icons: map[string]*qt.QPixmap{}, avatars: map[string]*qt.QPixmap{}}
+	fonts     config.Fonts // выбранные шрифты, умолчания подставлены
+}{mode: ThemeSystem, pal: theme.Light, listeners: map[int]func(){}, icons: map[string]*qt.QPixmap{}, avatars: map[string]*qt.QPixmap{},
+	fonts: defaultFonts}
 
 // Pal — палитра текущей темы.
 func Pal() theme.Palette { return style.pal }

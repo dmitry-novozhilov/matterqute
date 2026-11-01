@@ -247,7 +247,7 @@ func (v *inlineVideo) restyle() {
 QFrame#inlineBar { background: rgba(0, 0, 0, 150); }
 QToolButton { background: transparent; border: none; border-radius: 4px; }
 QToolButton:hover { background: rgba(255, 255, 255, 40); }
-QLabel#inlineTime { font-family: "PT Mono"; font-size: 12px; color: #ffffff; background: transparent; }
+QLabel#inlineTime { font-family: "` + monoFamily() + `"; font-size: 12px; color: #ffffff; background: transparent; }
 QSlider::groove:horizontal { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 70); }
 QSlider::sub-page:horizontal { height: 4px; border-radius: 2px; background: ` + acc + `; }
 QSlider::handle:horizontal { width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; background: ` + acc + `; }

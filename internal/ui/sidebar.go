@@ -39,7 +39,8 @@ func (m *MainWindow) setupSidebar() {
 		}
 	})
 	d.OnSizeHint(func(super func(*qt.QStyleOptionViewItem, *qt.QModelIndex) *qt.QSize, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) *qt.QSize {
-		return qt.NewQSize2(opt.Rect().Width(), 28)
+		// По дизайну 28; крупный шрифт — выше строка.
+		return qt.NewQSize2(opt.Rect().Width(), max(28, qt.NewQFontMetrics(sidebarFont(0, qt.QFont__Normal)).Height()+10))
 	})
 	t.SetItemDelegate(d.QAbstractItemDelegate)
 
@@ -164,7 +165,7 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 	id := it.Data(0, channelIDRole).ToString()
 
 	text := func(s string, x, width int, color string, weight qt.QFont__Weight) int {
-		f := pixelFont(14, weight)
+		f := sidebarFont(0, weight)
 		fm := qt.NewQFontMetrics(f)
 		s = fm.ElidedText(s, qt.ElideRight, width)
 		p.SetFont(f)
@@ -179,7 +180,7 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 			chev = "chevron-down"
 		}
 		p.DrawPixmap9(x-2, cy-6, iconPixmap(chev, pal.Tx2, 12))
-		f := pixelFont(12, qt.QFont__DemiBold)
+		f := sidebarFont(-2, qt.QFont__DemiBold)
 		p.SetFont(f)
 		p.SetPen(qt.NewQColor6(pal.Tx2))
 		p.DrawText7(x+14, y, w-14, h, int(qt.AlignVCenter|qt.AlignLeft), it.Data(0, groupRole).ToString())

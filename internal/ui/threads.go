@@ -318,7 +318,7 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 	unread := t.UnreadReplies > 0 || t.UnreadMentions > 0
 	small := pixelFont(12, qt.QFont__Normal)
 	mono := pixelFont(12, qt.QFont__Normal)
-	mono.SetFamilies([]string{"PT Mono"})
+	mono.SetFamilies([]string{monoFamily()})
 
 	head, msg := "", ""
 	if root := t.Post; root != nil {

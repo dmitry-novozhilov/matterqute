@@ -67,6 +67,10 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		a.cfg.Theme = string(mode)
 		a.saveConfig()
 	}
+	OnFontsChosen = func(f config.Fonts) {
+		a.cfg.Fonts = f
+		a.saveConfig()
+	}
 	if a.tray = NewTray(); a.tray != nil {
 		a.shell.HideOnClose = true
 		a.tray.OnOpen = a.shell.Raise

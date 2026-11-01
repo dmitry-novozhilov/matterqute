@@ -306,6 +306,7 @@ func (m *MainWindow) Close() {
 func (m *MainWindow) restyle() {
 	m.banner.restyle()
 	m.refreshHeader()
+	m.sidebar.DoItemsLayout() // шрифт сайдбара мог поменяться — с ним высота строк
 	m.sidebar.Viewport().Update()
 	m.threadsList.Viewport().Update()
 }

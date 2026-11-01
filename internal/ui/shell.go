@@ -96,6 +96,8 @@ func NewShell() *Shell {
 
 	view := s.w.MenuBar().AddMenuWithTitle("&Вид")
 	themes := view.AddMenuWithTitle("Тема")
+	fontsAct := view.QWidget.AddActionWithText("Шрифты…")
+	fontsAct.OnTriggered(func() { showFontsDialog(s.w.QWidget) })
 	group := qt.NewQActionGroup(s.w.QObject)
 	for _, t := range []struct {
 		mode  ThemeMode

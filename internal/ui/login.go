@@ -226,7 +226,7 @@ func (l *LoginView) showNotice(kind, iconName, title, text string, mono bool) {
 	l.nText.SetVisible(text != "")
 	f := pixelFont(12, qt.QFont__Normal)
 	if mono {
-		f.SetFamilies([]string{"PT Mono"})
+		f.SetFamilies([]string{monoFamily()})
 	}
 	l.nText.SetFont(f)
 	l.restyle()

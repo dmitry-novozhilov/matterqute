@@ -27,8 +27,22 @@ type Config struct {
 	Active  string   `json:"active"`          // URL сервера, открытого последним
 	Theme   string   `json:"theme,omitempty"` // system, light, dark; пусто — system
 	Window  Window   `json:"window,omitzero"` // окно и колонки, как их оставили
+	Fonts   Fonts    `json:"fonts,omitzero"`  // шрифты сайдбара, ленты, моноширинного; пусто — по дизайну
 
 	path string
+}
+
+// Fonts — шрифты, выбранные в «Вид → Шрифты…».
+type Fonts struct {
+	Sidebar Font `json:"sidebar,omitzero"`
+	Feed    Font `json:"feed,omitzero"` // текст сообщений и поле ввода
+	Mono    Font `json:"mono,omitzero"` // код, время сообщений
+}
+
+// Font — семейство и размер в пикселях; пусто или 0 — по дизайну.
+type Font struct {
+	Family string `json:"family,omitempty"`
+	Size   int    `json:"size,omitempty"`
 }
 
 // Window — окно и колонки с прошлого запуска; нули — как по умолчанию.

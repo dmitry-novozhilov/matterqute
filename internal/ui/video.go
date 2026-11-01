@@ -172,7 +172,7 @@ func videoPixmap(thumb string, w, h int, label string) *qt.QPixmap {
 	p.DrawPath(tri)
 
 	f := pixelFont(12, qt.QFont__Normal)
-	f.SetFamilies([]string{"PT Mono"})
+	f.SetFamilies([]string{monoFamily()})
 	lw := float64(qt.NewQFontMetrics(f).HorizontalAdvance(label)) + 12
 	r := qt.NewQRectF4(8, float64(h)-8-20, lw, 20)
 	p.SetBrush(qt.NewQBrush3(qt.NewQColor11(0, 0, 0, 150)))

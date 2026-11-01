@@ -110,7 +110,7 @@ func newEmojiPicker(parent *qt.QWidget, image func(string, int) *qt.QPixmap) *em
 QScrollArea, QScrollArea > QWidget > QWidget { background: %[1]s; }
 QToolButton { border: none; border-radius: 4px; background: transparent; }
 QToolButton:hover { background: %[3]s; }
-QLabel#emojiName { font-family: "PT Mono"; font-size: 12px; color: %[4]s; }`, pal.Surf, pal.Line2, pal.Hover, pal.Tx2))
+QLabel#emojiName { font-family: "%[5]s"; font-size: 12px; color: %[4]s; }`, pal.Surf, pal.Line2, pal.Hover, pal.Tx2, monoFamily()))
 	p.w.SetFixedWidth(pickerCols*pickerCell + 2*pickerPad + 2*pickerPad + 10)
 	return p
 }

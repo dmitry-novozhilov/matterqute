@@ -131,6 +131,7 @@ func NewFeed(d FeedDeps) *Feed {
 		animSubs: map[string]func(){}}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
+	f.doc.SetDefaultFont(feedFont())
 	f.view.SetOpenLinks(false)
 	f.view.SetFrameShape(qt.QFrame__NoFrame)
 	f.view.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
@@ -184,6 +185,7 @@ func (f *Feed) restyleRenderer() {
 // restyle — смена темы: цвета в HTML и картинках рисует код, их надо пересоздать.
 func (f *Feed) restyle() {
 	f.restyleRenderer()
+	f.doc.SetDefaultFont(feedFont())
 	f.resources = map[string][2]int{}
 	f.pills = map[string]pill{}
 	if f.spin.timer.IsActive() {
@@ -242,7 +244,7 @@ func (f *Feed) placeholderHTML(iconName, title, text, extra string) {
 		fmt.Fprintf(&b, `<p align="center" style="margin:0;font-size:13px;color:%s">%s</p>`, p.Tx2, html.EscapeString(text))
 	}
 	b.WriteString(extra)
-	qt.NewQTextCursor2(f.doc).InsertHtml(b.String())
+	qt.NewQTextCursor2(f.doc).InsertHtml(scaleFonts(b.String()))
 	f.pinToBottom()
 }
 
@@ -324,7 +326,7 @@ func (f *Feed) showHistoryLoading() {
 	c := qt.NewQTextCursor2(f.doc)
 	c.SetPosition(f.items[0].frame.FirstPosition() - 1)
 	f.history = c.InsertFrame(frameFormat())
-	c.InsertHtml(fmt.Sprintf(`<p align="center" style="margin-top:8px;margin-bottom:8px;font-size:13px;color:%s">Загружаем историю…</p>`, Pal().Tx2))
+	c.InsertHtml(scaleFonts(fmt.Sprintf(`<p align="center" style="margin-top:8px;margin-bottom:8px;font-size:13px;color:%s">Загружаем историю…</p>`, Pal().Tx2)))
 	f.squash(f.history.FirstPosition() - 1)
 	f.squash(f.history.LastPosition() + 1)
 }
@@ -616,7 +618,7 @@ func (f *Feed) render(i int) {
 func (f *Feed) write(i int, c *qt.QTextCursor) {
 	it := f.items[i]
 	it.html = f.postHTML(i)
-	c.InsertHtml(it.html)
+	c.InsertHtml(scaleFonts(it.html))
 	f.applyMarkers(it.frame)
 	// После таблицы Qt оставляет пустой абзац — он даёт лишнюю строку под сообщением.
 	if c.Position() > it.frame.FirstPosition() {
@@ -730,7 +732,8 @@ func (f *Feed) postHTML(i int) string {
 // nowrap и сжимает ячейку подписи до буквы — ширину считаем сами; линия —
 // ячейка с фоном и шрифтом в 1 px (height у ячейки Qt не слушает).
 func (f *Feed) separatorHTML(label, textColor, lineColor string, labelRight bool) string {
-	labelW := qt.NewQFontMetrics(pixelFont(12, qt.QFont__DemiBold)).HorizontalAdvance(label) + 22
+	// Ширина — метриками шрифта ленты: размер подписи пересчитает scaleFonts.
+	labelW := qt.NewQFontMetrics(font(style.fonts.Feed, feedPx(12), qt.QFont__DemiBold)).HorizontalAdvance(label) + 22
 	line := fmt.Sprintf(`<td valign="middle" style="padding-top:12px;padding-bottom:4px"><table width="100%%" cellspacing="0" cellpadding="0"><tr><td bgcolor="%s" style="font-size:1px">&nbsp;</td></tr></table></td>`, lineColor)
 	text := fmt.Sprintf(`<td width="%d" valign="middle" style="padding-top:12px;padding-bottom:4px;padding-left:10px;padding-right:10px;font-size:12px;font-weight:600;color:%s">%s</td>`, labelW, textColor, html.EscapeString(label))
 	if labelRight {

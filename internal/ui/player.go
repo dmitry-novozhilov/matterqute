@@ -235,11 +235,11 @@ QFrame#playerBar { background: %[1]s; border-top: 1px solid %[2]s; }
 QToolButton#playerPlay { background: %[3]s; border: none; border-radius: 4px; }
 QToolButton#playerFull { background: transparent; border: none; border-radius: 4px; }
 QToolButton#playerFull:hover { background: %[3]s; }
-QLabel#playerTime { font-family: "PT Mono"; font-size: 12px; color: %[4]s; }
+QLabel#playerTime { font-family: "%[6]s"; font-size: 12px; color: %[4]s; }
 QSlider::groove:horizontal { height: 4px; border-radius: 2px; background: %[2]s; }
 QSlider#playerSeek::sub-page:horizontal { height: 4px; border-radius: 2px; background: %[5]s; }
 QSlider#playerSeek::handle:horizontal { width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; background: %[5]s; }
 QSlider#playerVolume::sub-page:horizontal { height: 4px; border-radius: 2px; background: %[4]s; }
 QSlider#playerVolume::handle:horizontal { width: 10px; height: 10px; margin: -3px 0; border-radius: 5px; background: %[4]s; }
-`, pal.Surf, pal.Line, pal.Hover, pal.Tx2, pal.Acc))
+`, pal.Surf, pal.Line, pal.Hover, pal.Tx2, pal.Acc, monoFamily()))
 }

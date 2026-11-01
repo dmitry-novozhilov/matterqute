@@ -177,6 +177,9 @@ func (c *Composer) dispose() { c.unsubscribe() }
 
 func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
+	c.edit.SetFont(feedFont())
+	c.edit.Viewport().SetFont(feedFont()) // плейсхолдер Qt рисует шрифтом viewport
+	c.fitHeight()
 	c.renderChips()
 }
 

@@ -55,6 +55,9 @@ type MainWindow struct {
 	notes       map[string]uint32  // показанное уведомление по каналу или треду: следующее его заменит
 	players     map[string]*player // открытые плееры по id файла
 
+	preloadQueue []string // каналы, чьи ленты ещё грузить заранее
+	preloading   int      // сколько лент грузится заранее прямо сейчас
+
 	suggestTimer   *qt.QTimer // запрос подсказок к серверу — после паузы в наборе
 	suggestPending func()
 
@@ -397,7 +400,8 @@ func (m *MainWindow) reloadSidebar() {
 						m.current, m.initialChannel = "", ch.Id
 					}
 				}
-				m.fillSidebar()
+				m.fillSidebar() // открытый канал начинает грузиться первым
+				m.preload()
 			}
 			if m.sidebarDirty {
 				m.sidebarDirty = false
@@ -592,29 +596,48 @@ func (m *MainWindow) showTimeline(id string, tl *store.Timeline) {
 	m.feed.Placeholder(iconName, "В канале «"+m.st.Title(ch)+"» пока нет сообщений", text)
 }
 
-func (m *MainWindow) loadTimeline(id string) {
+func (m *MainWindow) loadTimeline(id string) { m.fetchTimeline(id, false, nil) }
+
+// fetchTimeline грузит первую страницу ленты канала. Пустая Timeline ставится
+// сразу: посты из WebSocket, пришедшие во время загрузки, не теряются.
+// background — фоновая загрузка заранее: ошибка только в лог (откроют канал —
+// загрузится обычным порядком). done — в главном потоке, когда закончили.
+func (m *MainWindow) fetchTimeline(id string, background bool, done func()) {
 	tl := &store.Timeline{}
 	m.st.SetTimeline(id, tl)
 	crt := m.st.CRT()
+	finish := func() {
+		if done != nil {
+			done()
+		}
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
 		list, _, err := m.s.Client.GetPostsForChannel(ctx, id, 0, pageSize, "", crt, false)
 		m.ui(func() {
 			if m.st.Timeline(id) != tl {
+				finish()
 				return // ленты сбросили (переподключение), загрузку начнут заново
 			}
 			if err != nil {
 				m.st.SetTimeline(id, nil)
 				err = fmt.Errorf("load posts of channel %s: %w", id, err)
-				m.fail("load timeline", err)
-				if m.current == id {
+				switch {
+				case m.current == id:
+					m.fail("load timeline", err)
 					m.feed.Error(err.Error())
+				case background:
+					m.log.Warn("preload timeline", "err", err)
+				default:
+					m.fail("load timeline", err)
 				}
+				finish()
 				return
 			}
 			posts := store.PostsOf(list)
 			m.withUsers(postAuthors(posts), func() {
+				defer finish()
 				if m.st.Timeline(id) != tl {
 					return
 				}
@@ -626,6 +649,56 @@ func (m *MainWindow) loadTimeline(id string) {
 			})
 		})
 	}()
+}
+
+// preloadWorkers — сколько лент грузим заранее одновременно: быстро, но без
+// залпа запросов на сервер.
+const preloadWorkers = 3
+
+// preload — последние страницы всех каналов и личек заранее, в фоне: переход в
+// канал без ожидания, а дальше их держит свежими WebSocket. Сначала каналы с
+// непрочитанным, потом лички по свежести, потом остальные. Зовётся после
+// загрузки сайдбара — значит, и после переподключения, когда ленты сброшены.
+func (m *MainWindow) preload() {
+	var unread, direct, rest []string
+	add := func(id string) {
+		if u, _ := m.st.Unread(id); u {
+			unread = append(unread, id)
+		} else if ch := m.st.Channel(id); ch != nil && ch.IsGroupOrDirect() {
+			direct = append(direct, id)
+		} else {
+			rest = append(rest, id)
+		}
+	}
+	for _, ch := range m.st.DirectChannels() {
+		add(ch.Id)
+	}
+	for _, t := range m.st.Teams() {
+		for _, ch := range m.st.TeamChannels(t.Id) {
+			add(ch.Id)
+		}
+	}
+	m.preloadQueue = append(append(unread, direct...), rest...)
+	for m.preloading < preloadWorkers && m.preloadNext() {
+	}
+}
+
+// preloadNext — следующую ленту из очереди; false — грузить больше нечего.
+func (m *MainWindow) preloadNext() bool {
+	for len(m.preloadQueue) > 0 && !m.closed {
+		id := m.preloadQueue[0]
+		m.preloadQueue = m.preloadQueue[1:]
+		if m.st.Timeline(id) != nil || m.st.Channel(id) == nil {
+			continue // уже загружена или грузится, канала больше нет
+		}
+		m.preloading++
+		m.fetchTimeline(id, true, func() {
+			m.preloading--
+			m.preloadNext()
+		})
+		return true
+	}
+	return false
 }
 
 func (m *MainWindow) loadOlder() {

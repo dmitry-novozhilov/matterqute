@@ -103,6 +103,7 @@ type Feed struct {
 	OnNeedOlder      func()                            // докрутили до верха, а на сервере есть ещё
 	OnOpenThread     func(rootID string)               // открыть тред поста
 	OnToggleReaction func(p *model.Post, emoji string) // поставить или снять свою реакцию
+	OnPickReaction   func(p *model.Post)               // окно выбора эмодзи для реакции
 	OnLink           func(url string)                  // клик по ссылке в тексте
 	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
 	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
@@ -1137,10 +1138,8 @@ func (f *Feed) onAnchor(link string) {
 			f.toggleReaction(p, name)
 		}
 	case strings.HasPrefix(link, reactMenuLink):
-		if p := f.post(strings.TrimPrefix(link, reactMenuLink)); p != nil {
-			menu := f.reactionMenu(p, f.view.QWidget)
-			menu.ExecWithPos(qt.QCursor_Pos())
-			menu.DeleteLater()
+		if p := f.post(strings.TrimPrefix(link, reactMenuLink)); p != nil && f.OnPickReaction != nil {
+			f.OnPickReaction(p)
 		}
 	case strings.HasPrefix(link, threadLink):
 		f.openThread(strings.TrimPrefix(link, threadLink))
@@ -1197,16 +1196,6 @@ func (f *Feed) fileAndPost(id string) (*model.FileInfo, *model.Post) {
 	return nil, nil
 }
 
-// reactionMenu — меню быстрых реакций; parent владеет меню.
-func (f *Feed) reactionMenu(p *model.Post, parent *qt.QWidget) *qt.QMenu {
-	menu := qt.NewQMenu4("Реакция", parent)
-	for _, name := range emoji.Quick {
-		a := menu.QWidget.AddActionWithText(emoji.Display(name) + "  :" + name + ":")
-		a.OnTriggered(func() { f.toggleReaction(p, name) })
-	}
-	return menu
-}
-
 // contextMenu — все действия с сообщением: кнопок при наведении в ленте нет.
 func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	it := f.itemAt(f.view.CursorForPosition(e.Pos()).Position())
@@ -1227,7 +1216,14 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 				reply := menu.QWidget.AddActionWithText("Ответить в треде")
 				reply.OnTriggered(func() { f.openThread(threadRoot(p)) })
 			}
-			menu.AddMenu(f.reactionMenu(p, menu.QWidget))
+			// Эмодзи в QMenu не кладём: шрифт меню выбирает система, и они
+			// бывают чёрно-белыми. Выбор — в своём окне, эмодзи там картинками.
+			react := menu.QWidget.AddActionWithText("Реакция…")
+			react.OnTriggered(func() {
+				if f.OnPickReaction != nil {
+					f.OnPickReaction(p)
+				}
+			})
 		}
 		menu.AddSeparator()
 		ct := menu.QWidget.AddActionWithText("Копировать текст сообщения")

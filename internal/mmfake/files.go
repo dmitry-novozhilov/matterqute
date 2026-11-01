@@ -127,6 +127,17 @@ func (s *Server) usersAutocomplete(w http.ResponseWriter, r *http.Request, _ *mo
 	s.json(w, res)
 }
 
+// emojiList — все кастомные эмодзи (страницы игнорируем: их мало).
+func (s *Server) emojiList(w http.ResponseWriter, r *http.Request, _ *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if r.URL.Query().Get("page") != "" && r.URL.Query().Get("page") != "0" {
+		s.json(w, []*model.Emoji{})
+		return
+	}
+	s.json(w, s.emoji)
+}
+
 // emojiAutocomplete — кастомные эмодзи по началу имени.
 func (s *Server) emojiAutocomplete(w http.ResponseWriter, r *http.Request, _ *model.User) {
 	q := r.URL.Query().Get("name")

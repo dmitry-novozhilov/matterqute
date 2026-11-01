@@ -19,6 +19,7 @@ import (
 // wireFeed подключает ленту к окну: ссылки, файлы, реакции.
 func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnToggleReaction = m.toggleReaction
+	f.OnPickReaction = m.pickReaction
 	f.OnLink = m.handleLink
 	f.OnIntegration = m.showIntegrationCard
 	f.OnFullscreenVideo = m.fullscreenVideo

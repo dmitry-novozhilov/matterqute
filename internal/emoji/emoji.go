@@ -19,6 +19,12 @@ func Char(name string) (string, bool) {
 	if !ok {
 		return "", false
 	}
+	// В составных эмодзи (через ZWJ) селектор fe0f Qt 6.8 с Noto Color Emoji
+	// не переваривает: 🏳️‍🌈 рисуется флагом и радугой рядом. Без него символ
+	// собирается; у одиночных fe0f оставляем — он просит цветное начертание.
+	if strings.Contains(code, "200d") {
+		code = normCode(code)
+	}
 	var b strings.Builder
 	for _, part := range strings.Split(code, "-") {
 		r, err := strconv.ParseUint(part, 16, 32)

@@ -207,6 +207,9 @@ func (m *MainWindow) toggleReaction(p *model.Post, name string) {
 			}
 			// То же придёт по WebSocket; повтор ничего не изменит.
 			m.applyReaction(p.ChannelId, r, !remove)
+			if !remove {
+				m.useEmoji(name)
+			}
 		})
 	}()
 }

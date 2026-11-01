@@ -5,7 +5,7 @@ import "testing"
 func TestDisplay(t *testing.T) {
 	for name, want := range map[string]string{
 		"+1":           "👍",
-		"rainbow_flag": "🏳️‍🌈",
+		"rainbow_flag": "\U0001F3F3\u200D\U0001F308", // без fe0f внутри: иначе Qt рисует по частям
 		"flag-ru":      "🇷🇺",
 		"partyparrot":  ":partyparrot:", // кастомный
 	} {

@@ -43,8 +43,9 @@ type Server struct {
 	followers map[string]map[string]*threadMember        // корень треда → user id →
 	files     map[string]*storedFile
 	emoji     []*model.Emoji
-	emojiData map[string][]byte // id эмодзи → картинка
-	statuses  map[string]string // user id → online, away, dnd, offline
+	emojiData map[string][]byte            // id эмодзи → картинка
+	statuses  map[string]string            // user id → online, away, dnd, offline
+	prefs     map[string]model.Preferences // user id → настройки
 	conns     map[*wsConn]bool
 }
 
@@ -77,6 +78,7 @@ func New(log *slog.Logger) *Server {
 		files:            map[string]*storedFile{},
 		emojiData:        map[string][]byte{},
 		statuses:         map[string]string{},
+		prefs:            map[string]model.Preferences{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -94,6 +96,8 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("GET /api/v4/posts/{pid}/thread", s.auth(s.postThread))
 	s.mux.HandleFunc("GET /api/v4/config/client", s.auth(s.clientConfig))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/preferences/{category}", s.auth(s.preferences))
+	s.mux.HandleFunc("PUT /api/v4/users/{uid}/preferences", s.auth(s.savePreferences))
+	s.mux.HandleFunc("GET /api/v4/emoji", s.auth(s.emojiList))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/threads", s.auth(s.userThreads))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/threads/{thid}/read/{ts}", s.auth(s.threadRead))
 	s.mux.HandleFunc("POST /api/v4/reactions", s.auth(s.saveReaction))

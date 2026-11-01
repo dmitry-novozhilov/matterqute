@@ -168,25 +168,6 @@ func (p *suggestPopup) paintRow(painter *qt.QPainter, opt *qt.QStyleOptionViewIt
 	}
 }
 
-// emojiPixmap — символ эмодзи картинкой 20 px (цветным шрифтом приложения).
-func emojiPixmap(char string) *qt.QPixmap {
-	key := "emoji|" + char
-	if pm := style.icons[key]; pm != nil {
-		return pm
-	}
-	img := qt.NewQImage3(20*resourceDPR, 20*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
-	img.SetDevicePixelRatio(resourceDPR)
-	img.Fill2(qt.Transparent)
-	p := qt.NewQPainter2(img.QPaintDevice)
-	p.SetFont(pixelFont(16, qt.QFont__Normal))
-	p.DrawText7(0, 0, 20, 20, int(qt.AlignCenter), char)
-	p.End()
-	pm := qt.QPixmap_FromImage(img)
-	pm.SetDevicePixelRatio(resourceDPR)
-	style.icons[key] = pm
-	return pm
-}
-
 // suggester — источник подсказок для поля ввода канала channel(): сразу то,
 // что уже знаем, а через 150 мс после последнего нажатия — с сервера:
 // участники канала и остальные, каналы, где нас нет, эмодзи сервера.
@@ -261,7 +242,7 @@ func (m *MainWindow) suggestions(tok complete.Token, chID string, r *remote) []S
 		for _, name := range names {
 			s := Suggestion{Insert: ":" + name + ": ", Title: ":" + name + ":"}
 			if c, ok := emoji.Char(name); ok {
-				s.Icon = emojiPixmap(c)
+				s.Icon = emojiPixmapSized(c, 20)
 			} else if path := m.assets.Emoji(name); path != "" {
 				pm := qt.NewQPixmap4(path).Scaled3(20*resourceDPR, 20*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
 				pm.SetDevicePixelRatio(resourceDPR)

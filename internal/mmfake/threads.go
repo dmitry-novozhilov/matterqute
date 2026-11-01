@@ -110,8 +110,38 @@ func (s *Server) clientConfig(w http.ResponseWriter, _ *http.Request, _ *model.U
 	s.json(w, map[string]string{"Version": "mmfake", "CollapsedThreads": s.CollapsedThreads, "MaxFileSize": "52428800"})
 }
 
-func (s *Server) preferences(w http.ResponseWriter, _ *http.Request, _ *model.User) {
-	s.json(w, model.Preferences{})
+func (s *Server) preferences(w http.ResponseWriter, r *http.Request, me *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := model.Preferences{}
+	for _, p := range s.prefs[me.Id] {
+		if p.Category == r.PathValue("category") {
+			out = append(out, p)
+		}
+	}
+	s.json(w, out)
+}
+
+// savePreferences — PUT /users/{uid}/preferences: заменить по (категория, имя).
+func (s *Server) savePreferences(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var in model.Preferences
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range in {
+		list := s.prefs[me.Id]
+		i := slices.IndexFunc(list, func(o model.Preference) bool { return o.Category == p.Category && o.Name == p.Name })
+		if i >= 0 {
+			list[i] = p
+		} else {
+			list = append(list, p)
+		}
+		s.prefs[me.Id] = list
+	}
+	s.json(w, map[string]string{"status": "OK"})
 }
 
 // postThread: корень и все ответы, Order — от новых к старым, как у сервера.

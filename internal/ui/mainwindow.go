@@ -13,6 +13,7 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/cache"
+	"matterqute/internal/emoji"
 	"matterqute/internal/markdown"
 	"matterqute/internal/mm"
 	"matterqute/internal/store"
@@ -56,9 +57,14 @@ type MainWindow struct {
 
 	suggestTimer   *qt.QTimer // запрос подсказок к серверу — после паузы в наборе
 	suggestPending func()
-	mentions       int64 // последнее отданное в OnMentions; -1 — ещё не отдавали
-	retryNow       chan struct{}
-	unsubscribe    func()
+
+	picker      *emojiPicker // последнее открытое окно выбора эмодзи
+	recent      emoji.Recent // недавние эмодзи (настройка recent_emojis)
+	customEmoji []string     // имена кастомных эмодзи сервера
+	emojiLoaded bool
+	mentions    int64 // последнее отданное в OnMentions; -1 — ещё не отдавали
+	retryNow    chan struct{}
+	unsubscribe func()
 
 	current         string // открытый канал или threadsID
 	initialChannel  string // открыть после первой загрузки сайдбара

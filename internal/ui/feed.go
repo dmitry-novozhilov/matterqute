@@ -79,7 +79,8 @@ type Feed struct {
 	history     *qt.QTextFrame // строка «Загружаем историю…» над постами
 	newSince    int64          // посты новее — «Новые сообщения»
 	newMarker   string         // id поста, над которым отметка
-	lastWidth   int
+	lastWidth   int            // ширина, под которую вписаны картинки
+	refit       *qt.QTimer     // отложенная перерисовка картинок после ресайза
 	unsubscribe func()
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
@@ -116,6 +117,11 @@ func NewFeed(d FeedDeps) *Feed {
 		super(e)
 		f.onResize()
 	})
+	// Таймер — ребёнок ленты: удалится вместе с ней и не сработает после.
+	f.refit = qt.NewQTimer2(f.view.QObject)
+	f.refit.SetSingleShot(true)
+	f.refit.SetInterval(50)
+	f.refit.OnTimeout(f.fitImages)
 	f.bar = f.view.VerticalScrollBar()
 	f.bar.OnValueChanged(f.onScroll)
 	f.bar.OnRangeChanged(f.onRange)
@@ -191,16 +197,19 @@ func (f *Feed) placeholderHTML(iconName, title, text, extra string) {
 	f.pinToBottom()
 }
 
+// clearDoc сначала забывает фреймы, потом чистит документ: Clear их удаляет и
+// по ходу синхронно шлёт resize и прокрутку (пропала полоса прокрутки), а
+// обработчики ходят по f.items и f.history.
 func (f *Feed) clearDoc() {
 	f.stopMovies()
-	f.doc.Clear()
-	f.doc.SetDocumentMargin(0)
-	f.resources = map[string][2]int{}
-	f.pills = map[string]pill{}
-	f.hovered = ""
 	f.items = nil
 	f.history = nil
 	f.placeholder = false
+	f.resources = map[string][2]int{}
+	f.pills = map[string]pill{}
+	f.hovered = ""
+	f.doc.Clear()
+	f.doc.SetDocumentMargin(0)
 }
 
 func (f *Feed) stopMovies() {
@@ -269,14 +278,15 @@ func (f *Feed) showHistoryLoading() {
 }
 
 func (f *Feed) hideHistoryLoading() {
-	if f.history == nil {
+	fr := f.history
+	if fr == nil {
 		return
 	}
+	f.history = nil // до удаления фрейма — см. clearDoc
 	c := qt.NewQTextCursor2(f.doc)
-	c.SetPosition(f.history.FirstPosition() - 1)
-	c.SetPosition2(f.history.LastPosition()+1, qt.QTextCursor__KeepAnchor)
+	c.SetPosition(fr.FirstPosition() - 1)
+	c.SetPosition2(fr.LastPosition()+1, qt.QTextCursor__KeepAnchor)
 	c.RemoveSelectedText()
-	f.history = nil
 }
 
 // Has — показан ли пост.
@@ -303,11 +313,11 @@ func (f *Feed) Remove(id string) {
 		return
 	}
 	fr := f.items[i].frame
+	f.items = slices.Delete(f.items, i, i+1) // до удаления фрейма — см. clearDoc
 	c := qt.NewQTextCursor2(f.doc)
 	c.SetPosition(fr.FirstPosition() - 1)
 	c.SetPosition2(fr.LastPosition()+1, qt.QTextCursor__KeepAnchor)
 	c.RemoveSelectedText()
-	f.items = slices.Delete(f.items, i, i+1)
 	if i < len(f.items) {
 		f.render(i) // мог стать заголовком группы
 	}
@@ -1201,9 +1211,19 @@ func newTextLabel(format qt.TextFormat) *qt.QLabel {
 	return l
 }
 
-// onResize — ширина ленты поменялась: картинки вписываются в новую ширину.
+// onResize — ширина ленты поменялась: картинки впишутся в новую ширину, но
+// не сразу. resizeEvent приходит и изнутри правок документа (doc.Clear,
+// удаление поста убирают полосу прокрутки), а перерисовка посреди правки
+// трогает фреймы, которые та уже удалила. Заодно при перетаскивании
+// разделителя перерисовываем один раз, а не на каждый пиксель.
 func (f *Feed) onResize() {
 	f.pinToBottom()
+	if abs(f.view.Viewport().Width()-f.lastWidth) >= 24 {
+		f.refit.Start2()
+	}
+}
+
+func (f *Feed) fitImages() {
 	w := f.view.Viewport().Width()
 	if abs(w-f.lastWidth) < 24 {
 		return

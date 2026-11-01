@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
@@ -212,5 +213,58 @@ func testFeedFramesAndAnchors(t *testing.T) {
 	f.onAnchor(qt.NewQUrl3(threadLink + "p0010").ToString())
 	if len(toggled) != 1 || toggled[0] != "p0010 +1" || len(threads) != 1 || threads[0] != "p0010" {
 		t.Errorf("anchors: toggled %v, threads %v", toggled, threads)
+	}
+}
+
+// Очистка и удаление поста меняют высоту документа, полоса прокрутки
+// пропадает, и Qt шлёт resize прямо из doc.Clear()/RemoveSelectedText:
+// обработчики не должны трогать фреймы, которые Qt уже удалил.
+func TestFeedClearWithImagesAfterResize(t *testing.T) {
+	onMain(func() { testFeedClearWithImagesAfterResize(t) })
+}
+
+func testFeedClearWithImagesAfterResize(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	f.Widget().Resize(600, 300)
+	f.Widget().Show()
+	defer f.Widget().Close()
+	withImages := func(from int) []*model.Post {
+		posts := makePosts(from, 30)
+		for _, p := range posts {
+			p.Metadata = &model.PostMetadata{Files: []*model.FileInfo{{Id: "f" + p.Id, Name: "a.png", Extension: "png", MimeType: "image/png", Width: 800, Height: 200}}}
+		}
+		return posts
+	}
+
+	// Окно шире на величину чуть меньше порога перерисовки (24 px): lastWidth
+	// остаётся старым, и исчезнувшая полоса прокрутки добирает разницу до порога.
+	widen := func() {
+		f.Widget().Resize(f.lastWidth+25, 300)
+		settle()
+	}
+	f.SetPosts(withImages(100), true)
+	settle()
+	if !f.bar.IsVisible() {
+		t.Error("30 image posts fit into 300px: no scroll bar, test is meaningless")
+		return
+	}
+	widen()
+	f.Loading()
+	settle()
+
+	f.Widget().Resize(600, 300)
+	f.SetPosts(withImages(200), true)
+	settle()
+	widen()
+	for len(f.items) > 1 {
+		f.Remove(f.items[len(f.items)-1].post.Id)
+	}
+	settleFor(200 * time.Millisecond)
+	if len(f.items) != 1 {
+		t.Errorf("%d posts left, want 1", len(f.items))
+	}
+	// Перерисовка отложена, но случается: картинки вписаны в текущую ширину.
+	if w := f.view.Viewport().Width(); f.lastWidth != w {
+		t.Errorf("images fitted to %d px, viewport is %d", f.lastWidth, w)
 	}
 }

@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -138,5 +140,73 @@ func TestContinues(t *testing.T) {
 		if got := continues(c.prev, c.p); got != c.want {
 			t.Errorf("continues(%+v, %+v) = %v, want %v", c.prev, c.p, got, c.want)
 		}
+	}
+}
+
+func TestFeedSelectionAcrossPosts(t *testing.T) { onMain(func() { testFeedSelectionAcrossPosts(t) }) }
+
+func testFeedSelectionAcrossPosts(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	f.Widget().Resize(500, 400)
+	f.Widget().Show()
+	defer f.Widget().Close()
+	posts := makePosts(1, 3)
+	posts[1].Metadata = &model.PostMetadata{Reactions: []*model.Reaction{{UserId: "u1", PostId: posts[1].Id, EmojiName: "+1"}}}
+	f.SetPosts(posts, false)
+
+	// Выделение от первого поста до последнего — одним курсором документа.
+	c := qt.NewQTextCursor2(f.doc)
+	c.SetPosition(f.items[0].frame.FirstPosition())
+	c.SetPosition2(f.items[2].frame.LastPosition(), qt.QTextCursor__KeepAnchor)
+	f.view.SetTextCursor(c)
+	f.view.Copy()
+	got := qt.QGuiApplication_Clipboard().Text()
+	for _, want := range []string{"u1", "сообщение 1", "u2", "сообщение 2", "сообщение 3"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("copied selection lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.ContainsRune(got, '\uFFFC') {
+		t.Errorf("copied selection has image placeholders: %q", got)
+	}
+}
+
+func TestFeedFramesAndAnchors(t *testing.T) { onMain(func() { testFeedFramesAndAnchors(t) }) }
+
+func testFeedFramesAndAnchors(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	var toggled []string
+	f.OnToggleReaction = func(p *model.Post, name string) { toggled = append(toggled, p.Id+" "+name) }
+	var threads []string
+	f.OnOpenThread = func(id string) { threads = append(threads, id) }
+
+	f.SetPosts(makePosts(10, 3), true)
+	f.PrependOlder(makePosts(5, 2), false)
+	f.Upsert(makePosts(20, 1)[0])
+	edited := makePosts(11, 1)[0]
+	edited.Message = "исправлено"
+	f.Upsert(edited)
+	f.Remove("p0012")
+
+	// Порядок текста в документе совпадает с порядком постов.
+	text := f.doc.ToPlainText()
+	last := -1
+	for _, want := range []string{"сообщение 5", "сообщение 6", "сообщение 10", "исправлено", "сообщение 20"} {
+		i := strings.Index(text, want)
+		if i < 0 || i < last {
+			t.Errorf("document order broken at %q:\n%s", want, text)
+			break
+		}
+		last = i
+	}
+	if strings.Contains(text, "сообщение 12") || strings.Contains(text, "сообщение 11") {
+		t.Errorf("removed or replaced text still in document:\n%s", text)
+	}
+
+	// Ссылки ленты переживают QUrl: «+» в имени эмодзи не теряется.
+	f.onAnchor(qt.NewQUrl3(reactLink + "p0010:" + url.PathEscape("+1")).ToString())
+	f.onAnchor(qt.NewQUrl3(threadLink + "p0010").ToString())
+	if len(toggled) != 1 || toggled[0] != "p0010 +1" || len(threads) != 1 || threads[0] != "p0010" {
+		t.Errorf("anchors: toggled %v, threads %v", toggled, threads)
 	}
 }

@@ -51,20 +51,28 @@ func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload 
 		t.Errorf("seeded image (%v) or markdown post (%v) not in backend", img != nil, md != nil)
 		return
 	}
-	waitFor(t, "image preview in feed", func() bool { return m.feed.pixmaps[img.Id] != nil })
-	waitFor(t, "custom emoji rendered", func() bool {
-		i := m.feed.index(md.post.Id)
-		return i >= 0 && strings.Contains(m.feed.items[i].body.Text(), `<img src="file://`)
-	})
-	body := m.feed.items[m.feed.index(md.post.Id)].body.Text()
+	html := func(id string) string {
+		if i := m.feed.index(id); i >= 0 {
+			return m.feed.items[i].html
+		}
+		return ""
+	}
+	imgPost := ""
+	for _, it := range m.feed.items {
+		if it.post.Metadata != nil && len(it.post.Metadata.Files) > 0 && it.post.Metadata.Files[0] == img {
+			imgPost = it.post.Id
+		}
+	}
+	waitFor(t, "image preview in feed", func() bool { return strings.Contains(html(imgPost), "mm-img:"+img.Id) })
+	waitFor(t, "custom emoji rendered", func() bool { return strings.Contains(html(md.post.Id), `<img src="file://`) })
+	body := html(md.post.Id)
 	for _, want := range []string{"<h3", "☑", "<table border", "white-space:pre-wrap", "mm-channel:town-square", "👍"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("markdown post lacks %q:\n%s", want, body)
 		}
 	}
 
-	m.feed.stick = false
-	m.feed.scroll.EnsureWidgetVisible(m.feed.items[m.feed.index(md.post.Id)].w)
+	m.feed.ScrollToPost(md.post.Id)
 	shot(t, m, "markdown-post")
 
 	// Черновик остаётся в своём канале.
@@ -96,7 +104,7 @@ func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload 
 	waitFor(t, "post with file", func() bool {
 		for _, it := range m.feed.items {
 			if it.post.Metadata != nil && len(it.post.Metadata.Files) == 1 && it.post.Metadata.Files[0].Name == "заметки.txt" {
-				return it.files != nil
+				return strings.Contains(it.html, saveLink+it.post.Metadata.Files[0].Id)
 			}
 		}
 		return false
@@ -110,7 +118,7 @@ func testFilesAndMarkdown(t *testing.T, _ *mmfake.Server, s *mm.Session, upload 
 	m.selectChannel(alerts.Id)
 	waitFor(t, "bot attachment", func() bool {
 		for _, it := range m.feed.items {
-			if strings.Contains(it.body.Text(), "DiskSpaceLow") && strings.Contains(it.body.Text(), `bgcolor="#a30200"`) {
+			if strings.Contains(it.html, "DiskSpaceLow") && strings.Contains(it.html, `bgcolor="#a30200"`) {
 				return true
 			}
 		}

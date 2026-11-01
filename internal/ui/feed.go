@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"html"
+	"math"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -20,14 +22,25 @@ const groupMillis = 5 * 60 * 1000
 // Наибольший размер превью картинки в ленте.
 const previewMaxW, previewMaxH = 360, 240
 
+// Отступ документа от краёв ленты.
+const feedMargin = 12.0
+
+// Ссылки на действия внутри ленты. Их обрабатывает Feed, а не браузер.
+const (
+	reactLink     = "mm-react:"      // mm-react:<post>:<emoji> — поставить или снять реакцию
+	reactMenuLink = "mm-react-menu:" // mm-react-menu:<post> — меню быстрых реакций
+	threadLink    = "mm-thread:"     // mm-thread:<корень>
+	openLink      = "mm-open:"       // mm-open:<файл>
+	saveLink      = "mm-save:"       // mm-save:<файл>
+)
+
+// Плотность картинок-ресурсов: рисуем вдвое крупнее, чтобы на HiDPI было чётко.
+const resourceDPR = 2
+
 type postItem struct {
-	post   *model.Post
-	w      *qt.QWidget
-	lay    *qt.QVBoxLayout
-	header *qt.QLabel
-	body   *qt.QLabel
-	files  *qt.QWidget // вложения; nil, если их нет
-	footer *qt.QWidget // реакции и ответы; nil, если показывать нечего
+	post  *model.Post
+	frame *qt.QTextFrame
+	html  string // последняя отрисовка — для тестов и отладки
 }
 
 // FeedDeps — что ленте нужно от окна.
@@ -39,17 +52,21 @@ type FeedDeps struct {
 	ChannelExists func(name string) bool
 }
 
-// Feed — лента постов: QScrollArea с виджетом на пост, новые снизу.
-// Одна и та же лента служит каналу и панели треда.
+// Feed — лента постов одним документом (QTextBrowser): выделение и копирование
+// идут через любые сообщения, как в браузере. Каждый пост — свой QTextFrame,
+// поэтому новые, изменённые и удалённые посты правятся точечно: позиции
+// остальных фреймов документ сдвигает сам. Реакции и превью — картинки-ресурсы
+// документа, клики по ним — ссылки mm-*.
 type Feed struct {
-	d       FeedDeps
-	md      *markdown.Renderer
-	scroll  *qt.QScrollArea
-	bar     *qt.QScrollBar
-	content *qt.QWidget
-	list    *qt.QVBoxLayout
-	items   []*postItem
-	pixmaps map[string]*qt.QPixmap // уменьшенные превью по id файла
+	d     FeedDeps
+	md    *markdown.Renderer
+	view  *qt.QTextBrowser
+	doc   *qt.QTextDocument
+	bar   *qt.QScrollBar
+	items []*postItem
+	// Картинки, уже добавленные ресурсами документа (сбрасываются с документом).
+	resources   map[string][2]int // имя → логический размер
+	placeholder bool              // в документе текст-заглушка вместо постов
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
 	keepFromBottom int  // после подгрузки старых: сохранить расстояние до низа; -1 — не нужно
@@ -67,36 +84,46 @@ type Feed struct {
 }
 
 func NewFeed(d FeedDeps) *Feed {
-	f := &Feed{d: d, scroll: qt.NewQScrollArea2(), pixmaps: map[string]*qt.QPixmap{}}
+	f := &Feed{d: d, view: qt.NewQTextBrowser2()}
 	f.md = markdown.New(markdown.Options{Me: d.Me.Username, ChannelExists: d.ChannelExists, CustomEmoji: f.customEmoji})
-	f.scroll.SetWidgetResizable(true)
-	f.scroll.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
-	f.scroll.SetFrameShape(qt.QFrame__NoFrame)
-	f.bar = f.scroll.VerticalScrollBar()
+	f.doc = f.view.Document()
+	f.view.SetOpenLinks(false)
+	f.view.SetFrameShape(qt.QFrame__NoFrame)
+	f.view.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
+	f.view.OnAnchorClicked(func(u *qt.QUrl) { f.onAnchor(u.ToString()) })
+	f.view.OnContextMenuEvent(func(_ func(*qt.QContextMenuEvent), e *qt.QContextMenuEvent) { f.contextMenu(e) })
+	f.view.OnCreateMimeDataFromSelection(f.copySelection)
+	f.view.OnResizeEvent(func(super func(*qt.QResizeEvent), e *qt.QResizeEvent) {
+		super(e)
+		f.pinToBottom()
+	})
+	f.bar = f.view.VerticalScrollBar()
 	f.bar.OnValueChanged(f.onScroll)
 	f.bar.OnRangeChanged(f.onRange)
 	f.Reset("")
 	return f
 }
 
-func (f *Feed) Widget() *qt.QWidget { return f.scroll.QWidget }
+func (f *Feed) Widget() *qt.QWidget { return f.view.QWidget }
 
 // Reset очищает ленту; msg — текст вместо постов («Загрузка…», ошибка).
 func (f *Feed) Reset(msg string) {
-	f.content = qt.NewQWidget2()
-	f.list = qt.NewQVBoxLayout(f.content)
-	f.list.SetContentsMargins(12, 8, 12, 12)
-	f.list.SetSpacing(0)
-	f.list.AddStretch() // прижимает короткую ленту к низу
+	f.clearDoc()
 	if msg != "" {
-		l := newTextLabel(qt.PlainText)
-		l.SetText(msg)
-		l.SetAlignment(qt.AlignCenter)
-		f.list.AddWidget(l.QWidget)
+		f.placeholder = true
+		c := qt.NewQTextCursor2(f.doc)
+		c.InsertHtml(`<p align="center" style="color:gray">` + html.EscapeString(msg) + `</p>`)
 	}
-	f.items = nil
 	f.stick, f.keepFromBottom, f.hasMore, f.loadingOlder = true, -1, false, false
-	f.scroll.SetWidget(f.content) // прежний content Qt удалит сам
+	f.pinToBottom()
+}
+
+func (f *Feed) clearDoc() {
+	f.doc.Clear()
+	f.doc.SetDocumentMargin(feedMargin)
+	f.resources = map[string][2]int{}
+	f.items = nil
+	f.placeholder = false
 }
 
 func (f *Feed) SetPosts(posts []*model.Post, hasMore bool) {
@@ -146,21 +173,35 @@ func (f *Feed) Remove(id string) {
 	if i < 0 {
 		return
 	}
-	it := f.items[i]
-	f.list.RemoveWidget(it.w)
-	it.w.DeleteLater()
+	fr := f.items[i].frame
+	c := qt.NewQTextCursor2(f.doc)
+	c.SetPosition(fr.FirstPosition() - 1)
+	c.SetPosition2(fr.LastPosition()+1, qt.QTextCursor__KeepAnchor)
+	c.RemoveSelectedText()
 	f.items = slices.Delete(f.items, i, i+1)
 	if i < len(f.items) {
-		f.renderHeader(i)
+		f.render(i) // мог стать заголовком группы
 	}
 }
 
-// RefreshNames перерисовывает заголовки и подсказки реакций, когда догрузились профили.
+// RefreshNames перерисовывает ленту, когда догрузились профили.
 func (f *Feed) RefreshNames() {
 	for i := range f.items {
-		f.renderHeader(i)
-		f.renderFooter(i)
+		f.render(i)
 	}
+}
+
+// ScrollToPost прокручивает к посту (и ставит курсор в его начало).
+func (f *Feed) ScrollToPost(id string) {
+	i := f.index(id)
+	if i < 0 {
+		return
+	}
+	f.stick, f.keepFromBottom = false, -1
+	c := qt.NewQTextCursor2(f.doc)
+	c.SetPosition(f.items[i].frame.FirstPosition())
+	f.view.SetTextCursor(c)
+	f.view.EnsureCursorVisible()
 }
 
 // refreshSoon перерисует ленту один раз после текущих событий: догрузились
@@ -193,54 +234,113 @@ func (f *Feed) index(id string) int {
 	return slices.IndexFunc(f.items, func(it *postItem) bool { return it.post.Id == id })
 }
 
-func (f *Feed) insert(i int, p *model.Post) {
-	it := &postItem{post: p, w: qt.NewQWidget2()}
-	it.lay = qt.NewQVBoxLayout(it.w)
-	it.lay.SetSpacing(1)
-	it.header = newTextLabel(qt.RichText)
-	it.body = newTextLabel(qt.RichText)
-	it.body.OnLinkActivated(func(link string) {
-		if f.OnLink != nil {
-			f.OnLink(link)
-		}
-	})
-	it.lay.AddWidget(it.header.QWidget)
-	it.lay.AddWidget(it.body.QWidget)
-	it.w.SetContextMenuPolicy(qt.CustomContextMenu)
-	it.w.OnCustomContextMenuRequested(func(pos *qt.QPoint) { f.contextMenu(it, pos) })
+func (f *Feed) post(id string) *model.Post {
+	if i := f.index(id); i >= 0 {
+		return f.items[i].post
+	}
+	return nil
+}
 
+// itemAt — пост, в чьём фрейме позиция документа pos.
+func (f *Feed) itemAt(pos int) *postItem {
+	for _, it := range f.items {
+		if it.frame.FirstPosition() <= pos && pos <= it.frame.LastPosition() {
+			return it
+		}
+	}
+	return nil
+}
+
+func (f *Feed) insert(i int, p *model.Post) {
+	if f.placeholder {
+		f.clearDoc()
+	}
+	c := qt.NewQTextCursor2(f.doc)
+	switch {
+	case i < len(f.items):
+		c.SetPosition(f.items[i].frame.FirstPosition() - 1)
+	case len(f.items) > 0:
+		c.SetPosition(f.items[len(f.items)-1].frame.LastPosition() + 1)
+	}
+	it := &postItem{post: p, frame: c.InsertFrame(frameFormat(false))}
 	f.items = slices.Insert(f.items, i, it)
-	f.list.InsertWidget(i+1, it.w) // +1: растяжка сверху
-	f.render(i)
+	f.write(i, c)
+	// Между соседними фреймами (и до первого, и после последнего) Qt держит
+	// пустой абзац — без этого он давал бы пустую строку между сообщениями.
+	f.squash(it.frame.FirstPosition() - 1)
+	f.squash(it.frame.LastPosition() + 1)
 	if i+1 < len(f.items) {
-		f.renderHeader(i + 1) // следующий пост мог стать продолжением этого
+		f.render(i + 1) // следующий пост мог стать продолжением этого
 	}
 }
 
+// render перерисовывает пост на месте. Выделение пользователя вне поста
+// документ сохраняет сам: его курсор сдвигается вместе с текстом.
 func (f *Feed) render(i int) {
-	f.renderHeader(i)
-	p := f.items[i].post
-	f.items[i].body.SetText(f.bodyHTML(p))
-	f.items[i].body.SetToolTip(formatTime(p.CreateAt))
-	f.renderFiles(i)
-	f.renderFooter(i)
+	fr := f.items[i].frame
+	c := qt.NewQTextCursor2(f.doc)
+	c.SetPosition(fr.FirstPosition())
+	c.SetPosition2(fr.LastPosition(), qt.QTextCursor__KeepAnchor)
+	c.RemoveSelectedText()
+	f.write(i, c)
 }
 
-func (f *Feed) renderHeader(i int) {
+// write пишет пост в его фрейм; c стоит в начале пустого фрейма.
+func (f *Feed) write(i int, c *qt.QTextCursor) {
 	it := f.items[i]
 	var prev *model.Post
 	if i > 0 {
 		prev = f.items[i-1].post
 	}
-	if continues(prev, it.post) {
-		it.header.SetVisible(false)
-		it.lay.SetContentsMargins(0, 2, 0, 0)
+	cont := continues(prev, it.post)
+	it.frame.SetFrameFormat(frameFormat(cont))
+	it.html = f.postHTML(it.post, cont)
+	c.InsertHtml(it.html)
+	// После таблицы (блок кода, вложение интеграции) Qt оставляет пустой
+	// абзац — он даёт лишнюю строку под сообщением.
+	if c.Position() > it.frame.FirstPosition() {
+		f.squash(c.Position())
+	}
+}
+
+// squash ужимает пустой абзац в позиции pos до 1 px; непустой не трогает.
+func (f *Feed) squash(pos int) {
+	if pos < 0 || pos >= f.doc.CharacterCount() {
 		return
 	}
-	it.header.SetText(fmt.Sprintf(`<b>%s</b>&nbsp;&nbsp;<span style="color:gray">%s</span>`,
-		html.EscapeString(f.d.Names(it.post.UserId)), formatTime(it.post.CreateAt)))
-	it.header.SetVisible(true)
-	it.lay.SetContentsMargins(0, 10, 0, 0)
+	c := qt.NewQTextCursor2(f.doc)
+	c.SetPosition(pos)
+	if c.Block().Length() != 1 {
+		return
+	}
+	bf := qt.NewQTextBlockFormat()
+	bf.SetLineHeight(1, int(qt.QTextBlockFormat__FixedHeight))
+	c.SetBlockFormat(bf)
+}
+
+func frameFormat(continuation bool) *qt.QTextFrameFormat {
+	ff := qt.NewQTextFrameFormat()
+	ff.SetBorder(0)
+	ff.SetPadding(0)
+	ff.SetMargin(0)
+	if continuation {
+		ff.SetTopMargin(2)
+	} else {
+		ff.SetTopMargin(10)
+	}
+	return ff
+}
+
+func (f *Feed) postHTML(p *model.Post, continuation bool) string {
+	var b strings.Builder
+	if !continuation {
+		fmt.Fprintf(&b, `<p style="margin:0"><b>%s</b>&nbsp;&nbsp;<span style="color:gray">%s</span></p>`,
+			html.EscapeString(f.d.Names(p.UserId)), formatTime(p.CreateAt))
+	}
+	b.WriteString(f.bodyHTML(p))
+	b.WriteString(f.filesHTML(p))
+	b.WriteString(f.footerHTML(p))
+	return b.String()
 }
 
 func (f *Feed) bodyHTML(p *model.Post) string {
@@ -251,179 +351,162 @@ func (f *Feed) bodyHTML(p *model.Post) string {
 		if msg == "" {
 			msg = p.Type
 		}
-		b.WriteString(`<i style="color:gray">` + html.EscapeString(msg) + `</i>`)
+		b.WriteString(`<p style="margin:0"><i style="color:gray">` + html.EscapeString(msg) + `</i></p>`)
 	default:
 		b.WriteString(f.md.Render(p.Message))
 		b.WriteString(f.md.Attachments(p.Attachments()))
 	}
 	if p.EditAt > 0 {
-		b.WriteString(` <span style="color:gray">(изменено)</span>`)
+		b.WriteString(`<p style="margin:0"><span style="color:gray">(изменено)</span></p>`)
 	}
 	return b.String()
 }
 
-// renderFiles пересобирает вложения: картинки — превью, остальное — строкой с кнопками.
-func (f *Feed) renderFiles(i int) {
-	it := f.items[i]
-	if it.files != nil {
-		it.lay.RemoveWidget(it.files)
-		it.files.DeleteLater()
-		it.files = nil
+// filesHTML: картинки — превью (место под него резервируется сразу, чтобы
+// лента не прыгала, когда оно догрузится), остальное — строкой со ссылками.
+func (f *Feed) filesHTML(p *model.Post) string {
+	if p.Metadata == nil {
+		return ""
 	}
-	if it.post.Metadata == nil || len(it.post.Metadata.Files) == 0 {
-		return
-	}
-	it.files = qt.NewQWidget2()
-	lay := qt.NewQVBoxLayout(it.files)
-	lay.SetContentsMargins(0, 4, 0, 0)
-	lay.SetSpacing(4)
-	for _, fi := range it.post.Metadata.Files {
+	var b strings.Builder
+	for _, fi := range p.Metadata.Files {
+		title := html.EscapeString(fmt.Sprintf("%s (%s)", fi.Name, formatSize(fi.Size)))
 		if isImage(fi) {
-			lay.AddWidget3(f.imageButton(fi), 0, qt.AlignLeft)
+			w, h := fitSize(fi.Width, fi.Height, previewMaxW, previewMaxH)
+			fmt.Fprintf(&b, `<p style="margin-top:4px;margin-bottom:0"><a href="%s%s"><img src="%s" width="%d" height="%d" title="%s — открыть"></a></p>`,
+				openLink, fi.Id, f.previewSrc(fi, w, h), w, h, title)
+			continue
+		}
+		fmt.Fprintf(&b, `<p style="margin-top:4px;margin-bottom:0">📎 %s <span style="color:gray">(%s)</span>&nbsp;&nbsp;`,
+			html.EscapeString(fi.Name), formatSize(fi.Size))
+		if canOpen(fi) {
+			fmt.Fprintf(&b, `<a href="%s%s">Открыть</a>&nbsp;·&nbsp;`, openLink, fi.Id)
+		}
+		fmt.Fprintf(&b, `<a href="%s%s">Сохранить…</a></p>`, saveLink, fi.Id)
+	}
+	return b.String()
+}
+
+// previewSrc — ресурс с уменьшенным превью или серая заглушка того же
+// размера, пока превью грузится.
+func (f *Feed) previewSrc(fi *model.FileInfo, w, h int) string {
+	name := fmt.Sprintf("mm-img:%s:%dx%d", fi.Id, w, h)
+	if _, ok := f.resources[name]; ok {
+		return name
+	}
+	if f.d.Assets != nil {
+		if path := f.d.Assets.Preview(fi.Id); path != "" {
+			if pm := qt.NewQPixmap4(path); !pm.IsNull() {
+				pm = pm.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+				pm.SetDevicePixelRatio(resourceDPR)
+				f.addResource(name, pm, w, h)
+				return name
+			}
 		} else {
-			lay.AddWidget(f.fileRow(fi))
+			f.d.Assets.WantPreview(fi.Id, f.refreshSoon)
 		}
 	}
-	it.lay.InsertWidget(2, it.files) // после заголовка и текста, до реакций
+	ph := fmt.Sprintf("mm-ph:%dx%d", w, h)
+	if _, ok := f.resources[ph]; !ok {
+		img := qt.NewQImage3(w, h, qt.QImage__Format_ARGB32_Premultiplied)
+		img.FillWithColor(qt.NewQColor6("#e6e9ed"))
+		f.addResource(ph, qt.QPixmap_FromImage(img), w, h)
+	}
+	return ph
 }
 
-// imageButton — превью картинки; место под него резервируется сразу, чтобы
-// лента не прыгала, когда превью догрузится. Клик — открыть целиком.
-func (f *Feed) imageButton(fi *model.FileInfo) *qt.QWidget {
-	w, h := fitSize(fi.Width, fi.Height, previewMaxW, previewMaxH)
-	b := qt.NewQPushButton2()
-	b.SetFlat(true)
-	b.SetFixedSize2(w+6, h+6)
-	b.SetToolTip(fmt.Sprintf("%s (%s) — открыть", fi.Name, formatSize(fi.Size)))
-	if pm := f.preview(fi, w, h); pm != nil {
-		b.SetIcon(qt.NewQIcon2(pm))
-		b.SetIconSize(qt.NewQSize2(pm.Width(), pm.Height()))
-	} else {
-		b.SetText("🖼 " + fi.Name)
-	}
-	b.OnClicked(func() { f.openFile(fi) })
-	return b.QWidget
+func (f *Feed) addResource(name string, pm *qt.QPixmap, w, h int) {
+	f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(name), pm.ToQVariant())
+	f.resources[name] = [2]int{w, h}
 }
 
-// preview — уменьшенное превью из кэша; nil — ещё не загружено (загрузка запущена).
-func (f *Feed) preview(fi *model.FileInfo, w, h int) *qt.QPixmap {
-	if pm := f.pixmaps[fi.Id]; pm != nil {
-		return pm
-	}
-	if f.d.Assets == nil {
-		return nil
-	}
-	path := f.d.Assets.Preview(fi.Id)
-	if path == "" {
-		f.d.Assets.WantPreview(fi.Id, f.refreshSoon)
-		return nil
-	}
-	pm := qt.NewQPixmap4(path)
-	if pm.IsNull() {
-		return nil
-	}
-	pm = pm.Scaled3(w, h, qt.KeepAspectRatio, qt.SmoothTransformation)
-	f.pixmaps[fi.Id] = pm
-	return pm
-}
-
-func (f *Feed) fileRow(fi *model.FileInfo) *qt.QWidget {
-	row := qt.NewQWidget2()
-	lay := qt.NewQHBoxLayout(row)
-	lay.SetContentsMargins(0, 0, 0, 0)
-	label := newTextLabel(qt.RichText)
-	label.SetText(fmt.Sprintf(`📎 %s <span style="color:gray">(%s)</span>`, html.EscapeString(fi.Name), formatSize(fi.Size)))
-	lay.AddWidget(label.QWidget)
-	if canOpen(fi) {
-		open := qt.NewQPushButton3("Открыть")
-		open.OnClicked(func() { f.openFile(fi) })
-		lay.AddWidget(open.QWidget)
-	}
-	save := qt.NewQPushButton3("Сохранить…")
-	save.OnClicked(func() {
-		if f.OnSaveFile != nil {
-			f.OnSaveFile(fi)
-		}
-	})
-	lay.AddWidget(save.QWidget)
-	lay.AddStretch()
-	return row
-}
-
-func (f *Feed) openFile(fi *model.FileInfo) {
-	if f.OnOpenFile != nil {
-		f.OnOpenFile(fi)
-	}
-}
-
-// renderFooter пересобирает строку под постом: реакции, «+», ответы.
-func (f *Feed) renderFooter(i int) {
-	it := f.items[i]
-	p := it.post
-	if it.footer != nil {
-		it.lay.RemoveWidget(it.footer)
-		it.footer.DeleteLater()
-		it.footer = nil
-	}
+// footerHTML: реакции (картинками-плашками), «+», ответы.
+func (f *Feed) footerHTML(p *model.Post) string {
 	groups := groupReactions(p)
 	showReplies := !f.d.Thread && p.RootId == "" && p.ReplyCount > 0
 	inThread := !f.d.Thread && p.RootId != ""
 	if len(groups) == 0 && !showReplies && !inThread {
-		return
+		return ""
 	}
-
-	it.footer = qt.NewQWidget2()
-	row := qt.NewQHBoxLayout(it.footer)
-	row.SetContentsMargins(0, 2, 0, 0)
-	row.SetSpacing(4)
+	var b strings.Builder
+	b.WriteString(`<p style="margin-top:4px;margin-bottom:0">`)
 	for _, g := range groups {
-		b := qt.NewQPushButton2()
-		if _, ok := emoji.Char(g.name); ok {
-			b.SetText(fmt.Sprintf("%s %d", emoji.Display(g.name), len(g.users)))
-		} else if path := f.customEmoji(g.name); path != "" {
-			b.SetIcon(qt.NewQIcon4(path))
-			b.SetText(fmt.Sprint(len(g.users)))
-		} else {
-			b.SetText(fmt.Sprintf(":%s: %d", g.name, len(g.users)))
-		}
-		b.SetStyleSheet(reactionStyle(slices.Contains(g.users, f.d.Me.Id)))
 		names := make([]string, len(g.users))
 		for k, u := range g.users {
 			names[k] = f.d.Names(u)
 		}
-		b.SetToolTip(":" + g.name + ": — " + strings.Join(names, ", "))
-		name := g.name
-		b.OnClicked(func() { f.toggleReaction(p, name) })
-		row.AddWidget(b.QWidget)
+		src, w, h := f.pill(g.name, len(g.users), slices.Contains(g.users, f.d.Me.Id))
+		fmt.Fprintf(&b, `<a href="%s%s:%s"><img src="%s" width="%d" height="%d" title="%s"></a>&nbsp;`,
+			reactLink, p.Id, url.PathEscape(g.name), src, w, h, html.EscapeString(":"+g.name+": — "+strings.Join(names, ", ")))
 	}
 	if len(groups) > 0 {
-		add := qt.NewQPushButton3("+")
-		add.SetStyleSheet(reactionStyle(false))
-		add.SetToolTip("Добавить реакцию")
-		add.SetMenu(f.reactionMenu(p, add.QWidget))
-		row.AddWidget(add.QWidget)
+		src, w, h := f.pill("", 0, false)
+		fmt.Fprintf(&b, `<a href="%s%s"><img src="%s" width="%d" height="%d" title="Добавить реакцию"></a>&nbsp;&nbsp;`, reactMenuLink, p.Id, src, w, h)
 	}
 	if showReplies {
-		b := qt.NewQPushButton3("💬 " + pluralReplies(p.ReplyCount))
-		b.SetFlat(true)
-		b.OnClicked(func() { f.openThread(p.Id) })
-		row.AddWidget(b.QWidget)
+		fmt.Fprintf(&b, `<a href="%s%s" style="text-decoration:none">💬 %s</a>`, threadLink, p.Id, pluralReplies(p.ReplyCount))
 	}
 	if inThread {
-		b := qt.NewQPushButton3("↪ ответ в треде")
-		b.SetFlat(true)
-		b.OnClicked(func() { f.openThread(p.RootId) })
-		row.AddWidget(b.QWidget)
+		fmt.Fprintf(&b, `<a href="%s%s" style="text-decoration:none;color:gray">↪ ответ в треде</a>`, threadLink, p.RootId)
 	}
-	row.AddStretch()
-	it.lay.AddWidget(it.footer)
+	b.WriteString("</p>")
+	return b.String()
 }
 
-func reactionStyle(mine bool) string {
-	if mine {
-		return "QPushButton{padding:1px 8px;border:1px solid #6a9fd8;border-radius:10px;background:#dbe8f7}"
+// pill — картинка-плашка реакции «эмодзи число»; name="" — плашка «+».
+// Рисуем сами: в тексте документа скругления и рамки не сделать.
+func (f *Feed) pill(name string, count int, mine bool) (src string, w, h int) {
+	label := "+"
+	var icon string
+	if name != "" {
+		if s, ok := emoji.Char(name); ok {
+			label = fmt.Sprintf("%s %d", s, count)
+		} else if icon = f.customEmoji(name); icon != "" {
+			label = fmt.Sprint(count)
+		} else {
+			label = fmt.Sprintf(":%s: %d", name, count)
+		}
 	}
-	return "QPushButton{padding:1px 8px;border:1px solid #c8c8c8;border-radius:10px;background:transparent}"
+	// Имя ресурса — только ASCII: документ сверяет его через QUrl.
+	src = fmt.Sprintf("mm-pill:%s:%d:%t:%t", url.PathEscape(name), count, mine, icon != "")
+	if size, ok := f.resources[src]; ok {
+		return src, size[0], size[1]
+	}
+
+	font := f.view.Font()
+	fm := qt.NewQFontMetrics(font)
+	h = fm.Height() + 6
+	iconW := 0
+	if icon != "" {
+		iconW = h - 8 + 4
+	}
+	textW := fm.HorizontalAdvance(label)
+	w = 8 + iconW + textW + 8
+
+	img := qt.NewQImage3(w*resourceDPR, h*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+	img.Fill2(qt.Transparent)
+	img.SetDevicePixelRatio(resourceDPR)
+	p := qt.NewQPainter2(img.QPaintDevice)
+	p.SetRenderHint(qt.QPainter__Antialiasing)
+	border, fill := "#c8c8c8", "#ffffff"
+	if mine {
+		border, fill = "#6a9fd8", "#dbe8f7"
+	}
+	p.SetPenWithPen(qt.NewQPen4(qt.NewQBrush3(qt.NewQColor6(border)), 1))
+	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(fill)))
+	r := float64(h-1) / 2
+	p.DrawRoundedRect(qt.NewQRectF4(0.5, 0.5, float64(w-1), float64(h-1)), r, r)
+	if icon != "" {
+		if pm := qt.NewQPixmap4(icon); !pm.IsNull() {
+			p.DrawPixmap11(8, 4, h-8, h-8, pm)
+		}
+	}
+	p.SetPen(qt.NewQColor6("#333333"))
+	p.SetFont(font)
+	p.DrawText7(8+iconW, 0, textW+1, h, int(qt.AlignVCenter|qt.AlignLeft), label)
+	p.End()
+	f.addResource(src, qt.QPixmap_FromImage(img), w, h)
+	return src, w, h
 }
 
 type reactionGroup struct {
@@ -448,8 +531,54 @@ func groupReactions(p *model.Post) []reactionGroup {
 	return out
 }
 
-// reactionMenu — меню быстрых реакций; parent владеет меню (SetMenu и
-// AddMenu владение не передают).
+// onAnchor — клик по ссылке в ленте: свои mm-* обрабатываем здесь,
+// остальное (http, ~каналы, @упоминания) отдаём окну.
+func (f *Feed) onAnchor(link string) {
+	switch {
+	case strings.HasPrefix(link, reactLink):
+		postID, name, _ := strings.Cut(strings.TrimPrefix(link, reactLink), ":")
+		name, _ = url.PathUnescape(name)
+		if p := f.post(postID); p != nil && name != "" {
+			f.toggleReaction(p, name)
+		}
+	case strings.HasPrefix(link, reactMenuLink):
+		if p := f.post(strings.TrimPrefix(link, reactMenuLink)); p != nil {
+			menu := f.reactionMenu(p, f.view.QWidget)
+			menu.ExecWithPos(qt.QCursor_Pos())
+			menu.DeleteLater()
+		}
+	case strings.HasPrefix(link, threadLink):
+		f.openThread(strings.TrimPrefix(link, threadLink))
+	case strings.HasPrefix(link, openLink):
+		if fi := f.file(strings.TrimPrefix(link, openLink)); fi != nil && f.OnOpenFile != nil {
+			f.OnOpenFile(fi)
+		}
+	case strings.HasPrefix(link, saveLink):
+		if fi := f.file(strings.TrimPrefix(link, saveLink)); fi != nil && f.OnSaveFile != nil {
+			f.OnSaveFile(fi)
+		}
+	default:
+		if f.OnLink != nil {
+			f.OnLink(link)
+		}
+	}
+}
+
+func (f *Feed) file(id string) *model.FileInfo {
+	for _, it := range f.items {
+		if it.post.Metadata == nil {
+			continue
+		}
+		for _, fi := range it.post.Metadata.Files {
+			if fi.Id == id {
+				return fi
+			}
+		}
+	}
+	return nil
+}
+
+// reactionMenu — меню быстрых реакций; parent владеет меню.
 func (f *Feed) reactionMenu(p *model.Post, parent *qt.QWidget) *qt.QMenu {
 	menu := qt.NewQMenu4("Реакция", parent)
 	for _, name := range emoji.Quick {
@@ -459,20 +588,49 @@ func (f *Feed) reactionMenu(p *model.Post, parent *qt.QWidget) *qt.QMenu {
 	return menu
 }
 
-func (f *Feed) contextMenu(it *postItem, pos *qt.QPoint) {
-	p := it.post
-	menu := qt.NewQMenu2()
-	if !p.IsSystemMessage() {
-		if !f.d.Thread {
-			reply := menu.QWidget.AddActionWithText("Ответить в треде")
-			reply.OnTriggered(func() { f.openThread(threadRoot(p)) })
-		}
-		menu.AddMenu(f.reactionMenu(p, menu.QWidget))
+func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
+	it := f.itemAt(f.view.CursorForPosition(e.Pos()).Position())
+	menu := qt.NewQMenu(f.view.QWidget)
+	if f.view.TextCursor().HasSelection() {
+		cp := menu.QWidget.AddActionWithText("Копировать")
+		cp.OnTriggered(f.view.Copy)
 	}
-	cp := menu.QWidget.AddActionWithText("Копировать текст")
-	cp.OnTriggered(func() { qt.QGuiApplication_Clipboard().SetText(p.Message) })
-	menu.ExecWithPos(it.w.MapToGlobalWithQPoint(pos))
+	if link := f.view.AnchorAt(e.Pos()); strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://") {
+		cl := menu.QWidget.AddActionWithText("Копировать ссылку")
+		cl.OnTriggered(func() { qt.QGuiApplication_Clipboard().SetText(link) })
+	}
+	if it != nil {
+		p := it.post
+		if !p.IsSystemMessage() {
+			if !f.d.Thread {
+				reply := menu.QWidget.AddActionWithText("Ответить в треде")
+				reply.OnTriggered(func() { f.openThread(threadRoot(p)) })
+			}
+			menu.AddMenu(f.reactionMenu(p, menu.QWidget))
+		}
+		cp := menu.QWidget.AddActionWithText("Копировать текст сообщения")
+		cp.OnTriggered(func() { qt.QGuiApplication_Clipboard().SetText(p.Message) })
+	}
+	all := menu.QWidget.AddActionWithText("Выделить всё")
+	all.OnTriggered(f.view.SelectAll)
+	menu.ExecWithPos(e.GlobalPos())
 	menu.DeleteLater()
+}
+
+// copySelection — в буфер только текст: картинки (реакции, превью) в
+// выделении дали бы символы-заглушки U+FFFC.
+func (f *Feed) copySelection(super func() *qt.QMimeData) *qt.QMimeData {
+	md := super()
+	text := md.Text()
+	md.Delete()
+	text = strings.NewReplacer("\uFFFC", "", "\u2028", "\n", "\u2029", "\n", "\u00a0", " ").Replace(text)
+	lines := strings.Split(text, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimRight(l, " \t")
+	}
+	out := qt.NewQMimeData()
+	out.SetText(strings.TrimSpace(strings.Join(lines, "\n")))
+	return out
 }
 
 func (f *Feed) openThread(rootID string) {
@@ -533,15 +691,28 @@ func formatSize(n int64) string {
 	return fmt.Sprintf("%d Б", n)
 }
 
-// newTextLabel — QLabel с переносом и выделением. Своё контекстное меню
-// выключено, чтобы правый клик доходил до меню поста.
+// newTextLabel — QLabel с переносом и выделением (заголовки, подписи).
 func newTextLabel(format qt.TextFormat) *qt.QLabel {
 	l := qt.NewQLabel2()
 	l.SetWordWrap(true)
 	l.SetTextFormat(format)
 	l.SetTextInteractionFlags(qt.TextSelectableByMouse | qt.LinksAccessibleByMouse)
-	l.SetContextMenuPolicy(qt.NoContextMenu)
 	return l
+}
+
+// pinToBottom прижимает короткую ленту к низу, как в чатах: верхнее поле
+// документа растягивается на свободное место.
+func (f *Feed) pinToBottom() {
+	root := f.doc.RootFrame()
+	ff := root.FrameFormat()
+	cur := ff.TopMargin()
+	content := f.doc.Size().Height() - cur
+	want := math.Max(feedMargin, float64(f.view.Viewport().Height())-content)
+	if math.Abs(want-cur) < 1 {
+		return
+	}
+	ff.SetTopMargin(want)
+	root.SetFrameFormat(ff)
 }
 
 func (f *Feed) onScroll(v int) {
@@ -559,6 +730,7 @@ func (f *Feed) onScroll(v int) {
 // onRange — высота содержимого изменилась (добавились посты, пересчитались
 // переносы): держим низ или место, на котором был пользователь.
 func (f *Feed) onRange(_, max int) {
+	f.pinToBottom()
 	f.programmatic = true
 	defer func() { f.programmatic = false }()
 	switch {

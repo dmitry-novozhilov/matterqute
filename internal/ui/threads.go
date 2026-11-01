@@ -22,10 +22,11 @@ const threadIDRole = int(qt.UserRole) + 2
 
 // ThreadPanel — правая панель с открытым тредом.
 type ThreadPanel struct {
-	w        *qt.QWidget
-	head     *header
-	feed     *Feed
-	composer *Composer
+	w           *qt.QWidget
+	head        *header
+	feed        *Feed
+	composer    *Composer
+	unsubscribe func()
 }
 
 func NewThreadPanel(deps FeedDeps, onClose func()) *ThreadPanel {
@@ -43,7 +44,7 @@ func NewThreadPanel(deps FeedDeps, onClose func()) *ThreadPanel {
 	lay.AddWidget2(p.feed.Widget(), 1)
 	lay.AddWidget(p.composer.Widget())
 	p.w.SetVisible(false)
-	OnThemeChanged(p.restyle)
+	p.unsubscribe = OnThemeChanged(p.restyle)
 	p.restyle()
 	return p
 }
@@ -53,6 +54,7 @@ func (p *ThreadPanel) restyle() {
 }
 
 func (p *ThreadPanel) dispose() {
+	p.unsubscribe()
 	p.feed.dispose()
 	p.composer.dispose()
 }

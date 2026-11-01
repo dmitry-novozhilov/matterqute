@@ -25,6 +25,10 @@ type Tokens struct {
 	mu   sync.Mutex
 }
 
+// FileTokens — токены только в файле path (0600), без keyring; для тестов и
+// систем, где keyring не нужен.
+func FileTokens(path string) *Tokens { return &Tokens{Backend: path, file: path} }
+
 // OpenTokens выбирает хранилище; err — почему keyring недоступен (не фатально).
 func OpenTokens(dir string) (*Tokens, error) {
 	_, err := keyring.Get(appName, "probe")

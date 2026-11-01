@@ -39,8 +39,17 @@ type Shell struct {
 	quitting    bool
 	quitApp     func() // QCoreApplication::quit; в тестах — подделка
 
-	OnLogout func()
-	OnClose  func() // окно закрывается или прячется в трей: сохранить, что нужно
+	OnLogout       func()
+	OnClose        func()      // окно закрывается или прячется в трей: сохранить, что нужно
+	OnSelectServer func(i int) // выбран сервер в меню «Сервер»
+	OnAddServer    func()
+}
+
+// ServerItem — пункт меню «Сервер».
+type ServerItem struct {
+	Host     string
+	Active   bool
+	Mentions int64 // упоминания и непрочитанные лички
 }
 
 func NewShell() *Shell {
@@ -97,7 +106,7 @@ func NewShell() *Shell {
 	s.themeActs[ThemeModeNow()].SetChecked(true)
 
 	s.serverMenu = s.w.MenuBar().AddMenuWithTitle("&Сервер")
-	s.SetServer("")
+	s.SetServers(nil)
 
 	s.user = qt.NewQLabel2()
 	s.server = qt.NewQLabel2()
@@ -156,19 +165,46 @@ func (s *Shell) SetUser(username, serverURL string) {
 	s.server.SetText(hostOf(serverURL))
 }
 
-// SetServer — пункты меню «Сервер»: текущий сервер с галочкой. Несколько
-// серверов и «Добавить сервер…» — следующий этап.
-func (s *Shell) SetServer(serverURL string) {
+// SetServers — меню «Сервер» (решение 6d): текущий сервер с галочкой, у
+// остальных — счётчик упоминаний и непрочитанных личек, Ctrl+1…9. Пока меню
+// закрыто, о новом на другом сервере говорит точка у заголовка «Сервер».
+func (s *Shell) SetServers(items []ServerItem) {
 	s.serverMenu.Clear()
-	if serverURL != "" {
-		a := s.serverMenu.QWidget.AddActionWithText(hostOf(serverURL))
+	news := false
+	for i, it := range items {
+		text := it.Host
+		if !it.Active && it.Mentions > 0 {
+			text += "   " + fmt.Sprint(it.Mentions)
+			news = true
+		}
+		a := s.serverMenu.QWidget.AddActionWithText(text)
 		a.SetCheckable(true)
-		a.SetChecked(true)
-		a.SetShortcut(qt.NewQKeySequence2("Ctrl+1"))
+		a.SetChecked(it.Active)
+		if i < 9 {
+			a.SetShortcut(qt.NewQKeySequence2(fmt.Sprintf("Ctrl+%d", i+1)))
+		}
+		a.OnTriggered(func() {
+			if s.OnSelectServer != nil {
+				s.OnSelectServer(i)
+			}
+		})
+	}
+	if len(items) > 0 {
 		s.serverMenu.AddSeparator()
 	}
 	add := s.serverMenu.QWidget.AddActionWithText("Добавить сервер…")
-	add.SetEnabled(false)
+	add.SetIcon(icon("plus", Pal().Tx2, 16))
+	add.OnTriggered(func() {
+		if s.OnAddServer != nil {
+			s.OnAddServer()
+		}
+	})
+	// Цветную точку в заголовок пункта строки меню Qt не нарисует — ставим «•».
+	title := "&Сервер"
+	if news {
+		title += " •"
+	}
+	s.serverMenu.SetTitle(title)
 }
 
 // ShowMessage — короткое сообщение слева в строке состояния (на 10 с); "" — убрать.

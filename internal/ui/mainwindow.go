@@ -250,9 +250,12 @@ func (m *MainWindow) Close() {
 	}
 	m.closed = true
 	m.cancel()
+	// Все подписки на тему — до удаления виджетов: смена темы после выхода
+	// из аккаунта иначе полезет в удалённые объекты.
 	m.unsubscribe()
 	m.panel.dispose()
 	m.feed.dispose()
+	m.composer.dispose()
 	m.w.Close()
 }
 

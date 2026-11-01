@@ -77,3 +77,17 @@ func TestFileTokens(t *testing.T) {
 		t.Errorf("get after delete: err = %v, want ErrNoToken", err)
 	}
 }
+
+func TestRemove(t *testing.T) {
+	c := &Config{}
+	c.Upsert(Server{URL: "https://a"})
+	c.Upsert(Server{URL: "https://b"})
+	c.Remove("https://b")
+	if len(c.Servers) != 1 || c.Active != "https://a" {
+		t.Errorf("after removing the active server: %+v active %q", c.Servers, c.Active)
+	}
+	c.Remove("https://a")
+	if len(c.Servers) != 0 || c.Active != "" {
+		t.Errorf("after removing the last server: %+v active %q", c.Servers, c.Active)
+	}
+}

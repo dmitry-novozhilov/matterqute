@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -46,6 +47,7 @@ type Shell struct {
 	OnSelectServer func(i int)         // выбран сервер в меню «Сервер»
 	OnStatus       func(at *qt.QPoint) // открыть панель статуса (клик по @user или «Файл → Статус…»)
 	OnAddServer    func()
+	OnRemoveServer func() // «Удалить сервер…» — текущий
 }
 
 // ServerItem — пункт меню «Сервер».
@@ -237,6 +239,14 @@ func (s *Shell) SetServers(items []ServerItem) {
 			s.OnAddServer()
 		}
 	})
+	if slices.ContainsFunc(items, func(it ServerItem) bool { return it.Active }) {
+		remove := s.serverMenu.QWidget.AddActionWithText("Удалить сервер…")
+		remove.OnTriggered(func() {
+			if s.OnRemoveServer != nil {
+				s.OnRemoveServer()
+			}
+		})
+	}
 	// Цветную точку в заголовок пункта строки меню Qt не нарисует — ставим «•».
 	title := "&Сервер"
 	if news {

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 const appName = "matterqute"
@@ -117,6 +118,18 @@ func (c *Config) Upsert(s Server) {
 		return
 	}
 	c.Servers = append(c.Servers, s)
+}
+
+// Remove убирает сервер из списка; если он был активным — активен первый
+// оставшийся (или никакой).
+func (c *Config) Remove(url string) {
+	c.Servers = slices.DeleteFunc(c.Servers, func(s Server) bool { return s.URL == url })
+	if c.Active == url {
+		c.Active = ""
+		if len(c.Servers) > 0 {
+			c.Active = c.Servers[0].URL
+		}
+	}
 }
 
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {

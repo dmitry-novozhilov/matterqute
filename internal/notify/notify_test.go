@@ -154,3 +154,44 @@ func TestNoServer(t *testing.T) {
 		t.Errorf("New without a notification server = %v, %v", n, err)
 	}
 }
+
+func TestLauncher(t *testing.T) {
+	addr := privateBus(t)
+	dock, err := dbus.Connect(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dock.Close()
+	if err := dock.AddMatchSignal(dbus.WithMatchInterface("com.canonical.Unity.LauncherEntry")); err != nil {
+		t.Fatal(err)
+	}
+	signals := make(chan *dbus.Signal, 4)
+	dock.Signal(signals)
+
+	l, err := NewLauncher("matterqute.desktop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	next := func() (string, map[string]dbus.Variant) {
+		select {
+		case s := <-signals:
+			uri, _ := s.Body[0].(string)
+			props, _ := s.Body[1].(map[string]dbus.Variant)
+			return uri, props
+		case <-time.After(2 * time.Second):
+			t.Fatal("no LauncherEntry.Update")
+			return "", nil
+		}
+	}
+	l.SetCount(3)
+	uri, props := next()
+	if uri != "application://matterqute.desktop" || props["count"].Value() != int64(3) || props["count-visible"].Value() != true {
+		t.Errorf("Update %s %v", uri, props)
+	}
+	l.SetCount(3) // то же число — без сигнала
+	l.SetCount(0)
+	if _, props := next(); props["count"].Value() != int64(0) || props["count-visible"].Value() != false {
+		t.Errorf("Update for 0: %v", props)
+	}
+}

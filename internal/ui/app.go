@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -29,10 +30,13 @@ type App struct {
 	shell    *Shell
 	tray     *Tray    // nil — трея нет
 	notifier Notifier // nil — без уведомлений
+	launcher Badge    // nil — без счётчика на значке в доке
 
 	servers []*server  // в порядке cfg.Servers
 	active  *server    // показанный сервер; nil — страница «Добавить сервер»
 	adding  *LoginView // вход на новый сервер
+
+	removeDialog *dialog // последнее окно «Удалить сервер» (для тестов)
 }
 
 // server — сервер из списка: окно, если вошли, иначе страница входа.
@@ -49,6 +53,12 @@ type server struct {
 // SetNotifier включает уведомления рабочего стола; звать до Start.
 func (a *App) SetNotifier(n Notifier) { a.notifier = n }
 
+// Badge — счётчик на значке в доке (notify.Launcher).
+type Badge interface{ SetCount(n int64) error }
+
+// SetLauncher включает счётчик на значке в доке; звать до Start.
+func (a *App) SetLauncher(b Badge) { a.launcher = b }
+
 func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 	a := &App{cfg: cfg, tokens: tokens, log: log, shell: NewShell()}
 	a.shell.OnLogout = func() {
@@ -58,6 +68,11 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 	}
 	a.shell.OnSelectServer = func(i int) { a.activate(a.servers[i]) }
 	a.shell.OnAddServer = a.showAdd
+	a.shell.OnRemoveServer = func() {
+		if sv := a.active; sv != nil {
+			a.confirmRemove(sv)
+		}
+	}
 	a.shell.OnStatus = func(at *qt.QPoint) {
 		if sv := a.active; sv != nil && sv.main != nil {
 			sv.main.showStatusPanel(at)
@@ -450,6 +465,11 @@ func (a *App) updateMentions() {
 	if a.tray != nil {
 		a.tray.SetMentions(total)
 	}
+	if a.launcher != nil {
+		if err := a.launcher.SetCount(total); err != nil {
+			a.log.Warn("dock badge", "err", err)
+		}
+	}
 	a.updateServers()
 }
 
@@ -460,4 +480,49 @@ func (a *App) updateServers() {
 		items[i] = ServerItem{Host: hostOf(sv.url), Active: sv == a.active, Mentions: sv.mentions}
 	}
 	a.shell.SetServers(items)
+}
+
+// confirmRemove — «Сервер → Удалить сервер…»: спросить и удалить.
+func (a *App) confirmRemove(sv *server) {
+	d := newDialog(a.shell.w.QWidget, "Удалить сервер")
+	a.removeDialog = d
+	text := qt.NewQLabel3("Удалить сервер " + hostOf(sv.url) + " из списка? Сессия на нём будет закрыта, черновики пропадут.")
+	text.SetWordWrap(true)
+	d.lay.AddWidget(text.QWidget)
+	d.buttons("Удалить", func() { a.removeServer(sv) })
+	d.w.Show()
+}
+
+// removeServer — выйти с сервера и убрать его из списка и настроек; на экране —
+// следующий сервер или страница добавления.
+func (a *App) removeServer(sv *server) {
+	if sv.main != nil {
+		s := sv.main.s
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+			defer cancel()
+			if err := s.Logout(ctx); err != nil {
+				a.log.Warn("logout", "server", sv.url, "err", err)
+			}
+		}()
+		a.closeMain(sv)
+	}
+	a.dropToken(sv.url)
+	a.dropLogin(sv)
+	a.servers = slices.DeleteFunc(a.servers, func(o *server) bool { return o == sv })
+	a.cfg.Remove(sv.url)
+	a.saveConfig()
+	a.log.Info("server removed", "server", sv.url)
+	a.updateMentions()
+	if len(a.servers) == 0 {
+		a.showAdd()
+		return
+	}
+	if a.active == sv {
+		next := a.server(a.cfg.Active)
+		if next == nil {
+			next = a.servers[0]
+		}
+		a.activate(next)
+	}
 }

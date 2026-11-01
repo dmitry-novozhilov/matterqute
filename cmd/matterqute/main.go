@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 
 	"matterqute/internal/config"
+	"matterqute/internal/desktop"
 	"matterqute/internal/notify"
 	"matterqute/internal/ui"
 )
@@ -27,10 +30,18 @@ func main() {
 		},
 	}))
 
+	install := len(os.Args) > 1 && (os.Args[1] == "--install" || os.Args[1] == "--uninstall")
+	if install {
+		os.Setenv("QT_QPA_PLATFORM", "offscreen") // иконки рисуем без окон и дисплея
+	}
 	app := qt.NewQApplication(os.Args)
 	qt.QCoreApplication_SetApplicationName("matterqute")
 	qt.QGuiApplication_SetApplicationDisplayName("matterqute")
 	qt.QGuiApplication_SetDesktopFileName("matterqute")
+
+	if install {
+		os.Exit(installDesktop(os.Args[1] == "--install", log))
+	}
 
 	dir, err := config.Dir()
 	if err != nil {
@@ -53,6 +64,11 @@ func main() {
 	if n := startNotifier(log); n != nil {
 		a.SetNotifier(n)
 	}
+	if l, err := notify.NewLauncher(desktop.ID); err != nil {
+		log.Warn("dock badge off", "err", err)
+	} else {
+		a.SetLauncher(l)
+	}
 	a.Start()
 	scheduleScreenshot(log)
 	os.Exit(qt.QApplication_Exec())
@@ -64,7 +80,7 @@ func startNotifier(log *slog.Logger) *notify.Notifier {
 	icon := ""
 	if dir, err := config.CacheDir(); err == nil {
 		path := filepath.Join(dir, "app-icon.png")
-		if err := ui.SaveAppIcon(path); err != nil {
+		if err := ui.SaveAppIcon(path, 256); err != nil {
 			log.Warn("notifications", "err", err)
 		} else {
 			icon = path
@@ -76,4 +92,44 @@ func startNotifier(log *slog.Logger) *notify.Notifier {
 		return nil
 	}
 	return n
+}
+
+// installDesktop — «matterqute --install»: ярлык в меню приложений и иконки
+// (для дока со счётчиком); «--uninstall» — убрать. Код выхода.
+func installDesktop(install bool, log *slog.Logger) int {
+	data, err := desktop.DataDir()
+	if err != nil {
+		log.Error("install", "err", err)
+		return 1
+	}
+	var paths []string
+	if install {
+		exe, err := os.Executable()
+		if err == nil {
+			exe, err = filepath.EvalSymlinks(exe)
+		}
+		if err != nil {
+			log.Error("install", "err", fmt.Errorf("path to the binary: %w", err))
+			return 1
+		}
+		if strings.Contains(exe, "go-build") {
+			log.Warn("install: binary is a temporary go run build, the shortcut will break", "exe", exe)
+		}
+		paths, err = desktop.Install(data, exe, ui.SaveAppIcon)
+		if err != nil {
+			log.Error("install", "err", err)
+			return 1
+		}
+		fmt.Println("Ярлык установлен, запускает", exe)
+	} else {
+		if paths, err = desktop.Uninstall(data); err != nil {
+			log.Error("uninstall", "err", err)
+			return 1
+		}
+		fmt.Println("Ярлык удалён")
+	}
+	for _, p := range paths {
+		fmt.Println("  " + p)
+	}
+	return 0
 }

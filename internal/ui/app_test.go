@@ -75,6 +75,8 @@ func TestAppServers(t *testing.T) {
 	onMain(func() {
 		cfg, _ := config.Load(dir)
 		a := NewApp(cfg, tokens, log)
+		badge := &fakeBadge{}
+		a.SetLauncher(badge)
 		a.Start()
 		defer func() {
 			for _, sv := range a.servers {
@@ -138,6 +140,10 @@ func TestAppServers(t *testing.T) {
 		if title := a.shell.serverMenu.Title(); title != "&Сервер •" {
 			t.Errorf("server menu title %q, want a dot for news elsewhere", title)
 		}
+		// Значок в доке — сумма по всем серверам, как и трей.
+		if want := a.servers[0].mentions + a.servers[1].mentions; badge.last != want {
+			t.Errorf("dock badge %d, want %d", badge.last, want)
+		}
 
 		// Повторный запуск: входим на оба по токенам, показан последний открытый.
 		cfg2, _ := config.Load(dir)
@@ -174,7 +180,39 @@ func TestAppServers(t *testing.T) {
 		if _, err := tokens.Get(fakes[1].url); err != nil {
 			t.Errorf("token of the other server lost: %v", err)
 		}
+
+		// Удалить текущий (из него вышли): остался второй, он и на экране.
+		b.shell.OnRemoveServer()
+		labelled(b.removeDialog.w.QObject, "Удалить").Click()
+		if len(b.servers) != 1 || b.active != b.servers[0] || b.active.url != fakes[1].url || b.active.main == nil {
+			t.Fatalf("after removing the first server: %d servers, active %v", len(b.servers), b.active)
+		}
+		if b.shell.stack.CurrentWidget().UnsafePointer() != b.active.main.Widget().UnsafePointer() {
+			t.Error("the remaining server is not on screen")
+		}
+		if c, _ := config.Load(dir); len(c.Servers) != 1 || c.Active != fakes[1].url {
+			t.Errorf("config after removal: %+v active %s", c.Servers, c.Active)
+		}
+		// Удалить последний: страница добавления, токен стёрт, настройки пусты.
+		b.shell.OnRemoveServer()
+		labelled(b.removeDialog.w.QObject, "Удалить").Click()
+		if len(b.servers) != 0 || b.active != nil || b.adding == nil {
+			t.Errorf("after removing the last server: %d servers, adding page %v", len(b.servers), b.adding != nil)
+		}
+		if _, err := tokens.Get(fakes[1].url); !errors.Is(err, config.ErrNoToken) {
+			t.Errorf("token of the removed server kept: %v", err)
+		}
+		if c, _ := config.Load(dir); len(c.Servers) != 0 || c.Active != "" {
+			t.Errorf("config after removing all: %+v active %q", c.Servers, c.Active)
+		}
 	})
+}
+
+type fakeBadge struct{ last int64 }
+
+func (b *fakeBadge) SetCount(n int64) error {
+	b.last = n
+	return nil
 }
 
 // Закрытое и удалённое окно сервера не остаётся в подписчиках темы: смена темы

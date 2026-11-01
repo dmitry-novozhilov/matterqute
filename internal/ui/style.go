@@ -215,12 +215,13 @@ func setProp(w *qt.QWidget, name string, value string) {
 	repolish(w)
 }
 
-// SaveAppIcon пишет иконку приложения в PNG (для уведомлений рабочего стола).
-func SaveAppIcon(path string) error {
+// SaveAppIcon пишет иконку приложения в PNG px×px (уведомления, ярлык в меню).
+func SaveAppIcon(path string, px int) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("app icon %s: %w", path, err)
 	}
-	if !appIconPixmap(128).Save(path) {
+	// appIconPixmap рисует вдвое плотнее логического размера.
+	if !appIconPixmap(max(1, px/resourceDPR)).Save(path) {
 		return fmt.Errorf("app icon %s: QPixmap::save failed", path)
 	}
 	return nil

@@ -161,6 +161,16 @@ func (c *Config) ScheduledPath(serverURL string) string {
 	return filepath.Join(filepath.Dir(c.path), "scheduled", hex.EncodeToString(sum[:8])+".json")
 }
 
+// DraftsPath — файл черновиков сервера serverURL, если их не хранит сам
+// сервер (рядом с config.json); пусто — настройки без файла.
+func (c *Config) DraftsPath(serverURL string) string {
+	if c.path == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(serverURL))
+	return filepath.Join(filepath.Dir(c.path), "drafts", hex.EncodeToString(sum[:8])+".json")
+}
+
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)

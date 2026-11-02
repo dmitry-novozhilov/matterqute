@@ -495,6 +495,9 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool) {
 	if path := a.cfg.ScheduledPath(s.ServerURL); path != "" {
 		m.sched.path = path // отложенные, которые отправляет приложение, — с настройками, не в кэше
 	}
+	if path := a.cfg.DraftsPath(s.ServerURL); path != "" {
+		m.drafts.path = path // если черновики не хранит сервер — с настройками, не в кэше
+	}
 	m.SetColumns(a.cfg.Window.Sidebar, a.cfg.Window.Thread)
 	m.OnColumnsChanged = func(sidebar, thread int) {
 		a.cfg.Window.Sidebar, a.cfg.Window.Thread = sidebar, thread

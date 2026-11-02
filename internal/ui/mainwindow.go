@@ -60,6 +60,7 @@ type MainWindow struct {
 	schedRows     *qt.QVBoxLayout
 	schedDialog   *dialog // «Отправить позже» / «Перенести»
 	sched         *scheduler
+	drafts        *drafts         // черновики на сервере или в файле (drafts.go)
 	search        *searchPanel    // поиск по сообщениям — в правой колонке
 	typing        *typingState    // кто где печатает
 	searchBtn     *qt.QToolButton // лупа в шапке канала
@@ -258,6 +259,9 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	sdeps := deps
 	sdeps.Where = m.postWhere
 	m.search = newSearchPanel(sdeps, m.closeSearch, m.runSearch)
+	m.drafts = newDrafts(m, filepath.Join(cacheDir, "drafts.json"))
+	m.composer.OnDraft = func(key string) { m.drafts.changed(m.composer, key) }
+	m.panel.composer.OnDraft = func(key string) { m.drafts.changed(m.panel.composer, key) }
 	m.wireFeed(m.search.feed)
 	m.search.feed.OnOpenThread = m.openThread
 	m.panel.back = m.panel.head.addTool("Назад к результатам", func() {
@@ -384,6 +388,7 @@ func (m *MainWindow) Close() {
 	if m.closed {
 		return
 	}
+	m.drafts.save(true) // набранное за последние доли секунды — тоже
 	m.closed = true
 	m.cancel()
 	// Все подписки на тему — до удаления виджетов: смена темы после выхода
@@ -530,6 +535,7 @@ func (m *MainWindow) reloadSidebar() {
 				}
 				m.fillSidebar() // открытый канал начинает грузиться первым
 				m.preload()
+				m.drafts.sidebarLoaded(sb.SyncDrafts)
 				if !m.sched.probed {
 					m.sched.start() // команды известны: отложенные с сервера и свои
 				}
@@ -558,7 +564,7 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 		m.log.Warn("load server settings", "err", err)
 		settings.LinkPreviews = true
 	}
-	sb.CRT, sb.MaxFileSize, sb.LinkPreviews = settings.CRT, settings.MaxFileSize, settings.LinkPreviews
+	sb.CRT, sb.MaxFileSize, sb.LinkPreviews, sb.SyncDrafts = settings.CRT, settings.MaxFileSize, settings.LinkPreviews, settings.SyncDrafts
 	peers := map[string]bool{}
 	for _, t := range teams {
 		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")
@@ -1012,6 +1018,7 @@ func (m *MainWindow) OnConnected() {
 		// События за время обрыва потеряны: загруженные ленты сверяем с
 		// сервером (открытую — первой), остальные — preload после сайдбара.
 		m.st.MarkTimelinesStale()
+		m.drafts.reload = true // черновики из других клиентов за время обрыва
 		if id := m.current; m.st.Channel(id) != nil {
 			if tl := m.st.Timeline(id); tl == nil || !tl.Loaded {
 				m.feed.Loading()

@@ -34,8 +34,11 @@ type Server struct {
 	// NoScheduledPosts — сервер без отложенных сообщений (как без лицензии):
 	// их API отвечает ошибкой лицензии.
 	NoScheduledPosts bool
-	scheduled        map[string]*model.ScheduledPost
-	typed            []TypingEvent
+	// NoSyncedDrafts — сервер не хранит черновики (AllowSyncedDrafts=false).
+	NoSyncedDrafts bool
+	scheduled      map[string]*model.ScheduledPost
+	drafts         map[string]*model.Draft // user id/канал/корень → черновик
+	typed          []TypingEvent
 
 	mu        sync.Mutex
 	users     map[string]*model.User // по id
@@ -87,6 +90,7 @@ func New(log *slog.Logger) *Server {
 		statuses:         map[string]string{},
 		dndEnd:           map[string]int64{},
 		prefs:            map[string]model.Preferences{},
+		drafts:           map[string]*model.Draft{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -106,6 +110,10 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/preferences/{category}", s.auth(s.preferences))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/preferences", s.auth(s.savePreferences))
 	s.mux.HandleFunc("POST /api/v4/users/{uid}/preferences/delete", s.auth(s.deletePreferences))
+	s.mux.HandleFunc("POST /api/v4/drafts", s.auth(s.upsertDraft))
+	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/drafts", s.auth(s.listDrafts))
+	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/channels/{cid}/drafts", s.auth(s.deleteDraft))
+	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/channels/{cid}/drafts/{rid}", s.auth(s.deleteDraft))
 	s.mux.HandleFunc("POST /api/v4/posts/{pid}/pin", s.auth(s.pin(true)))
 	s.mux.HandleFunc("POST /api/v4/posts/{pid}/unpin", s.auth(s.pin(false)))
 	s.mux.HandleFunc("GET /api/v4/channels/{cid}/pinned", s.auth(s.pinned))

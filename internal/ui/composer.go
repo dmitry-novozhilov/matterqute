@@ -97,6 +97,9 @@ type Composer struct {
 	later           *qt.QToolButton // «Отправить позже»
 	typingNote      *qt.QLabel      // «bob печатает…» под полем; место под неё есть всегда, если показ включён
 	keysHint        *qt.QLabel      // справа от неё: «Shift+Enter — новая строка», как у веб-клиента
+	// OnDraft — черновик key поменялся (набор, вставка, ушли из канала):
+	// сохранить (drafts.go). Правка своего сообщения — не черновик.
+	OnDraft func(key string)
 	// OnTyping — набирают текст (не правка своего): сообщить серверу.
 	OnTyping  func()
 	schedNote *qt.QLabel // «2 отложенных сообщения здесь · показать»
@@ -136,6 +139,9 @@ func NewComposer() *Composer {
 		if c.asText != "" && strings.TrimSpace(markdown.FromBlocks(readBlocks(c.edit.Document()))) != c.asText {
 			c.asText = "" // текст поменяли — снова команда
 			c.hint.SetVisible(false)
+		}
+		if c.editID == "" && c.OnDraft != nil {
+			c.OnDraft(c.key)
 		}
 	})
 	c.edit.OnCursorPositionChanged(c.updateSuggest)
@@ -404,6 +410,7 @@ func (c *Composer) SwitchTo(key string) {
 	}
 	d := c.drafts[key]
 	delete(c.drafts, key)
+	old := c.key
 	c.key, c.files = key, nil
 	c.setBlocks(nil)
 	c.hint.SetVisible(false)
@@ -412,6 +419,74 @@ func (c *Composer) SwitchTo(key string) {
 		c.files = d.files
 	}
 	c.renderChips()
+	if c.OnDraft != nil && old != "" {
+		c.OnDraft(old) // черновик прежнего — окончательный
+	}
+}
+
+// DraftText — черновик key markdown'ом ("" — нет): в поле, отложенный на
+// время правки или запасённый для другого канала. Файлы — не в нём.
+func (c *Composer) DraftText(key string) string {
+	var blocks []markdown.Block
+	switch {
+	case key == c.key && c.editID == "":
+		blocks = readBlocks(c.edit.Document())
+	case key == c.key:
+		if c.stash != nil {
+			blocks = c.stash.blocks
+		}
+	default:
+		if d := c.drafts[key]; d != nil {
+			blocks = d.blocks
+		}
+	}
+	return strings.TrimSpace(markdown.FromBlocks(blocks))
+}
+
+// SetDraft — черновик key пришёл с сервера или из файла: в поле, если key
+// открыт (идёт правка — после неё), иначе — в запас; "" — черновика нет.
+func (c *Composer) SetDraft(key, text string) {
+	var blocks []markdown.Block
+	if strings.TrimSpace(text) != "" {
+		blocks = markdown.ToBlocks(text)
+	}
+	switch d := c.drafts[key]; {
+	case key == c.key && c.editID != "":
+		if c.stash != nil {
+			c.stash.blocks = blocks
+		}
+	case key == c.key:
+		c.setBlocks(blocks)
+	case blocks != nil:
+		if d == nil {
+			d = &draft{key: key}
+			c.drafts[key] = d
+		}
+		d.blocks = blocks
+	case d != nil:
+		d.blocks = nil
+		if len(d.files) == 0 {
+			delete(c.drafts, key)
+		}
+	}
+}
+
+// HasDraft — у key есть черновик, а key не открыт (карандаш в сайдбаре).
+func (c *Composer) HasDraft(key string) bool {
+	d := c.drafts[key]
+	return key != c.key && d != nil && (!blocksEmpty(d.blocks) || len(d.files) > 0)
+}
+
+// DraftKeys — ключи, у которых что-то есть в поле или в запасе.
+func (c *Composer) DraftKeys() []string {
+	keys := make([]string, 0, len(c.drafts)+1)
+	for k := range c.drafts {
+		keys = append(keys, k)
+	}
+	if c.key != "" {
+		keys = append(keys, c.key)
+	}
+	return keys
 }
 
 // AddFiles прикрепляет файлы с диска к текущему черновику.

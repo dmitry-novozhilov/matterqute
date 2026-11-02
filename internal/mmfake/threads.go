@@ -107,7 +107,8 @@ func (s *Server) sendToChannel(channelID string, ev *model.WebSocketEvent) {
 }
 
 func (s *Server) clientConfig(w http.ResponseWriter, _ *http.Request, _ *model.User) {
-	s.json(w, map[string]string{"Version": "mmfake", "CollapsedThreads": s.CollapsedThreads, "MaxFileSize": "52428800"})
+	s.json(w, map[string]string{"Version": "mmfake", "CollapsedThreads": s.CollapsedThreads, "MaxFileSize": "52428800",
+		"AllowSyncedDrafts": strconv.FormatBool(!s.NoSyncedDrafts)})
 }
 
 func (s *Server) preferences(w http.ResponseWriter, r *http.Request, me *model.User) {

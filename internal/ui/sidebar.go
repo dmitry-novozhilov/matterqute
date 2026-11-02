@@ -294,6 +294,10 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 		p.DrawPixmap9(right-14, cy-7, iconPixmap("bell-off", pal.Tx3, 14))
 		right -= 20
 	}
+	if m.composer.HasDraft(id) { // недописанное сообщение, как в веб-клиенте
+		p.DrawPixmap9(right-14, cy-7, iconPixmap("pencil", pal.Tx3, 14))
+		right -= 20
+	}
 	used := text(label, tx, right-tx, color, weight)
 	if suffix != "" {
 		used += text(suffix, tx+used, right-tx-used, pal.Tx2, qt.QFont__Normal)

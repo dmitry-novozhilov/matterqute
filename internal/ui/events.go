@@ -135,6 +135,14 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 			}
 		}, nil
 
+	case model.WebsocketEventDraftCreated, model.WebsocketEventDraftUpdated, model.WebsocketEventDraftDeleted:
+		dr, err := eventDraft(data)
+		if err != nil {
+			return nil, err
+		}
+		deleted := ev.EventType() == model.WebsocketEventDraftDeleted
+		return func() { m.drafts.remote(dr, deleted) }, nil
+
 	case model.WebsocketEventPostUnread:
 		// Пометили непрочитанным (здесь или в другом клиенте): счётчики — с сервера.
 		ch := ev.GetBroadcast().ChannelId

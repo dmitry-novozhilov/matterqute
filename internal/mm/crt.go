@@ -3,6 +3,7 @@ package mm
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -37,6 +38,10 @@ type Settings struct {
 	CRT          bool
 	MaxFileSize  int64 // байт; 0 — сервер не сказал
 	LinkPreviews bool  // показывать предпросмотр ссылок (display_settings/link_previews, по умолчанию да)
+	// SyncDrafts — черновики хранит сервер (/api/v4/drafts): разрешено в
+	// конфиге (AllowSyncedDrafts) и не выключено пользователем
+	// (advanced_settings/sync_drafts), как решает веб-клиент.
+	SyncDrafts bool
 }
 
 // FetchSettings читает клиентский конфиг сервера и настройки отображения пользователя.
@@ -53,6 +58,19 @@ func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 	for _, p := range prefs {
 		if p.Name == "link_previews" && p.Value == "false" {
 			st.LinkPreviews = false
+		}
+	}
+	st.SyncDrafts = cfg["AllowSyncedDrafts"] != "false"
+	if st.SyncDrafts {
+		// Нет ни одной настройки в категории — сервер может ответить 404: значит, по умолчанию.
+		adv, resp, err := s.Client.GetPreferencesByCategory(ctx, s.Me.Id, model.PreferenceCategoryAdvancedSettings)
+		if err != nil && (resp == nil || resp.StatusCode != http.StatusNotFound) {
+			return st, describe(s.ServerURL, fmt.Sprintf("load %s preferences", model.PreferenceCategoryAdvancedSettings), resp, err)
+		}
+		for _, p := range adv {
+			if p.Name == "sync_drafts" && p.Value == "false" {
+				st.SyncDrafts = false
+			}
 		}
 	}
 	if v := cfg["MaxFileSize"]; v != "" {

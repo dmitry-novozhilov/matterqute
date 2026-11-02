@@ -54,7 +54,7 @@ func TestTrayPixmap(t *testing.T) {
 		// «#» вырезан насквозь и по пикселям: внутри его квадрата нет
 		// полупрозрачных точек, ни в одном размере.
 		for _, size := range traySizes {
-			img := trayPixmap(size, "#e9e6e1", "").ToImage()
+			img := trayPixmap(size, "#e9e6e1", "", 0).ToImage()
 			if img.Width() != size || img.DevicePixelRatio() != 1 {
 				t.Errorf("size %d: pixmap %d px, dpr %v", size, img.Width(), img.DevicePixelRatio())
 			}
@@ -85,7 +85,7 @@ func TestTrayPixmap(t *testing.T) {
 		}
 		// Число вместо «#» вырезано шрифтом и помещается в облачко.
 		for _, text := range []string{"1", "3", "9+"} {
-			img := trayPixmap(22, "#ea6b60", text).ToImage()
+			img := trayPixmap(22, "#ea6b60", text, 0).ToImage()
 			if c := img.PixelColor(1, 11); c.Name() != "#ea6b60" || c.Alpha() != 255 {
 				t.Errorf("bubble pixel %s alpha %d, want opaque #ea6b60", c.Name(), c.Alpha())
 			}
@@ -101,6 +101,37 @@ func TestTrayPixmap(t *testing.T) {
 				t.Errorf("«%s» is not cut through the bubble: %d transparent pixels", text, holes)
 			}
 		}
+		// Размер цифр из настройки: крупнее — больше вырезано; «9+» всё равно
+		// помещается в облачко.
+		cut := func(text string, digits int) (holes int, fits bool) {
+			img := trayPixmap(22, "#ea6b60", text, digits).ToImage()
+			fits = true
+			for y := 0; y < 22; y++ {
+				for x := 0; x < 22; x++ {
+					a := img.PixelColor(x, y).Alpha()
+					if y >= b.y && y < b.y+b.side && x >= 3 && x < 19 && a < 64 {
+						holes++
+					}
+					mid := b.top + b.h/2
+					if (x == 2 || x == 19) && y >= mid-3 && y <= mid+3 && a < 200 {
+						fits = false // дырка у края облачка — число вылезло за поля
+					}
+				}
+			}
+			return holes, fits
+		}
+		small, _ := cut("5", 40)
+		big, _ := cut("5", 90)
+		if big <= small {
+			t.Errorf("digits 90%% cut %d px, 40%% — %d: size setting has no effect", big, small)
+		}
+		if _, fits := cut("9+", 100); !fits {
+			t.Error("«9+» at 100% does not fit the bubble")
+		}
+		if got := trayColors(config.Tray{Digits: 70}, true).Digits; got != 70 {
+			t.Errorf("trayColors dropped digits: %d", got)
+		}
+
 		// Иконка приложения — то же облачко, зелёное с белой «#», без плитки.
 		app := appIconPixmap(32).ToImage()
 		if c := app.PixelColor(2, 16); c.Name() != appGreen || c.Alpha() != 255 {
@@ -128,7 +159,7 @@ func TestTrayPixmap(t *testing.T) {
 					x := 4
 					for _, size := range []int{16, 22, 32} {
 						p.FillRect5(x*zoom, (row*36+2)*zoom, size*zoom, size*zoom, qt.NewQColor6(bg))
-						p.DrawPixmap9(x*zoom, (row*36+2)*zoom, trayPixmap(size, v.color, v.text).Scaled3(size*zoom, size*zoom, qt.IgnoreAspectRatio, qt.FastTransformation))
+						p.DrawPixmap9(x*zoom, (row*36+2)*zoom, trayPixmap(size, v.color, v.text, 0).Scaled3(size*zoom, size*zoom, qt.IgnoreAspectRatio, qt.FastTransformation))
 						x += size + 4
 					}
 					row++
@@ -145,7 +176,7 @@ func TestTrayPixmap(t *testing.T) {
 				trayPreview(c, dark, 2).Save(filepath.Join(dir, "tray-"+name+"@2x.png"))
 				for _, v := range []struct{ color, text string }{{c.Idle, ""}, {c.Unread, "9+"}, {c.Mentions, "7"}} {
 					for _, size := range []int{16, 22, 32} {
-						trayPixmap(size, v.color, v.text).Save(filepath.Join(dir, fmt.Sprintf("tray-%s-%s-%d.png", name, strings.ReplaceAll(cmp.Or(v.text, "hash"), "+", "plus"), size)))
+						trayPixmap(size, v.color, v.text, 0).Save(filepath.Join(dir, fmt.Sprintf("tray-%s-%s-%d.png", name, strings.ReplaceAll(cmp.Or(v.text, "hash"), "+", "plus"), size)))
 					}
 				}
 			}
@@ -162,9 +193,23 @@ func TestTrayDialog(t *testing.T) {
 			t.Error("dialog does not show the configured and default colors")
 		}
 		shotWidget(t, d.w.QWidget, "tray-dialog")
+		var spin *qt.QSpinBox
+		for _, o := range descendants(d.w.QObject) {
+			if o.Inherits("QSpinBox") {
+				spin = qt.UnsafeNewQSpinBox(o.UnsafePointer())
+			}
+		}
+		if spin == nil || spin.Text() != "авто" {
+			t.Error("no digit size spin box showing «авто»")
+			return
+		}
+		spin.SetValue(80)
+		if len(got) != 1 || got[0].Digits != 80 || got[0].Mentions != "#ff0000" {
+			t.Errorf("digit size reported %+v", got)
+		}
 		labelled(d.w.QObject, "Сбросить").Click()
-		if len(got) != 1 || got[0] != (config.Tray{}) {
-			t.Errorf("reset reported %+v, want empty colors", got)
+		if n := len(got); n < 2 || got[n-1] != (config.Tray{}) || spin.Text() != "авто" {
+			t.Errorf("reset reported %+v, spin %q; want empty settings and «авто»", got, spin.Text())
 		}
 	})
 }

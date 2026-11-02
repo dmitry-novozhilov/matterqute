@@ -175,7 +175,7 @@ const appGreen = "#008a67"
 // (у макета 1b «Канал» с плиткой и «#» шрифтом в мелких размерах решётка
 // мылилась).
 func appIconPixmap(size int) *qt.QPixmap {
-	return bubblePixmap(size, appGreen, "#fcfbf9", "")
+	return bubblePixmap(size, appGreen, "#fcfbf9", "", 0)
 }
 
 // appIcon — иконка окна: каждый размер нарисован отдельно.

@@ -35,11 +35,12 @@ type Config struct {
 	path string
 }
 
-// Tray — цвета значка в трее (#rrggbb); пусто — по теме панели.
+// Tray — значок в трее: цвета (#rrggbb, пусто — по теме панели) и размер цифр.
 type Tray struct {
 	Idle     string `json:"idle,omitempty"`     // нового нет
 	Unread   string `json:"unread,omitempty"`   // новые сообщения в каналах, но не мне
 	Mentions string `json:"mentions,omitempty"` // сообщения мне: упоминания и лички
+	Digits   int    `json:"digits,omitempty"`   // размер цифр, % высоты значка; 0 — сами по облачку
 }
 
 // Fonts — шрифты, выбранные в «Вид → Шрифты…».

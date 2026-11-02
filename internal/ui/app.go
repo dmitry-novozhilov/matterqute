@@ -99,7 +99,7 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 			showTrayDialog(a.shell.w.QWidget, a.cfg.Tray, func(c config.Tray) {
 				a.cfg.Tray = c
 				a.saveConfig()
-				a.tray.SetColors(c)
+				a.tray.Configure(c)
 			})
 		}
 	}

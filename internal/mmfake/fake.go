@@ -136,6 +136,10 @@ func New(log *slog.Logger) *Server {
 	})
 	s.mux.HandleFunc("PUT /api/v4/posts/{pid}/patch", s.auth(s.patchPost))
 	s.mux.HandleFunc("DELETE /api/v4/posts/{pid}", s.auth(s.deletePost))
+	s.mux.HandleFunc("POST /api/v4/commands/execute", s.auth(s.executeCommand))
+	s.mux.HandleFunc("GET /api/v4/teams/{tid}/commands/autocomplete_suggestions", s.auth(s.commandSuggestions))
+	s.mux.HandleFunc("GET /api/v4/teams/name/{team}/channels/name/{channel}", s.auth(s.channelByName))
+	s.mux.HandleFunc("GET /api/v4/posts/{pid}", s.auth(s.getPost))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/status", s.auth(s.setStatus))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/status/custom", s.auth(s.setCustomStatus))
 	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/status/custom", s.auth(s.setCustomStatus))
@@ -185,6 +189,9 @@ func (s *Server) seed() {
 	s.addChannel(town, []*model.User{erin})
 	backend := ch(dev, model.ChannelTypeOpen, "backend", "backend", "Сервисы и API")
 	ch(dev, model.ChannelTypePrivate, "releases", "Релизы", "Планирование релизов")
+	// Открытый канал без alice — войти командой /join.
+	s.addChannel(&model.Channel{Id: model.NewId(), TeamId: dev.Id, Type: model.ChannelTypeOpen, Name: "frontend",
+		DisplayName: "frontend", Purpose: "Веб-клиент"}, []*model.User{bob, carol})
 	ch(ops, model.ChannelTypeOpen, "town-square", "Town Square", "")
 	alerts := ch(ops, model.ChannelTypeOpen, "alerts", "alerts", "Алерты из Grafana")
 	withBob := dm(alice, bob)

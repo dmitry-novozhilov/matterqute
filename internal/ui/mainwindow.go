@@ -174,6 +174,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.composer.OnSend = m.send
 	m.composer.OnEdit = m.saveEdit(m.feed)
 	m.composer.OnEditLast = func() { m.editLast(m.feed) }
+	m.composer.OnCommand = func(text string) { m.runCommand(m.composer, m.current, "", text) }
 	m.composer.OnUpload = func(id int, name, path string, data []byte, progress func(int)) {
 		m.upload(m.composer, m.current, id, name, path, data, progress)
 	}
@@ -209,6 +210,11 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.panel.composer.OnSend = m.sendReply
 	m.panel.composer.OnEdit = m.saveEdit(m.panel.feed)
 	m.panel.composer.OnEditLast = func() { m.editLast(m.panel.feed) }
+	m.panel.composer.OnCommand = func(text string) {
+		if t := m.thread; t != nil {
+			m.runCommand(m.panel.composer, t.channelID, t.rootID, text)
+		}
+	}
 	m.panel.composer.Suggest = m.suggester(func() string {
 		if t := m.thread; t != nil {
 			return t.channelID

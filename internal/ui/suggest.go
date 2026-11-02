@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
@@ -186,6 +187,7 @@ type remote struct {
 	inChannel, others []*model.User
 	channels          []*model.Channel
 	emoji             []string
+	commands          []model.AutocompleteSuggestion
 }
 
 func (m *MainWindow) suggestions(tok complete.Token, chID string, r *remote) []Suggestion {
@@ -252,6 +254,17 @@ func (m *MainWindow) suggestions(tok complete.Token, chID string, r *remote) []S
 			}
 			out = append(out, s)
 		}
+	case complete.Command:
+		// Всё подсказывает сервер: имена команд, а после пробела — аргументы.
+		args := strings.Contains(tok.Query, " ")
+		for _, c := range r.commands[:min(len(r.commands), suggestLimit)] {
+			title := c.Suggestion
+			if !args {
+				title = "/" + title
+			}
+			sub := strings.TrimSpace(c.Hint + "  " + c.Description)
+			out = append(out, Suggestion{Insert: "/" + c.Complete + " ", Title: title, Sub: sub, Icon: commandIcon()})
+		}
 	}
 	return out
 }
@@ -286,6 +299,10 @@ func (m *MainWindow) suggestRemote(tok complete.Token, chID string, show func([]
 		case complete.Channel:
 			if team != "" {
 				r.channels, _, err = m.s.Client.AutocompleteChannelsForTeam(ctx, team, tok.Query)
+			}
+		case complete.Command:
+			if team != "" {
+				r.commands, _, err = m.s.Client.ListCommandAutocompleteSuggestions(ctx, "/"+tok.Query, team)
 			}
 		case complete.Emoji:
 			var list []*model.Emoji

@@ -877,6 +877,10 @@ func (f *Feed) replyHTML(p *model.Post) string {
 
 func (f *Feed) bodyHTML(p *model.Post) string {
 	pal := Pal()
+	if p.Type == model.PostTypeEphemeral {
+		// Ответ команды: с разметкой (бывают списки, ссылки) и пометкой.
+		return f.md.Render(p.Message) + fmt.Sprintf(`<p style="margin:0"><span style="font-size:12px;color:%s">Видно только вам</span></p>`, pal.Tx2)
+	}
 	if p.IsSystemMessage() {
 		msg := p.Message
 		if msg == "" {

@@ -21,6 +21,7 @@ const (
 	User         // @имя
 	Channel      // ~канал (и #канал — вставляем всё равно ~канал)
 	Emoji        // :имя:
+	Command      // /команда с аргументами — подсказывает сервер
 )
 
 // Token — слово под курсором, которое дополняем.
@@ -70,6 +71,16 @@ func At(textBefore string) (Token, bool) {
 		return Token{}, false
 	}
 	return t, true
+}
+
+// CommandAt — команда: сообщение начинается с «/» (до курсора — первая строка
+// поля). Query — всё после «/» вместе с аргументами: подсказки по ним даёт
+// сервер. «//» — не команда.
+func CommandAt(textBefore string) (Token, bool) {
+	if !strings.HasPrefix(textBefore, "/") || strings.HasPrefix(textBefore, "//") || strings.ContainsAny(textBefore, "\n\u2028") {
+		return Token{}, false
+	}
+	return Token{Kind: Command, Query: textBefore[1:], Len: utf16Len(textBefore)}, true
 }
 
 func lastRune(s string) (rune, int) {

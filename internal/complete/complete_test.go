@@ -108,3 +108,21 @@ func TestEmoji(t *testing.T) {
 		t.Errorf("EmojiNames(ta) = %s", got)
 	}
 }
+
+func TestCommandAt(t *testing.T) {
+	for in, want := range map[string]Token{
+		"/":          {Kind: Command, Query: "", Len: 1},
+		"/aw":        {Kind: Command, Query: "aw", Len: 3},
+		"/join town": {Kind: Command, Query: "join town", Len: 10},
+		"/эхо":       {Kind: Command, Query: "эхо", Len: 4},
+	} {
+		if got, ok := CommandAt(in); !ok || got != want {
+			t.Errorf("CommandAt(%q) = %+v, %v; want %+v", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"", "a/b", "//comment", " /away"} {
+		if _, ok := CommandAt(in); ok {
+			t.Errorf("CommandAt(%q) is a command", in)
+		}
+	}
+}

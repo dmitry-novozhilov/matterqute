@@ -85,6 +85,10 @@ type Composer struct {
 	OnEdit func(id, text string, blocks []markdown.Block)
 	// OnEditLast — ↑ в пустом поле: править последнее своё сообщение.
 	OnEditLast func()
+	// OnCommand — сообщение — слэш-команда («/away»): выполнить на сервере.
+	// Не вышло — Restore; команды нет — OfferAsText.
+	OnCommand func(text string)
+	asText    string // это сообщение — уже не команда: сервер такой не знает, отправить текстом
 	// OnUpload — загрузить файл (path с диска или data — вставленная картинка);
 	// progress(0…100) по ходу, результат — Uploaded или UploadFailed.
 	OnUpload func(id int, name, path string, data []byte, progress func(percent int))
@@ -116,6 +120,12 @@ func NewComposer() *Composer {
 		c.updatePlaceholder()
 	})
 	c.edit.OnTextChanged(c.updateSuggest)
+	c.edit.OnTextChanged(func() {
+		if c.asText != "" && strings.TrimSpace(markdown.FromBlocks(readBlocks(c.edit.Document()))) != c.asText {
+			c.asText = "" // текст поменяли — снова команда
+			c.hint.SetVisible(false)
+		}
+	})
 	c.edit.OnCursorPositionChanged(c.updateSuggest)
 	c.edit.OnKeyPressEvent(func(super func(*qt.QKeyEvent), e *qt.QKeyEvent) {
 		k := qt.Key(e.Key())
@@ -535,7 +545,7 @@ func (c *Composer) send() {
 		return
 	}
 	if c.uploading() {
-		c.hint.SetVisible(true)
+		c.ShowHint("Дождитесь загрузки файлов. Сообщение осталось в поле ввода.")
 		return
 	}
 	blocks := readBlocks(c.edit.Document())
@@ -551,6 +561,14 @@ func (c *Composer) send() {
 	if text == "" && len(ids) == 0 {
 		return
 	}
+	if strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "//") && len(ids) == 0 && c.OnCommand != nil && text != c.asText {
+		c.sent = &draft{key: c.key, blocks: blocks}
+		c.setBlocks(nil)
+		c.hint.SetVisible(false)
+		c.OnCommand(text)
+		return
+	}
+	c.asText = ""
 	c.sent = &draft{key: c.key, blocks: blocks, files: sent}
 	c.setBlocks(nil)
 	c.files = slices.DeleteFunc(c.files, func(a *attachment) bool { return a.fileID != "" })
@@ -596,8 +614,13 @@ func (c *Composer) token() (complete.Token, int, bool) {
 		return complete.Token{}, 0, false
 	}
 	pos := cur.Position()
+	first := cur.Block().Position() == 0
 	cur.MovePosition2(qt.QTextCursor__StartOfBlock, qt.QTextCursor__KeepAnchor)
-	tok, ok := complete.At(cur.SelectedText())
+	before := cur.SelectedText()
+	if tok, ok := complete.CommandAt(before); ok && first {
+		return tok, pos - tok.Len, true
+	}
+	tok, ok := complete.At(before)
 	return tok, pos - tok.Len, ok
 }
 
@@ -771,6 +794,20 @@ func (c *Composer) CancelEdit() {
 		c.files = st.files
 	}
 	c.renderChips()
+}
+
+// ShowHint — строка под полем: почему не отправилось и что делать.
+func (c *Composer) ShowHint(text string) {
+	c.hint.SetText(text)
+	c.hint.SetVisible(true)
+}
+
+// OfferAsText — команды text на сервере нет: она снова в поле, и следующий
+// Enter отправит её обычным сообщением.
+func (c *Composer) OfferAsText(text string) {
+	c.asText = text
+	cmd, _, _ := strings.Cut(text, " ")
+	c.ShowHint("Команды «" + cmd + "» на сервере нет. Enter ещё раз — отправить это сообщением.")
 }
 
 // Editing — id сообщения, которое правится; пусто — пишется новое.

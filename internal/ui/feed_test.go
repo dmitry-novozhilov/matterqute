@@ -365,3 +365,19 @@ func testFeedRerenderKeepsScroll(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkAddress(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://go.dev/doc":     "https://go.dev/doc",
+		"http://x.y":             "http://x.y",
+		"mailto:bob@example.com": "bob@example.com",
+		"mm-user:bob":            "",
+		"mm-thread:abc":          "",
+		"":                       "",
+	} {
+		got, ok := linkAddress(in)
+		if got != want || ok != (want != "") {
+			t.Errorf("linkAddress(%q) = %q, %v; want %q", in, got, ok, want)
+		}
+	}
+}

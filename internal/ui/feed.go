@@ -1411,6 +1411,18 @@ func (f *Feed) fileAndPost(id string) (*model.FileInfo, *model.Post) {
 	return nil, nil
 }
 
+// linkAddress — что копировать по «Копировать адрес ссылки»: адрес веб-ссылки
+// или почты; внутренние ссылки (@имя, ~канал, кнопки ленты) — нечего.
+func linkAddress(anchor string) (string, bool) {
+	switch {
+	case strings.HasPrefix(anchor, "http://"), strings.HasPrefix(anchor, "https://"):
+		return anchor, true
+	case strings.HasPrefix(anchor, "mailto:"):
+		return strings.TrimPrefix(anchor, "mailto:"), true
+	}
+	return "", false
+}
+
 // contextMenu — все действия с сообщением; при наведении — панель реакций (quickBar).
 func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	it := f.postAtY(e.Pos().Y())
@@ -1419,10 +1431,12 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	cp.SetShortcut(qt.NewQKeySequence2("Ctrl+C"))
 	cp.SetEnabled(f.view.TextCursor().HasSelection())
 	cp.OnTriggered(f.view.Copy)
-	link := f.view.AnchorAt(e.Pos())
-	cl := menu.QWidget.AddActionWithText("Копировать ссылку")
-	cl.SetEnabled(strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://"))
-	cl.OnTriggered(func() { qt.QGuiApplication_Clipboard().SetText(link) })
+	// Адрес ссылки — только если щёлкнули по ссылке; ссылка на само
+	// сообщение — «Копировать ссылку на сообщение» ниже.
+	if addr, ok := linkAddress(f.view.AnchorAt(e.Pos())); ok {
+		cl := menu.QWidget.AddActionWithText("Копировать адрес ссылки")
+		cl.OnTriggered(func() { qt.QGuiApplication_Clipboard().SetText(addr) })
+	}
 	if it != nil {
 		p := it.post
 		if !p.IsSystemMessage() {

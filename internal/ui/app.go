@@ -104,6 +104,11 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 			sv.main.showNewMessage()
 		}
 	}
+	a.shell.OnMarkAllRead = func() {
+		if sv := a.active; sv != nil && sv.main != nil {
+			sv.main.markAllRead()
+		}
+	}
 	a.shell.OnBrowseChannels = func() {
 		if sv := a.active; sv != nil && sv.main != nil {
 			sv.main.showBrowseChannels("")
@@ -207,6 +212,7 @@ func (a *App) activate(sv *server) {
 	a.shell.createAct.SetEnabled(sv.main != nil)
 	a.shell.switchAct.SetEnabled(sv.main != nil)
 	a.shell.newMsgAct.SetEnabled(sv.main != nil)
+	a.shell.readAllAct.SetEnabled(sv.main != nil)
 	a.updateServers()
 }
 
@@ -302,6 +308,7 @@ func (a *App) showAdd() {
 	a.shell.createAct.SetEnabled(false)
 	a.shell.switchAct.SetEnabled(false)
 	a.shell.newMsgAct.SetEnabled(false)
+	a.shell.readAllAct.SetEnabled(false)
 	a.shell.SetPage(a.adding.Widget())
 	a.shell.SetUser("", "")
 	a.shell.SetConnection(ConnNone)

@@ -67,8 +67,20 @@ func (m *MainWindow) sidebarMenu(pos *qt.QPoint) {
 	if it == nil {
 		return
 	}
-	items := m.sidebarItems(it.Data(0, teamRole).ToString(), it.Data(0, channelIDRole).ToString())
-	if it.Data(0, groupRole).ToString() != "" && it.Data(0, teamRole).ToString() == "" { // «Личные сообщения»
+	team, id := it.Data(0, teamRole).ToString(), it.Data(0, channelIDRole).ToString()
+	var items []menuItem
+	switch cat := it.Data(0, categoryRole).ToString(); {
+	case id == threadsID:
+		items = []menuItem{{title: "Отметить все треды прочитанными", do: m.markThreadsRead}}
+	case id != "":
+		items = m.sidebarItems("", id)
+	case cat != "":
+		items = m.categoryItems(team, cat)
+	case it.Data(0, teamLabelRole).ToString() != "":
+		items = m.teamLabelItems(team)
+	case team != "": // группа команды без категорий
+		items = m.sidebarItems(team, "")
+	case it.Data(0, groupRole).ToString() != "": // «Личные сообщения» без категорий
 		items = []menuItem{{title: "Новое личное сообщение…", do: func() { m.showNewMessage() }}}
 	}
 	if len(items) == 0 {
@@ -103,6 +115,9 @@ func (m *MainWindow) sidebarItems(team, channelID string) []menuItem {
 			menuItem{title: "Настройки канала…", do: func() { m.showChannelSettings(id) }})
 	} else {
 		out = append(out, menuItem{title: "Изменить шапку…", do: func() { m.showChannelSettings(id) }})
+	}
+	if cats := m.channelCategoryItems(ch); cats != nil {
+		out = append(append(out, menuItem{}), cats...)
 	}
 	out = append(out, menuItem{})
 	if m.st.Muted(id) {

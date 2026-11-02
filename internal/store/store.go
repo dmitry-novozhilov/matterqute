@@ -33,6 +33,8 @@ type Store struct {
 	// приходит по WebSocket.
 	deleted map[string]bool
 	saved   map[string]bool // сохранённые посты (настройки flagged_post)
+	// Категории сайдбара по командам (categories.go).
+	categories map[string]*model.OrderedSidebarCategories
 }
 
 func New(me *model.User) *Store {
@@ -47,6 +49,8 @@ func New(me *model.User) *Store {
 		applied:   map[string]bool{},
 		deleted:   map[string]bool{},
 		saved:     map[string]bool{},
+
+		categories: map[string]*model.OrderedSidebarCategories{},
 	}
 }
 
@@ -75,6 +79,8 @@ type Sidebar struct {
 	Statuses     []*model.Status         // присутствие собеседников в личках
 	Saved        []string                // сохранённые посты; nil — не загрузились (прежние остаются)
 	SyncDrafts   bool                    // черновики хранит сервер (иначе — файл приложения)
+	// Категории сайдбара по командам; команды, чьи не загрузились, — без них.
+	Categories map[string]*model.OrderedSidebarCategories
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
@@ -83,6 +89,10 @@ func (s *Store) SetSidebar(sb *Sidebar) {
 	s.noPreviews = !sb.LinkPreviews
 	s.maxFileSize = sb.MaxFileSize
 	s.teams = sb.Teams
+	s.categories = map[string]*model.OrderedSidebarCategories{}
+	for team, c := range sb.Categories {
+		s.categories[team] = c
+	}
 	s.channels = make(map[string]*model.Channel, len(sb.Channels))
 	for _, ch := range sb.Channels {
 		s.channels[ch.Id] = ch

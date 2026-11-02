@@ -5,6 +5,7 @@ import (
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6/mainthread"
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/status"
@@ -13,12 +14,18 @@ import (
 // Роли данных строк сайдбара.
 const (
 	channelIDRole = int(qt.UserRole) + 1 // id канала или threadsID; у групп пусто
-	groupRole     = int(qt.UserRole) + 4 // подпись группы (команда, «Личные сообщения»)
+	groupRole     = int(qt.UserRole) + 4 // подпись группы (категория; без категорий — команда, «Личные сообщения»)
 	teamRole      = int(qt.UserRole) + 5 // id команды у её группы
+	categoryRole  = int(qt.UserRole) + 7 // id категории у группы; пусто — категорий с сервера нет
+	teamLabelRole = int(qt.UserRole) + 8 // название команды у строки-заголовка (при нескольких командах)
+	collapsedRole = int(qt.UserRole) + 9 // группа свёрнута
 )
 
 // Сайдбар — QTreeWidget без текста в строках: всё рисует делегат
 // (paintSidebarRow), а фон наведения и выбора — QSS (#sidebar::item).
+// Группы — категории, как в веб-клиенте (categories.go): свёрнутая
+// показывает только непрочитанные и открытый канал; каналы перетаскиваются
+// между категориями и внутри них.
 func (m *MainWindow) setupSidebar() {
 	t := qt.NewQTreeWidget2()
 	setName(t.QObject, "sidebar")
@@ -46,9 +53,39 @@ func (m *MainWindow) setupSidebar() {
 	t.SetItemDelegate(d.QAbstractItemDelegate)
 
 	t.OnItemClicked(func(it *qt.QTreeWidgetItem, _ int) {
-		if it.Data(0, channelIDRole).ToString() == "" {
-			it.SetExpanded(!it.IsExpanded())
+		if it.Data(0, channelIDRole).ToString() == "" && it.Data(0, groupRole).ToString() != "" {
+			m.toggleCategory(it)
 		}
+	})
+	// Перетаскивание: каналы (ItemIsDragEnabled) — в группы категорий
+	// (ItemIsDropEnabled), не в корень. Qt кладёт в дерево копию строки
+	// (CopyAction: исходная не удаляется), сайдбар тут же строится заново
+	// из категорий.
+	t.SetDragEnabled(true)
+	t.SetAcceptDrops(true)
+	t.SetDropIndicatorShown(true)
+	t.SetDragDropMode(qt.QAbstractItemView__DragDrop)
+	t.SetDefaultDropAction(qt.CopyAction)
+	t.InvisibleRootItem().SetFlags(qt.ItemIsEnabled)
+	t.OnDragMoveEvent(func(super func(*qt.QDragMoveEvent), e *qt.QDragMoveEvent) {
+		super(e)
+		if _, _, _, _, ok := m.dropTarget(e.Position().ToPoint()); !ok {
+			e.Ignore()
+		}
+	})
+	t.OnDropEvent(func(super func(*qt.QDropEvent), e *qt.QDropEvent) {
+		team, id, cat, order, ok := m.dropTarget(e.Position().ToPoint())
+		if !ok {
+			e.Ignore()
+			return
+		}
+		e.SetDropAction(qt.CopyAction)
+		super(e)
+		mainthread.Start(func() {
+			if !m.closed {
+				m.moveChannel(team, id, cat, order)
+			}
+		})
 	})
 	t.OnCurrentItemChanged(func(cur, _ *qt.QTreeWidgetItem) {
 		if cur == nil {
@@ -64,10 +101,17 @@ func (m *MainWindow) setupSidebar() {
 }
 
 func (m *MainWindow) fillSidebar() {
+	scroll := m.sidebar.VerticalScrollBar().Value()
+	collapsed := map[string]bool{} // свёрнутые группы без категорий — по названию
+	for i := range m.sidebar.TopLevelItemCount() {
+		if g := m.sidebar.TopLevelItem(i); g.Data(0, categoryRole).ToString() == "" && g.Data(0, collapsedRole).ToBool() {
+			collapsed[g.Data(0, groupRole).ToString()] = true
+		}
+	}
 	m.sidebar.Clear()
 	m.items = map[string]*qt.QTreeWidgetItem{}
 	var toSelect *qt.QTreeWidgetItem
-	row := func(parent *qt.QTreeWidgetItem, id string) *qt.QTreeWidgetItem {
+	row := func(parent *qt.QTreeWidgetItem, id string, drag bool) *qt.QTreeWidgetItem {
 		var it *qt.QTreeWidgetItem
 		if parent == nil {
 			it = qt.NewQTreeWidgetItem()
@@ -76,6 +120,11 @@ func (m *MainWindow) fillSidebar() {
 			it = qt.NewQTreeWidgetItem6(parent)
 		}
 		it.SetData(0, channelIDRole, qt.NewQVariant11(id))
+		flags := qt.ItemIsEnabled | qt.ItemIsSelectable
+		if drag {
+			flags |= qt.ItemIsDragEnabled
+		}
+		it.SetFlags(flags)
 		m.items[id] = it
 		if id == m.current {
 			toSelect = it
@@ -83,29 +132,43 @@ func (m *MainWindow) fillSidebar() {
 		return it
 	}
 	if m.st.CRT() {
-		row(nil, threadsID)
+		row(nil, threadsID, false)
 	}
 	if len(m.sched.posts) > 0 {
-		row(nil, schedID)
+		row(nil, schedID, false)
 	}
-	addGroup := func(title, teamID string, chs []*model.Channel) {
-		if len(chs) == 0 {
-			return
+	multi := len(m.st.Teams()) > 1
+	label := ""
+	for _, sec := range m.st.Sections() {
+		c := sec.Category
+		if multi && c != nil && c.Type != model.SidebarCategoryDirectMessages && sec.Team != label {
+			label = sec.Team
+			l := qt.NewQTreeWidgetItem()
+			for _, t := range m.st.Teams() {
+				if t.Id == sec.Team {
+					l.SetData(0, teamLabelRole, qt.NewQVariant11(t.DisplayName))
+				}
+			}
+			l.SetData(0, teamRole, qt.NewQVariant11(sec.Team))
+			l.SetFlags(qt.ItemIsEnabled)
+			m.sidebar.AddTopLevelItem(l)
 		}
 		group := qt.NewQTreeWidgetItem()
-		group.SetData(0, groupRole, qt.NewQVariant11(title))
-		group.SetData(0, teamRole, qt.NewQVariant11(teamID))
-		group.SetFlags(qt.ItemIsEnabled)
+		group.SetData(0, groupRole, qt.NewQVariant11(sec.Title))
+		group.SetData(0, teamRole, qt.NewQVariant11(sec.Team))
+		flags := qt.ItemIsEnabled
+		if c != nil {
+			group.SetData(0, categoryRole, qt.NewQVariant11(c.Id))
+			flags |= qt.ItemIsDropEnabled
+		}
+		group.SetData(0, collapsedRole, qt.NewQVariant8(sec.Collapsed || c == nil && collapsed[sec.Title]))
+		group.SetFlags(flags)
 		m.sidebar.AddTopLevelItem(group)
-		for _, ch := range chs {
-			row(group, ch.Id)
+		for _, id := range sec.Channels {
+			row(group, id, c != nil)
 		}
 		group.SetExpanded(true)
 	}
-	for _, t := range m.st.Teams() {
-		addGroup(t.DisplayName, t.Id, m.st.TeamChannels(t.Id))
-	}
-	addGroup("Личные сообщения", "", m.st.DirectChannels())
 	for _, ch := range m.st.DirectChannels() {
 		if it := m.items[ch.Id]; it != nil && ch.Type == model.ChannelTypeDirect {
 			if cs := status.Current(m.st.User(m.st.DMPeer(ch)), time.Now()); cs != nil {
@@ -127,6 +190,8 @@ func (m *MainWindow) fillSidebar() {
 	if toSelect != nil {
 		m.sidebar.SetCurrentItem(toSelect)
 	}
+	m.applyCollapsed()
+	m.sidebar.VerticalScrollBar().SetValue(scroll)
 	m.updateCounts()
 	m.refreshHeader() // канал могли переименовать, поменять шапку
 	if path := m.pendingPath; path != "" {
@@ -154,8 +219,27 @@ func (m *MainWindow) defaultChannel() string {
 
 // refreshItem перерисовывает строку канала (непрочитанное, упоминания, статус).
 func (m *MainWindow) refreshItem(string) {
+	m.applyCollapsed()
 	m.sidebar.Viewport().Update()
 	m.updateCounts()
+}
+
+// applyCollapsed — в свёрнутой группе видны только непрочитанные и
+// открытый канал, как в веб-клиенте. Qt раскладывает дерево заново на
+// каждый setHidden — поэтому только там, где видимость меняется.
+func (m *MainWindow) applyCollapsed() {
+	for i := range m.sidebar.TopLevelItemCount() {
+		g := m.sidebar.TopLevelItem(i)
+		collapsed := g.Data(0, collapsedRole).ToBool()
+		for j := range g.ChildCount() {
+			it := g.Child(j)
+			id := it.Data(0, channelIDRole).ToString()
+			unread, mentions := m.st.Unread(id)
+			if hide := collapsed && !unread && mentions == 0 && id != m.current; it.IsHidden() != hide {
+				it.SetHidden(hide)
+			}
+		}
+	}
 }
 
 // updateCounts — счётчики для трея: сообщения мне и все новые.
@@ -186,10 +270,17 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 		return fm.HorizontalAdvance(s)
 	}
 
+	if team := it.Data(0, teamLabelRole).ToString(); team != "" { // команда (при нескольких)
+		f := sidebarFont(0, qt.QFont__DemiBold)
+		p.SetFont(f)
+		p.SetPen(qt.NewQColor6(pal.Tx))
+		p.DrawText7(x-2, y, w+2, h, int(qt.AlignBottom|qt.AlignLeft), qt.NewQFontMetrics(f).ElidedText(team, qt.ElideRight, w))
+		return
+	}
 	if id == "" { // группа
-		chev := "chevron-right"
-		if it.IsExpanded() {
-			chev = "chevron-down"
+		chev := "chevron-down"
+		if it.Data(0, collapsedRole).ToBool() {
+			chev = "chevron-right"
 		}
 		p.DrawPixmap9(x-2, cy-6, iconPixmap(chev, pal.Tx2, 12))
 		f := sidebarFont(-2, qt.QFont__DemiBold)

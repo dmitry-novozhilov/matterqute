@@ -56,6 +56,8 @@ type Server struct {
 	dndEnd    map[string]int64             // user id → конец «не беспокоить», секунды
 	prefs     map[string]model.Preferences // user id → настройки
 	conns     map[*wsConn]bool
+	// Категории сайдбара: «пользователь/команда» → (categories.go).
+	categories map[string]*userCategories
 }
 
 type wsConn struct {
@@ -91,6 +93,7 @@ func New(log *slog.Logger) *Server {
 		dndEnd:           map[string]int64{},
 		prefs:            map[string]model.Preferences{},
 		drafts:           map[string]*model.Draft{},
+		categories:       map[string]*userCategories{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -145,6 +148,13 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("DELETE /api/v4/channels/{cid}/members/{uid}", s.auth(s.leaveChannel))
 	s.mux.HandleFunc("GET /api/v4/channels/{cid}/members/{uid}", s.auth(s.channelMember))
 	s.mux.HandleFunc("GET /api/v4/channels/{cid}/members", s.auth(s.channelMembers))
+	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/channels/categories", s.auth(s.listCategories))
+	s.mux.HandleFunc("POST /api/v4/users/{uid}/teams/{tid}/channels/categories", s.auth(s.createCategory))
+	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/channels/categories", s.auth(s.updateCategories))
+	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/channels/categories/{cid}", s.auth(s.updateCategories))
+	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/teams/{tid}/channels/categories/{cid}", s.auth(s.deleteCategory))
+	s.mux.HandleFunc("POST /api/v4/channels/members/{uid}/mark_read", s.auth(s.markRead))
+	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/threads/read", s.auth(s.threadsRead))
 	s.mux.HandleFunc("GET /api/v4/channels/{cid}/stats", s.auth(s.channelStats))
 	s.mux.HandleFunc("PUT /api/v4/channels/{cid}/patch", s.auth(s.patchChannel))
 	s.mux.HandleFunc("POST /api/v4/channels/group", s.auth(s.createGroup))

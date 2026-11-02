@@ -197,6 +197,12 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		}
 		return func() { m.membersChanged(ch) }, nil
 
+	case model.WebsocketEventSidebarCategoryCreated, model.WebsocketEventSidebarCategoryUpdated,
+		model.WebsocketEventSidebarCategoryDeleted, model.WebsocketEventSidebarCategoryOrderUpdated:
+		if team := ev.GetBroadcast().TeamId; team != "" {
+			return func() { m.reloadCategories(team) }, nil
+		}
+
 	case model.WebsocketEventChannelCreated, model.WebsocketEventChannelDeleted,
 		model.WebsocketEventChannelRestored, model.WebsocketEventChannelUpdated,
 		model.WebsocketEventChannelConverted, model.WebsocketEventChannelMemberUpdated,

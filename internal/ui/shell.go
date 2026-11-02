@@ -39,6 +39,7 @@ type Shell struct {
 	browseAct  *qt.QAction // «Обзор каналов…» и «Создать канал…»: есть, когда вошли
 	switchAct  *qt.QAction // «Перейти к каналу…»
 	newMsgAct  *qt.QAction // «Новое личное сообщение…»
+	readAllAct *qt.QAction // «Отметить всё прочитанным»
 	createAct  *qt.QAction
 	typingActs [2]*qt.QAction // «Вид → «Печатает…»»: показывать, сообщать
 	alertAct   *qt.QAction    // «Вид → Мигать на панели задач»
@@ -62,6 +63,7 @@ type Shell struct {
 	OnBrowseChannels func() // «Файл → Обзор каналов…» — на текущем сервере
 	OnSwitcher       func() // «Файл → Перейти к каналу…» — на текущем сервере
 	OnNewMessage     func() // «Файл → Новое личное сообщение…»
+	OnMarkAllRead    func() // «Файл → Отметить всё прочитанным» — на текущем сервере
 	OnCreateChannel  func() // «Файл → Создать канал…»
 }
 
@@ -101,6 +103,12 @@ func NewShell() *Shell {
 	s.newMsgAct.OnTriggered(func() {
 		if s.OnNewMessage != nil {
 			s.OnNewMessage()
+		}
+	})
+	s.readAllAct = file.QWidget.AddActionWithText("Отметить всё прочитанным")
+	s.readAllAct.OnTriggered(func() {
+		if s.OnMarkAllRead != nil {
+			s.OnMarkAllRead()
 		}
 	})
 	s.browseAct = file.QWidget.AddActionWithText("Обзор каналов…")

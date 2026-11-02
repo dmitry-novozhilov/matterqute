@@ -67,6 +67,7 @@ type MainWindow struct {
 	members        *membersPanel   // участники канала — в правой колонке (members.go)
 	membersBtn     *qt.QToolButton // участники и их число — в шапке канала
 	memberCounts   map[string]int64
+	catLoading     map[string]int  // команда → 1 — категории грузятся, 2 — и после этого ещё раз
 	pinsBtn        *qt.QToolButton // закреплённые в канале — в шапке
 	savedBtn       *qt.QToolButton // сохранённые — в шапке
 	manualUnread   map[string]bool // каналы и треды, помеченные непрочитанными: сами не отмечаем прочитанными (postactions.go)
@@ -145,6 +146,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 
 		manualUnread: map[string]bool{},
 		memberCounts: map[string]int64{},
+		catLoading:   map[string]int{},
 		retryNow:     make(chan struct{}, 1),
 
 		initialChannel: initialChannel,
@@ -593,7 +595,7 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load teams of %s: %w", me.Username, err)
 	}
-	sb := &store.Sidebar{Teams: teams}
+	sb := &store.Sidebar{Teams: teams, Categories: map[string]*model.OrderedSidebarCategories{}}
 	// При ошибке часть настроек может быть прочитана, остальное — по умолчанию (без CRT).
 	settings, err := m.s.FetchSettings(ctx)
 	if err != nil {
@@ -614,6 +616,12 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 					peers[p] = true
 				}
 			}
+		}
+		// Без категорий сайдбар команды — группой, как раньше: не валим.
+		if cats, _, err := c.GetSidebarCategoriesForTeamForUser(ctx, me.Id, t.Id, ""); err != nil {
+			m.log.Warn("load sidebar categories", "team", t.Name, "team_id", t.Id, "err", err)
+		} else {
+			sb.Categories[t.Id] = cats
 		}
 		members, _, err := c.GetChannelMembersForUser(ctx, me.Id, t.Id, "")
 		if err != nil {

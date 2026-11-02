@@ -39,7 +39,7 @@ func (s *Server) searchPosts(w http.ResponseWriter, r *http.Request, me *model.U
 		case strings.HasPrefix(tok, "-"):
 			without = append(without, strings.TrimPrefix(tok, "-"))
 		default:
-			words = append(words, tok)
+			words = append(words, strings.TrimPrefix(tok, "@")) // как сервер: «@» — не часть слова
 		}
 	}
 	match := func(text string) bool {
@@ -52,10 +52,18 @@ func (s *Server) searchPosts(w http.ResponseWriter, r *http.Request, me *model.U
 			word = strings.TrimSuffix(word, "*")
 			return slices.ContainsFunc(fields, func(f string) bool { return f == word || prefix && strings.HasPrefix(f, word) })
 		}
+		or := params.IsOrSearch != nil && *params.IsOrSearch
+		any := false
 		for _, wd := range words {
-			if !has(wd) {
+			switch {
+			case has(wd):
+				any = true
+			case !or:
 				return false
 			}
+		}
+		if or && len(words) > 0 && !any {
+			return false
 		}
 		for _, ph := range phrases {
 			if !strings.Contains(text, ph) {

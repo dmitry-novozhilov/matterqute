@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 
@@ -23,9 +26,32 @@ import (
 // Снимается, когда в канал или тред вернутся.
 
 const (
-	listPinned = "pinned"
-	listSaved  = "saved"
+	listPinned   = "pinned"
+	listSaved    = "saved"
+	listMentions = "mentions" // сообщения, где меня упомянули (как «Recent mentions» веб-клиента)
 )
+
+// mentionTerms — запрос «где меня упомянули», как у веб-клиента: @имя,
+// имя (если оно в настройках уведомлений) и свои слова-упоминания; ищется
+// любое из них (без @channel, @here, @all).
+func mentionTerms(me *model.User) string {
+	keys := []string{"@" + me.Username}
+	seen := map[string]bool{strings.ToLower(me.Username): true, "@" + strings.ToLower(me.Username): true,
+		"@channel": true, "@all": true, "@here": true, "channel": true, "all": true, "here": true}
+	add := func(k string) {
+		if k = strings.TrimSpace(k); k != "" && !seen[strings.ToLower(k)] {
+			seen[strings.ToLower(k)] = true
+			keys = append(keys, k)
+		}
+	}
+	if me.NotifyProps[model.FirstNameNotifyProp] == "true" {
+		add(me.FirstName)
+	}
+	for _, k := range strings.Split(me.NotifyProps[model.MentionKeysNotifyProp], ",") {
+		add(k)
+	}
+	return strings.Join(keys, " ")
+}
 
 func (m *MainWindow) pinPost(p *model.Post, on bool) {
 	go func() {
@@ -204,8 +230,15 @@ func (m *MainWindow) showList(kind string) {
 	if kind == listPinned {
 		sub = channelPrefix(m.st.Channel(channel)) + m.st.Title(m.st.Channel(channel))
 	}
+	mentions, team := mentionTerms(m.me()), m.teamOf(m.current)
+	if kind == listMentions {
+		sub = "Где упомянули вас"
+	}
 	sp.head.set(iconPixmap(sp.iconName(), Pal().Tx2, 16), sp.title(), sub)
 	sp.feed.SetMarks(nil)
+	if kind == listMentions {
+		sp.feed.SetMarks(searchTerms(strings.ReplaceAll(mentions, "@", ""))) // свои слова-упоминания — подсветкой
+	}
 	sp.feed.Loading()
 	sp.info.SetText("")
 	m.showRight(sp.w)
@@ -214,9 +247,17 @@ func (m *MainWindow) showList(kind string) {
 		defer cancel()
 		var list *model.PostList
 		var err error
-		if kind == listPinned {
+		switch kind {
+		case listPinned:
 			list, _, err = m.s.Client.GetPinnedPosts(ctx, channel, "")
-		} else {
+		case listMentions:
+			_, offset := time.Now().Zone()
+			params := &model.SearchParameter{Terms: &mentions, IsOrSearch: new(true), TimeZoneOffset: &offset, Page: new(0), PerPage: new(searchLimit)}
+			list, _, err = m.s.Client.SearchPostsWithParams(ctx, "", params) // по всем командам
+			if err != nil && team != "" {
+				list, _, err = m.s.Client.SearchPostsWithParams(ctx, team, params) // сервер постарше — по команде
+			}
+		default:
 			list, _, err = m.s.Client.GetFlaggedPostsForUser(ctx, m.s.Me.Id, 0, searchLimit)
 		}
 		m.ui(func() {
@@ -236,10 +277,14 @@ func (m *MainWindow) showList(kind string) {
 					return
 				}
 				if len(posts) == 0 {
-					if kind == listPinned {
+					switch kind {
+					case listPinned:
 						sp.feed.Reset("В канале ничего не закреплено")
 						sp.info.SetText("Закрепить — «Закрепить в канале» в меню сообщения.")
-					} else {
+					case listMentions:
+						sp.feed.Reset("Вас пока не упоминали")
+						sp.info.SetText(html.EscapeString("Ищем: " + mentions))
+					default:
 						sp.feed.Reset("Сохранённых сообщений нет")
 						sp.info.SetText("Сохранить — «Сохранить» в меню сообщения.")
 					}

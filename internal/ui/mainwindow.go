@@ -77,6 +77,7 @@ type MainWindow struct {
 	sidebarOK      bool            // сайдбар хоть раз пришёл с сервера
 	pinsBtn        *qt.QToolButton // закреплённые в канале — в шапке
 	savedBtn       *qt.QToolButton // сохранённые — в шапке
+	mentionsBtn    *qt.QToolButton // упоминания — в шапке
 	manualUnread   map[string]bool // каналы и треды, помеченные непрочитанными: сами не отмечаем прочитанными (postactions.go)
 	threadsHead    *header
 	threadsList    *qt.QListWidget
@@ -305,6 +306,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.membersBtn.SetVisible(false)
 	m.pinsBtn = m.head.addTool("Закреплённые в канале", func() { m.toggleList(listPinned) })
 	m.savedBtn = m.head.addTool("Сохранённые сообщения", func() { m.toggleList(listSaved) })
+	m.mentionsBtn = m.head.addTool("Упоминания вас (Ctrl+Shift+M)", func() { m.toggleList(listMentions) })
 	m.searchBtn = m.head.addTool("Поиск по сообщениям (Ctrl+F)", m.openSearch)
 	// Ctrl+K — быстрый переход, как в веб-клиенте (ссылка в поле ввода — Ctrl+Alt+K).
 	sw := qt.NewQAction5("Перейти к каналу", m.w.QObject)
@@ -324,6 +326,11 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		a.OnTriggered(func() { m.stepChannel(k.delta, k.unread) })
 		m.w.AddAction(a)
 	}
+	men := qt.NewQAction5("Упоминания", m.w.QObject)
+	men.SetShortcut(qt.NewQKeySequence2("Ctrl+Shift+M")) // как в веб-клиенте
+	men.SetShortcutContext(qt.WidgetWithChildrenShortcut)
+	men.OnTriggered(func() { m.toggleList(listMentions) })
+	m.w.AddAction(men)
 	dm := qt.NewQAction5("Новое личное сообщение", m.w.QObject)
 	dm.SetShortcut(qt.NewQKeySequence2("Ctrl+Shift+K"))
 	dm.SetShortcutContext(qt.WidgetWithChildrenShortcut)
@@ -484,6 +491,7 @@ func (m *MainWindow) restyle() {
 	m.searchBtn.SetIcon(icon("search", Pal().Tx2, 18))
 	m.pinsBtn.SetIcon(icon("pin", Pal().Tx2, 18))
 	m.savedBtn.SetIcon(icon("bookmark", Pal().Tx2, 18))
+	m.mentionsBtn.SetIcon(icon("at-sign", Pal().Tx2, 18))
 	m.panel.back.SetIcon(icon("arrow-left", Pal().Tx2, 18))
 	m.head.chev.SetPixmap(iconPixmap("chevron-down", Pal().Tx2, 14))
 	m.updateFollowButton()
@@ -1060,6 +1068,9 @@ func (m *MainWindow) applyPosted(e store.NewPost) {
 	r := m.st.ApplyPosted(p, e.Mentioned)
 	m.applyToThread(p)
 	m.maybeNotify(e)
+	if e.Mentioned && m.listShown(listMentions) {
+		m.showList(listMentions) // новое упоминание — в открытый список
+	}
 	if !r.KnownChannel {
 		m.reloadSidebar() // новая личка или канал, куда нас только что добавили
 		return

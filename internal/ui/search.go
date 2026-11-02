@@ -101,6 +101,8 @@ func (sp *searchPanel) iconName() string {
 		return "pin"
 	case listSaved:
 		return "bookmark"
+	case listMentions:
+		return "at-sign"
 	}
 	return "search"
 }
@@ -111,6 +113,8 @@ func (sp *searchPanel) title() string {
 		return "Закреплённые"
 	case listSaved:
 		return "Сохранённые"
+	case listMentions:
+		return "Упоминания"
 	}
 	return "Поиск"
 }

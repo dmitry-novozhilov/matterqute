@@ -191,7 +191,9 @@ func (l *LoginView) Focus() {
 
 func (l *LoginView) restyle() {
 	p := Pal()
-	l.logo.SetPixmap(appIconPixmap(40))
+	logo := appIconPixmap(40 * resourceDPR)
+	logo.SetDevicePixelRatio(resourceDPR)
+	l.logo.SetPixmap(logo)
 	l.spin.stop()
 	if l.noticeIconN != "" {
 		color := map[string]string{"info": p.Tx2, "warn": p.Warn, "danger": p.Dang}[l.noticeKind]

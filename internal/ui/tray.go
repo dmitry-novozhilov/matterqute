@@ -196,66 +196,61 @@ func trayLayout(size int) trayBox {
 // size физических пикселей: облачко цвета color, «#» (или text — число)
 // вырезан насквозь, сквозь него видно панель.
 func trayPixmap(size int, color, text string) *qt.QPixmap {
+	return bubblePixmap(size, color, "", text)
+}
+
+// bubblePixmap — облачко цвета bubble во всю ширину и в нём «#» (или text —
+// число) цвета glyph; glyph пустой — знак вырезан насквозь. size — в
+// физических пикселях: «#» — прямоугольниками по сетке, без сглаживания и
+// масштабирования.
+func bubblePixmap(size int, bubble, glyph, text string) *qt.QPixmap {
 	img := qt.NewQImage3(size, size, qt.QImage__Format_ARGB32_Premultiplied)
 	img.Fill2(qt.Transparent)
 	p := qt.NewQPainter2(img.QPaintDevice)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
 	b := trayLayout(size)
 	h := float64(b.h)
-	drawBubble(p, 0, float64(b.top), float64(size), h, h/2, max(1, math.Round(h*0.11)), color)
-	p.SetCompositionMode(qt.QPainter__CompositionMode_Clear)
+	drawBubble(p, 0, float64(b.top), float64(size), h, h/2, max(1, math.Round(h*0.11)), bubble)
+	ink := qt.NewQColor6(glyph)
+	if glyph == "" {
+		p.SetCompositionMode(qt.QPainter__CompositionMode_Clear)
+		ink = qt.NewQColor2(qt.Black) // цвет не важен: режим Clear
+	}
 	if text == "" {
 		// «#» прямоугольниками по сетке: две стойки и две перекладины.
 		gap := b.side - 2*b.overhang - 2*b.stroke
 		for _, off := range []int{b.overhang, b.overhang + b.stroke + gap} {
-			p.FillRect7(b.x+off, b.y, b.stroke, b.side, qt.Black)
-			p.FillRect7(b.x, b.y+off, b.side, b.stroke, qt.Black)
+			p.FillRect5(b.x+off, b.y, b.stroke, b.side, ink)
+			p.FillRect5(b.x, b.y+off, b.side, b.stroke, ink)
 		}
 	} else {
-		cutText(p, size, b, text)
+		cutText(p, size, b, text, ink)
 	}
 	p.End()
 	return qt.QPixmap_FromImage(img)
 }
 
-// trayGlyphs — цифры и «+» по сетке 3×5. В значке их рисуем клетками, как и
-// «#», а не шрифтом: шрифт в 10 px мылится, а с хинтингом теряет форму.
-var trayGlyphs = map[rune][5]string{
-	'0': {"###", "#.#", "#.#", "#.#", "###"},
-	'1': {".#.", "##.", ".#.", ".#.", "###"},
-	'2': {"###", "..#", "###", "#..", "###"},
-	'3': {"###", "..#", ".##", "..#", "###"},
-	'4': {"#.#", "#.#", "###", "..#", "..#"},
-	'5': {"###", "#..", "###", "..#", "###"},
-	'6': {"###", "#..", "###", "#.#", "###"},
-	'7': {"###", "..#", "..#", "..#", "..#"},
-	'8': {"###", "#.#", "###", "#.#", "###"},
-	'9': {"###", "#.#", "###", "..#", "###"},
-	'+': {"...", ".#.", "###", ".#.", "..."},
-}
-
-// cutText — число по центру облачка, высотой примерно со знак «#» и не шире
-// облачка без скруглённых краёв; клетки рисуются в текущем режиме (Clear —
-// вырезает).
-func cutText(p *qt.QPainter, size int, b trayBox, text string) {
-	glyphs := []rune(text)
-	cols := 4*len(glyphs) - 1 // 3 клетки на знак и 1 между знаками
-	cell := max(1, int(math.Round(float64(b.side)/5)))
-	for maxW := size - 2*max(2, size/7); cell > 1 && cols*cell > maxW; {
-		cell--
-	}
-	x := (size - cols*cell) / 2
-	y := b.top + (b.h-5*cell)/2
-	for _, r := range glyphs {
-		for row, line := range trayGlyphs[r] {
-			for col, c := range line {
-				if c == '#' {
-					p.FillRect7(x+col*cell, y+row*cell, cell, cell, qt.Black)
-				}
-			}
+// cutText — число по центру облачка: шрифт Plex жирный, высотой примерно со
+// знак «#» и не шире облачка без скруглённых краёв; цвета ink в текущем
+// режиме (Clear — вырезает). Хинтинг — по умолчанию: полный ломал форму цифр
+// (у «7» вылезала засечка), а клетками «1» походила на «i».
+func cutText(p *qt.QPainter, size int, b trayBox, text string, ink *qt.QColor) {
+	f := qt.NewQFont()
+	f.SetFamilies([]string{theme.SansFamily})
+	f.SetWeight(qt.QFont__Bold)
+	maxW := size - 2*max(2, size/7)
+	var r *qt.QRect
+	for px := b.side*3/2 + 1; px >= 6; px-- {
+		f.SetPixelSize(px)
+		r = qt.NewQFontMetrics(f).TightBoundingRect(text)
+		if r.Width() <= maxW && r.Height() <= b.side {
+			break
 		}
-		x += 4 * cell
 	}
+	p.SetRenderHint(qt.QPainter__TextAntialiasing)
+	p.SetFont(f)
+	p.SetPen(ink)
+	p.DrawText3((size-r.Width())/2-r.X(), b.top+(b.h-r.Height()+1)/2-r.Y(), text)
 }
 
 // drawBubble — облачко: прямоугольник со скруглением r, у левого нижнего угла
@@ -275,17 +270,6 @@ func drawBubble(p *qt.QPainter, x, y, w, h, r, tail float64, color string) {
 	p.SetPenWithStyle(qt.NoPen)
 	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(color)))
 	p.DrawPath(path)
-}
-
-// drawHash — «#» шрифтом Plex 600 по центру прямоугольника.
-func drawHash(p *qt.QPainter, x, y, w, h, px float64, color string) {
-	f := qt.NewQFont()
-	f.SetFamilies([]string{theme.SansFamily})
-	f.SetPixelSize(max(1, int(px)))
-	f.SetWeight(qt.QFont__DemiBold)
-	p.SetFont(f)
-	p.SetPen(qt.NewQColor6(color))
-	p.DrawText5(qt.NewQRectF4(x, y, w, h), int(qt.AlignCenter), "#")
 }
 
 // showTrayDialog — «Вид → Значок в трее…»: цвет облачка для каждого

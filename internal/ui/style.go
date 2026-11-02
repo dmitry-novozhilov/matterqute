@@ -165,32 +165,18 @@ func dotPixmap(color string, size int) *qt.QPixmap {
 // appGreen — плитка значка приложения; им же трей говорит о новых сообщениях.
 const appGreen = "#008a67"
 
-// appIconPixmap — иконка приложения, вариант 1b «Канал»: белое облачко с
-// зелёной решёткой на зелёной плитке (docs/design_handoff_matterqute/design/app-icon.dc.html).
+// appIconPixmap — иконка приложения size×size физических пикселей: зелёное
+// облачко с белой «#», без плитки — как знак в трее, тоже по пиксельной сетке
+// (у макета 1b «Канал» с плиткой и «#» шрифтом в мелких размерах решётка
+// мылилась).
 func appIconPixmap(size int) *qt.QPixmap {
-	const tile, glyph = appGreen, "#fcfbf9"
-	img := qt.NewQImage3(size*resourceDPR, size*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
-	img.SetDevicePixelRatio(resourceDPR)
-	img.Fill2(qt.Transparent)
-	p := qt.NewQPainter2(img.QPaintDevice)
-	p.SetRenderHint(qt.QPainter__Antialiasing)
-	p.SetRenderHint(qt.QPainter__TextAntialiasing)
-	// Макет (AppIcon, «hash») — на поле 192: плитка, облачко, «#» цвета плитки.
-	k := float64(size) / 192
-	p.SetPenWithStyle(qt.NoPen)
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(tile)))
-	p.DrawRoundedRect(qt.NewQRectF4(0, 0, float64(size), float64(size)), 44*k, 44*k)
-	drawBubble(p, 34*k, 38*k, 124*k, 108*k, 54*k, 12*k, glyph)
-	drawHash(p, 34*k, 38*k, 124*k, 108*k, 72*k, tile)
-	p.End()
-	pm := qt.QPixmap_FromImage(img)
-	pm.SetDevicePixelRatio(resourceDPR)
-	return pm
+	return bubblePixmap(size, appGreen, "#fcfbf9", "")
 }
 
+// appIcon — иконка окна: каждый размер нарисован отдельно.
 func appIcon() *qt.QIcon {
 	ic := qt.NewQIcon()
-	for _, size := range []int{16, 32, 48, 64, 128} {
+	for _, size := range []int{16, 20, 22, 24, 32, 40, 48, 64, 96, 128, 256} {
 		ic.AddPixmap(appIconPixmap(size))
 	}
 	return ic
@@ -223,8 +209,7 @@ func SaveAppIcon(path string, px int) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("app icon %s: %w", path, err)
 	}
-	// appIconPixmap рисует вдвое плотнее логического размера.
-	if !appIconPixmap(max(1, px/resourceDPR)).Save(path) {
+	if !appIconPixmap(max(1, px)).Save(path) {
 		return fmt.Errorf("app icon %s: QPixmap::save failed", path)
 	}
 	return nil

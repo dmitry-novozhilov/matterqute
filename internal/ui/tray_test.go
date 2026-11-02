@@ -83,26 +83,35 @@ func TestTrayPixmap(t *testing.T) {
 		if b.side != 11 || b.stroke != 2 {
 			t.Errorf("22 px «#»: side %d, stroke %d", b.side, b.stroke)
 		}
-		// Число вместо «#» — тоже клетками, без полупрозрачных краёв.
-		for _, text := range []string{"3", "9+"} {
+		// Число вместо «#» вырезано шрифтом и помещается в облачко.
+		for _, text := range []string{"1", "3", "9+"} {
 			img := trayPixmap(22, "#ea6b60", text).ToImage()
 			if c := img.PixelColor(1, 11); c.Name() != "#ea6b60" || c.Alpha() != 255 {
 				t.Errorf("bubble pixel %s alpha %d, want opaque #ea6b60", c.Name(), c.Alpha())
 			}
-			holes, blurred := 0, 0
+			holes := 0
 			for y := b.y; y < b.y+b.side; y++ {
 				for x := 3; x < 19; x++ {
-					switch a := img.PixelColor(x, y).Alpha(); {
-					case a == 0:
+					if img.PixelColor(x, y).Alpha() < 64 {
 						holes++
-					case a != 255:
-						blurred++
 					}
 				}
 			}
-			if holes < 10 || blurred != 0 {
-				t.Errorf("«%s»: %d transparent and %d blurred pixels; want a sharp cut", text, holes, blurred)
+			if holes < 8 {
+				t.Errorf("«%s» is not cut through the bubble: %d transparent pixels", text, holes)
 			}
+		}
+		// Иконка приложения — то же облачко, зелёное с белой «#», без плитки.
+		app := appIconPixmap(32).ToImage()
+		if c := app.PixelColor(2, 16); c.Name() != appGreen || c.Alpha() != 255 {
+			t.Errorf("app icon bubble %s alpha %d, want %s", c.Name(), c.Alpha(), appGreen)
+		}
+		ab := trayLayout(32)
+		if c := app.PixelColor(ab.x+ab.overhang, ab.y); c.Name() != "#fcfbf9" {
+			t.Errorf("app icon «#» pixel %s, want white", c.Name())
+		}
+		if c := app.PixelColor(0, 0); c.Alpha() != 0 {
+			t.Error("app icon has a tile: corner is not transparent")
 		}
 
 		if dir := os.Getenv("MATTERQUTE_TEST_SHOTS"); dir != "" {
@@ -115,7 +124,7 @@ func TestTrayPixmap(t *testing.T) {
 			for _, dark := range []bool{true, false} {
 				c := trayColors(config.Tray{}, dark)
 				bg := map[bool]string{true: "#1c1b1a", false: "#f0efed"}[dark]
-				for _, v := range []struct{ color, text string }{{c.Idle, ""}, {c.Unread, "9+"}, {c.Mentions, "7"}} {
+				for _, v := range []struct{ color, text string }{{c.Idle, ""}, {c.Unread, "1"}, {c.Mentions, "9+"}} {
 					x := 4
 					for _, size := range []int{16, 22, 32} {
 						p.FillRect5(x*zoom, (row*36+2)*zoom, size*zoom, size*zoom, qt.NewQColor6(bg))
@@ -127,6 +136,8 @@ func TestTrayPixmap(t *testing.T) {
 			}
 			p.End()
 			sheet.Save(filepath.Join(dir, "tray-zoom.png"))
+			appIconPixmap(64).Save(filepath.Join(dir, "app-icon-64.png"))
+			appIconPixmap(22).Scaled3(22*zoom, 22*zoom, qt.IgnoreAspectRatio, qt.FastTransformation).Save(filepath.Join(dir, "app-icon-22-zoom.png"))
 			for _, dark := range []bool{true, false} {
 				c := trayColors(config.Tray{}, dark)
 				name := map[bool]string{true: "dark", false: "light"}[dark]

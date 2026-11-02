@@ -111,6 +111,9 @@ type FeedDeps struct {
 	Log *slog.Logger
 	// Saved — пост сохранён (метка «Сохранено» и пункт меню); nil — нет.
 	Saved func(postID string) bool
+	// ThreadFollow — подписаны ли на тред с корнем rootID; ok=false — свёрнутых
+	// тредов нет (пункта «Подписаться на тред» тоже). nil — как ok=false.
+	ThreadFollow func(rootID string) (following, ok bool)
 }
 
 // slowPost — дольше рисуется пост: в debug-лог, с размерами, без текста.
@@ -194,20 +197,21 @@ type Feed struct {
 	pausedAnims []string
 	OnWork      func() // у скрытой ленты есть порции для отрисовки
 
-	OnNeedOlder      func()                            // докрутили до верха, а на сервере есть ещё
-	OnOpenThread     func(rootID string)               // открыть тред поста
-	OnToggleReaction func(p *model.Post, emoji string) // поставить или снять свою реакцию
-	OnPickReaction   func(p *model.Post)               // окно выбора эмодзи для реакции
-	OnPermalink      func(channelID, postID string)    // «Перейти к сообщению» в предпросмотре ссылки
-	OnRemovePreview  func(p *model.Post)               // автор убирает предпросмотр ссылки
-	OnEditPost       func(p *model.Post)               // «Изменить» своё сообщение
-	OnDeletePost     func(p *model.Post)               // «Удалить…» своё сообщение
-	OnCopyLink       func(p *model.Post)               // «Копировать ссылку на сообщение»
-	OnPin            func(p *model.Post, pin bool)     // «Закрепить в канале» / «Открепить»
-	OnSave           func(p *model.Post, save bool)    // «Сохранить» / «Убрать из сохранённых»
-	OnMarkUnread     func(p *model.Post)               // «Пометить непрочитанным»
-	OnLink           func(url string)                  // клик по ссылке в тексте
-	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
+	OnNeedOlder      func()                                      // докрутили до верха, а на сервере есть ещё
+	OnOpenThread     func(rootID string)                         // открыть тред поста
+	OnToggleReaction func(p *model.Post, emoji string)           // поставить или снять свою реакцию
+	OnPickReaction   func(p *model.Post)                         // окно выбора эмодзи для реакции
+	OnPermalink      func(channelID, postID string)              // «Перейти к сообщению» в предпросмотре ссылки
+	OnRemovePreview  func(p *model.Post)                         // автор убирает предпросмотр ссылки
+	OnEditPost       func(p *model.Post)                         // «Изменить» своё сообщение
+	OnDeletePost     func(p *model.Post)                         // «Удалить…» своё сообщение
+	OnCopyLink       func(p *model.Post)                         // «Копировать ссылку на сообщение»
+	OnPin            func(p *model.Post, pin bool)               // «Закрепить в канале» / «Открепить»
+	OnSave           func(p *model.Post, save bool)              // «Сохранить» / «Убрать из сохранённых»
+	OnMarkUnread     func(p *model.Post)                         // «Пометить непрочитанным»
+	OnFollowThread   func(rootID, channelID string, follow bool) // «Подписаться на тред» / «Отписаться от треда»
+	OnLink           func(url string)                            // клик по ссылке в тексте
+	OnIntegration    func(p *model.Post)                         // клик по имени или аватару интеграции
 	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
 	// позиции; back — вернуть позицию и «играл ли», когда окно закроют.
 	OnFullscreenVideo func(fi *model.FileInfo, p *model.Post, path string, pos int64, playing bool, back func(pos int64, playing bool))
@@ -2221,6 +2225,18 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 				}
 				sv := menu.QWidget.AddActionWithText(label)
 				sv.OnTriggered(func() { f.OnSave(p, !saved) })
+			}
+			if f.OnFollowThread != nil && f.d.ThreadFollow != nil {
+				root := threadRoot(p)
+				if following, ok := f.d.ThreadFollow(root); ok {
+					label := "Подписаться на тред"
+					if following {
+						label = "Отписаться от треда"
+					}
+					fl := menu.QWidget.AddActionWithText(label)
+					channel := p.ChannelId
+					fl.OnTriggered(func() { f.OnFollowThread(root, channel, !following) })
+				}
 			}
 			if f.OnPin != nil {
 				label := "Закрепить в канале"

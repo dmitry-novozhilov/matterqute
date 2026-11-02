@@ -279,3 +279,46 @@ func (s *Server) React(userID, postID, emojiName string, added bool) {
 		s.react(p, &model.Reaction{UserId: userID, PostId: postID, EmojiName: emojiName, ChannelId: p.ChannelId, CreateAt: model.GetMillis()}, added)
 	}
 }
+
+// threadFollow — PUT/DELETE /users/{uid}/teams/{tid}/threads/{thid}/following:
+// подписаться на тред или отписаться; thread_follow_changed пользователю.
+func (s *Server) threadFollow(on bool) func(http.ResponseWriter, *http.Request, *model.User) {
+	return func(w http.ResponseWriter, r *http.Request, me *model.User) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		id := r.PathValue("thid")
+		root := s.post(id)
+		if root == nil || s.members[me.Id][root.ChannelId] == nil {
+			s.fail(w, http.StatusNotFound, "app.post.get.app_error")
+			return
+		}
+		if s.followers[id] == nil {
+			s.followers[id] = map[string]*threadMember{}
+		}
+		if on {
+			if s.followers[id][me.Id] == nil {
+				s.followers[id][me.Id] = &threadMember{}
+			}
+		} else {
+			delete(s.followers[id], me.Id)
+		}
+		ev := model.NewWebSocketEvent(model.WebsocketEventThreadFollowChanged, r.PathValue("tid"), "", me.Id, nil, "")
+		ev.Add("thread_id", id)
+		ev.Add("state", on)
+		ev.Add("reply_count", root.ReplyCount)
+		s.sendTo(me.Id, ev)
+		s.json(w, map[string]string{"status": "OK"})
+	}
+}
+
+// userThread — GET /users/{uid}/teams/{tid}/threads/{thid}: тред, на который подписан.
+func (s *Server) userThread(w http.ResponseWriter, r *http.Request, me *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.threadFor(r.PathValue("thid"), me.Id)
+	if t == nil {
+		s.fail(w, http.StatusNotFound, "app.thread.get_membership_for_user.app_error")
+		return
+	}
+	s.json(w, t)
+}

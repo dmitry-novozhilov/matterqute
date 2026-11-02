@@ -18,10 +18,47 @@ import (
 // контекстном меню сайдбара (на канале и на команде) и в меню «Файл»;
 // сайдбар обновляется по ответу и по событиям сервера.
 
-// menuItem — пункт контекстного меню; title "" — разделитель.
+// menuItem — пункт контекстного меню; title "" — разделитель, sub — подменю.
 type menuItem struct {
 	title string
 	do    func()
+	check menuCheck
+	sub   []menuItem
+}
+
+// menuCheck — галочка у пункта: нет, снята, стоит.
+type menuCheck int8
+
+const (
+	noCheck menuCheck = iota
+	unchecked
+	checked
+)
+
+func checkIf(on bool) menuCheck {
+	if on {
+		return checked
+	}
+	return unchecked
+}
+
+// fillMenu — пункты items в menu (с подменю и галочками).
+func fillMenu(menu *qt.QMenu, items []menuItem) {
+	for _, x := range items {
+		switch {
+		case x.title == "":
+			menu.AddSeparator()
+		case x.sub != nil:
+			fillMenu(menu.AddMenuWithTitle(x.title), x.sub)
+		default:
+			a := menu.QWidget.AddActionWithText(x.title)
+			if x.check != noCheck {
+				a.SetCheckable(true)
+				a.SetChecked(x.check == checked)
+			}
+			a.OnTriggered(x.do)
+		}
+	}
 }
 
 // sidebarMenu — правый клик по сайдбару.
@@ -36,13 +73,7 @@ func (m *MainWindow) sidebarMenu(pos *qt.QPoint) {
 	}
 	menu := qt.NewQMenu(m.sidebar.QWidget)
 	defer menu.DeleteLater()
-	for _, x := range items {
-		if x.title == "" {
-			menu.AddSeparator()
-			continue
-		}
-		menu.QWidget.AddActionWithText(x.title).OnTriggered(x.do)
-	}
+	fillMenu(menu, items)
 	menu.ExecWithPos(m.sidebar.Viewport().MapToGlobalWithQPoint(pos))
 }
 
@@ -50,8 +81,8 @@ func (m *MainWindow) sidebarMenu(pos *qt.QPoint) {
 func (m *MainWindow) sidebarItems(team, channelID string) []menuItem {
 	var out []menuItem
 	if team != "" {
-		out = append(out, menuItem{"Обзор каналов…", func() { m.showBrowseChannels(team) }},
-			menuItem{"Создать канал…", func() { m.showCreateChannel(team) }})
+		out = append(out, menuItem{title: "Обзор каналов…", do: func() { m.showBrowseChannels(team) }},
+			menuItem{title: "Создать канал…", do: func() { m.showCreateChannel(team) }})
 	}
 	ch := m.st.Channel(channelID)
 	if ch == nil {
@@ -59,19 +90,20 @@ func (m *MainWindow) sidebarItems(team, channelID string) []menuItem {
 	}
 	id := ch.Id
 	if m.st.Muted(id) {
-		out = append(out, menuItem{"Включить уведомления", func() { m.setMuted(id, false) }})
+		out = append(out, menuItem{title: "Включить уведомления", do: func() { m.setMuted(id, false) }})
 	} else {
-		out = append(out, menuItem{"Выключить уведомления", func() { m.setMuted(id, true) }})
+		out = append(out, menuItem{title: "Выключить уведомления", do: func() { m.setMuted(id, true) }})
 	}
+	out = append(out, menuItem{title: "Уведомления на рабочий стол", sub: m.notifyItems(ch)})
 	if link := m.channelLink(ch); link != "" {
-		out = append(out, menuItem{"Копировать ссылку на канал", func() {
+		out = append(out, menuItem{title: "Копировать ссылку на канал", do: func() {
 			qt.QGuiApplication_Clipboard().SetText(link)
 			m.message("Ссылка на канал скопирована")
 		}})
 	}
 	// Из главного канала команды сервер не выпускает — как веб-клиент, пункта нет.
 	if !ch.IsGroupOrDirect() && ch.Name != model.DefaultChannelName {
-		out = append(out, menuItem{}, menuItem{"Покинуть канал…", func() { m.confirmLeave(id) }})
+		out = append(out, menuItem{}, menuItem{title: "Покинуть канал…", do: func() { m.confirmLeave(id) }})
 	}
 	return out
 }
@@ -86,22 +118,73 @@ func (m *MainWindow) channelLink(ch *model.Channel) string {
 	return ""
 }
 
-// setMuted — выключить (muted) или включить уведомления канала.
+// notifyItems — «Уведомления на рабочий стол» канала: уровень (как в
+// профиле, все, упоминания, ничего), ответы в тредах (при свёрнутых
+// тредах), игнорировать @channel, @here, @all (не в личках), — как окно
+// настроек канала в веб-клиенте.
+func (m *MainWindow) notifyItems(ch *model.Channel) []menuItem {
+	id := ch.Id
+	level := m.st.NotifyProp(id, model.DesktopNotifyProp)
+	if level == "" {
+		level = model.ChannelNotifyDefault
+	}
+	profile := map[string]string{model.UserNotifyAll: "все", model.UserNotifyMention: "упоминания", model.UserNotifyNone: "ничего"}[m.s.Me.NotifyProps[model.DesktopNotifyProp]]
+	if profile == "" {
+		profile = "все"
+	}
+	set := func(key, value string) func() { return func() { m.setNotifyProp(id, key, value) } }
+	out := []menuItem{
+		{title: "Как в профиле (" + profile + ")", do: set(model.DesktopNotifyProp, model.ChannelNotifyDefault), check: checkIf(level == model.ChannelNotifyDefault)},
+		{title: "Все сообщения", do: set(model.DesktopNotifyProp, model.ChannelNotifyAll), check: checkIf(level == model.ChannelNotifyAll)},
+		{title: "Только упоминания", do: set(model.DesktopNotifyProp, model.ChannelNotifyMention), check: checkIf(level == model.ChannelNotifyMention)},
+		{title: "Ничего", do: set(model.DesktopNotifyProp, model.ChannelNotifyNone), check: checkIf(level == model.ChannelNotifyNone)},
+	}
+	if m.st.CRT() {
+		threads := m.st.NotifyProp(id, model.DesktopThreadsNotifyProp)
+		if threads == "" || threads == model.ChannelNotifyDefault {
+			threads = m.s.Me.NotifyProps[model.DesktopThreadsNotifyProp]
+		}
+		on := threads != model.UserNotifyMention // по умолчанию сервер — «все»
+		value := model.UserNotifyAll
+		if on {
+			value = model.UserNotifyMention
+		}
+		out = append(out, menuItem{}, menuItem{title: "Ответы в тредах, где я участвую", do: set(model.DesktopThreadsNotifyProp, value), check: checkIf(on)})
+	}
+	if !ch.IsGroupOrDirect() {
+		ignore := m.st.NotifyProp(id, model.IgnoreChannelMentionsNotifyProp) == model.IgnoreChannelMentionsOn
+		value := model.IgnoreChannelMentionsOn
+		if ignore {
+			value = model.IgnoreChannelMentionsOff
+		}
+		out = append(out, menuItem{}, menuItem{title: "Игнорировать @channel, @here, @all", do: set(model.IgnoreChannelMentionsNotifyProp, value), check: checkIf(ignore)})
+	}
+	return out
+}
+
+// setMuted — выключить (muted) или включить уведомления канала: как «Mute»
+// веб-клиента, mark_unread.
 func (m *MainWindow) setMuted(channelID string, muted bool) {
 	mark := model.ChannelMarkUnreadAll
 	if muted {
 		mark = model.ChannelMarkUnreadMention
 	}
+	m.setNotifyProp(channelID, model.MarkUnreadNotifyProp, mark)
+}
+
+// setNotifyProp — настройка уведомлений канала: на сервер, по ответу — в
+// store (потом то же придёт событием channel_member_updated).
+func (m *MainWindow) setNotifyProp(channelID, key, value string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
-		_, err := m.s.Client.UpdateChannelNotifyProps(ctx, channelID, m.s.Me.Id, map[string]string{model.MarkUnreadNotifyProp: mark})
+		_, err := m.s.Client.UpdateChannelNotifyProps(ctx, channelID, m.s.Me.Id, map[string]string{key: value})
 		m.ui(func() {
 			if err != nil {
-				m.fail("mute channel", fmt.Errorf("set mark_unread=%s in channel %s: %w", mark, channelID, err))
+				m.fail("channel notifications", fmt.Errorf("set %s=%s in channel %s: %w", key, value, channelID, err))
 				return
 			}
-			m.st.SetMuted(channelID, muted)
+			m.st.SetNotifyProp(channelID, key, value)
 			m.refreshItem(channelID)
 		})
 	}()

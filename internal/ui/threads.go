@@ -26,6 +26,7 @@ type ThreadPanel struct {
 	w           *qt.QWidget
 	head        *header
 	back        *qt.QToolButton // «к результатам поиска», когда тред открыли из них
+	follow      *qt.QToolButton // подписаться на тред и отписаться (follow.go)
 	feed        *Feed
 	composer    *Composer
 	unsubscribe func()
@@ -115,6 +116,7 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 					t.channelID = root.ChannelId
 				}
 				m.panel.head.set(nil, m.threadTitleHTML(t), "")
+				m.updateFollowButton()
 				m.panel.feed.SetPosts(t.tl.Posts, false)
 				m.panel.composer.SetEnabled(t.channelID != "")
 				m.panel.composer.Focus()
@@ -291,11 +293,14 @@ func (m *MainWindow) setupThreadsList() {
 			m.openThread(id)
 		}
 	})
+	l.SetContextMenuPolicy(qt.CustomContextMenu)
+	l.OnCustomContextMenuRequested(m.threadsListMenu)
 }
 
 // refreshThreads перерисовывает пункт «Треды» в сайдбаре и, если открыт, список.
 func (m *MainWindow) refreshThreads() {
 	m.refreshItem(threadsID)
+	m.updateFollowButton()
 	if m.current != threadsID {
 		return
 	}

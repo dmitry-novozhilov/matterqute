@@ -33,7 +33,7 @@ func TestChannels(t *testing.T) {
 		if got := strings.Join(titles(m.sidebarItems(dev, "")), "|"); got != "Обзор каналов…|Создать канал…" {
 			t.Errorf("team menu %q", got)
 		}
-		if got := strings.Join(titles(m.sidebarItems("", town)), "|"); got != "Выключить уведомления|Копировать ссылку на канал" {
+		if got := strings.Join(titles(m.sidebarItems("", town)), "|"); got != "Выключить уведомления|Уведомления на рабочий стол|Копировать ссылку на канал" {
 			t.Errorf("town-square menu %q", got)
 		}
 		backend := ""
@@ -42,7 +42,7 @@ func TestChannels(t *testing.T) {
 				backend = ch.Id
 			}
 		}
-		if got := strings.Join(titles(m.sidebarItems("", backend)), "|"); got != "Выключить уведомления|Копировать ссылку на канал||Покинуть канал…" {
+		if got := strings.Join(titles(m.sidebarItems("", backend)), "|"); got != "Выключить уведомления|Уведомления на рабочий стол|Копировать ссылку на канал||Покинуть канал…" {
 			t.Errorf("backend menu %q", got)
 		}
 		for _, ch := range m.st.DirectChannels() {

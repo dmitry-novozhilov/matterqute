@@ -278,6 +278,27 @@ func (s *Store) RemoveChannel(id string) {
 	delete(s.timelines, id)
 }
 
+// NotifyProp — настройка уведомлений участника в канале (desktop,
+// desktop_threads, ignore_channel_mentions, mark_unread); "" — не задана.
+func (s *Store) NotifyProp(channelID, key string) string {
+	if m := s.members[channelID]; m != nil {
+		return m.NotifyProps[key]
+	}
+	return ""
+}
+
+// SetNotifyProp — настройку поменяли, пока сервер не прислал участника сам.
+func (s *Store) SetNotifyProp(channelID, key, value string) {
+	m := s.members[channelID]
+	if m == nil {
+		return
+	}
+	if m.NotifyProps == nil {
+		m.NotifyProps = model.StringMap{}
+	}
+	m.NotifyProps[key] = value
+}
+
 // LastViewed — когда канал был прочитан в последний раз (мс); 0 — неизвестно.
 func (s *Store) LastViewed(channelID string) int64 {
 	if m := s.members[channelID]; m != nil {
@@ -493,6 +514,9 @@ func WithReaction(p *model.Post, r *model.Reaction, added bool) bool {
 }
 
 // Треды (CRT)
+
+// RemoveThread — отписались от треда: из списка тредов прочь.
+func (s *Store) RemoveThread(id string) { delete(s.threads, id) }
 
 func (s *Store) Thread(id string) *model.ThreadResponse { return s.threads[id] }
 

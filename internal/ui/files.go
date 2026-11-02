@@ -34,6 +34,7 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnPin = m.pinPost
 	f.OnSave = m.savePost
 	f.OnMarkUnread = func(p *model.Post) { m.markUnread(f, p) }
+	f.OnFollowThread = m.followThread
 }
 
 func (m *MainWindow) channelExists(name string) bool {

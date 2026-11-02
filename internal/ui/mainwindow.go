@@ -175,7 +175,8 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	}
 
 	deps := FeedDeps{Names: m.st.Username, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists, Log: m.log,
-		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage, Saved: m.st.Saved}
+		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage, Saved: m.st.Saved,
+		ThreadFollow: m.threadFollowing}
 	m.initFeeds(deps)
 
 	// Свои статусы со сроком истекают сами: раз в минуту перерисовываем, где они видны.
@@ -270,6 +271,13 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		m.showRight(m.search.w)
 	})
 	m.panel.back.SetVisible(false)
+	m.panel.follow = m.panel.head.addTool("", func() {
+		if t := m.thread; t != nil {
+			following, _ := m.threadFollowing(t.rootID)
+			m.followThread(t.rootID, t.channelID, !following)
+		}
+	})
+	m.panel.follow.SetVisible(false)
 	m.pinsBtn = m.head.addTool("Закреплённые в канале", func() { m.toggleList(listPinned) })
 	m.savedBtn = m.head.addTool("Сохранённые сообщения", func() { m.toggleList(listSaved) })
 	m.searchBtn = m.head.addTool("Поиск по сообщениям (Ctrl+F)", m.openSearch)
@@ -427,6 +435,7 @@ func (m *MainWindow) restyle() {
 	m.pinsBtn.SetIcon(icon("pin", Pal().Tx2, 18))
 	m.savedBtn.SetIcon(icon("bookmark", Pal().Tx2, 18))
 	m.panel.back.SetIcon(icon("arrow-left", Pal().Tx2, 18))
+	m.updateFollowButton()
 	m.refreshHeader()
 	m.sidebar.DoItemsLayout() // шрифт сайдбара мог поменяться — с ним высота строк
 	m.sidebar.Viewport().Update()

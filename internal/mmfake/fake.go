@@ -58,8 +58,9 @@ type Server struct {
 	conns     map[*wsConn]bool
 	// Категории сайдбара: «пользователь/команда» → (categories.go).
 	categories map[string]*userCategories
-	reminders  map[string]int64  // пост → когда напомнить, секунды
-	avatars    map[string][]byte // user id → загруженное фото
+	reminders  map[string]int64         // пост → когда напомнить, секунды
+	avatars    map[string][]byte        // user id → загруженное фото
+	history    map[string][]*model.Post // пост → прежние версии (правки), новые первыми
 }
 
 type wsConn struct {
@@ -98,6 +99,7 @@ func New(log *slog.Logger) *Server {
 		categories:       map[string]*userCategories{},
 		reminders:        map[string]int64{},
 		avatars:          map[string][]byte{},
+		history:          map[string][]*model.Post{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -161,6 +163,7 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("POST /api/v4/users/{uid}/posts/{pid}/reminder", s.auth(s.setReminder))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/patch", s.auth(s.patchUser))
 	s.mux.HandleFunc("POST /api/v4/files/search", s.auth(s.searchFiles))
+	s.mux.HandleFunc("GET /api/v4/posts/{pid}/edit_history", s.auth(s.editHistory))
 	s.mux.HandleFunc("POST /api/v4/teams/{tid}/files/search", s.auth(s.searchFiles))
 	s.mux.HandleFunc("POST /api/v4/users/{uid}/image", s.auth(s.setAvatar))
 	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/image", s.auth(s.setAvatar))
@@ -722,7 +725,12 @@ func (s *Server) patchPost(w http.ResponseWriter, r *http.Request, me *model.Use
 		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
 		return
 	}
-	if patch.Message != nil {
+	if patch.Message != nil && *patch.Message != p.Message {
+		// Прежняя версия — в историю правок, как у сервера: копия со
+		// ссылкой на пост и временем, когда её заменили.
+		old := p.Clone()
+		old.Id, old.OriginalId, old.DeleteAt = model.NewId(), p.Id, model.GetMillis()
+		s.history[p.Id] = append([]*model.Post{old}, s.history[p.Id]...)
 		p.Message = *patch.Message
 	}
 	if patch.Props != nil {

@@ -64,6 +64,7 @@ const (
 	videoLink     = "mm-video:"      // mm-video:<файл> — играть ролик в ленте (повторно — пауза)
 	moreLink      = "mm-more:"       // mm-more:<пост> — развернуть длинное сообщение
 	lessLink      = "mm-less:"       // mm-less:<пост> — свернуть его обратно
+	historyLink   = "mm-history:"    // mm-history:<пост> — история правок (своего поста)
 	spinnerSrc    = "spinner:24"     // ресурс с текущим кадром крутилки
 )
 
@@ -204,6 +205,7 @@ type Feed struct {
 	OnNeedOlder      func()                                      // докрутили до верха, а на сервере есть ещё
 	OnOpenThread     func(rootID string)                         // открыть тред поста
 	OnThreadWindow   func(rootID string)                         // «Открыть тред в отдельном окне»
+	OnEditHistory    func(p *model.Post)                         // щелчок по «(изменено)» у своего поста
 	OnToggleReaction func(p *model.Post, emoji string)           // поставить или снять свою реакцию
 	OnPickReaction   func(p *model.Post)                         // окно выбора эмодзи для реакции
 	OnPermalink      func(channelID, postID string)              // «Перейти к сообщению» в предпросмотре ссылки
@@ -1697,6 +1699,9 @@ func (f *Feed) bodyHTML(p *model.Post) string {
 	}
 	if p.EditAt > 0 {
 		edited := fmt.Sprintf(`<span style="font-size:12px;color:%s"> (изменено)</span>`, pal.Tx2)
+		if p.UserId == f.d.Me.Id && f.OnEditHistory != nil { // историю правок сервер показывает автору
+			edited = fmt.Sprintf(` <a href="%s%s" style="font-size:12px;color:%s;text-decoration:none">(изменено)</a>`, historyLink, p.Id, pal.Tx2)
+		}
 		if strings.HasSuffix(body, "</p>") {
 			body = strings.TrimSuffix(body, "</p>") + edited + "</p>"
 		} else {
@@ -2170,6 +2175,10 @@ func (f *Feed) onAnchor(link string) {
 		}
 	case strings.HasPrefix(link, threadLink):
 		f.openThread(strings.TrimPrefix(link, threadLink))
+	case strings.HasPrefix(link, historyLink):
+		if p := f.post(strings.TrimPrefix(link, historyLink)); p != nil && f.OnEditHistory != nil {
+			f.OnEditHistory(p)
+		}
 	case strings.HasPrefix(link, moreLink):
 		f.setExpanded(strings.TrimPrefix(link, moreLink), true)
 	case strings.HasPrefix(link, lessLink):

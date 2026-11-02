@@ -249,3 +249,21 @@ func (s *Server) userUpdated(u *model.User) {
 		c.write(data)
 	}
 }
+
+// editHistory — GET /posts/{pid}/edit_history: прежние версии своего поста
+// (чужого — отказ, как у сервера); правок не было — 404.
+func (s *Server) editHistory(w http.ResponseWriter, r *http.Request, me *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.post(r.PathValue("pid"))
+	switch {
+	case p == nil:
+		s.fail(w, http.StatusNotFound, "app.post.get.app_error")
+	case p.UserId != me.Id:
+		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
+	case len(s.history[p.Id]) == 0:
+		s.fail(w, http.StatusNotFound, "app.post.get_edit_history_for_post.app_error")
+	default:
+		s.json(w, s.history[p.Id])
+	}
+}

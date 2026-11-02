@@ -37,6 +37,7 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnFollowThread = m.followThread
 	f.OnRemind = m.remind
 	f.OnThreadWindow = m.openThreadWindow
+	f.OnEditHistory = func(p *model.Post) { m.showEditHistory(p) }
 	f.OnForward = func(p *model.Post) { m.showForward(p) }
 }
 

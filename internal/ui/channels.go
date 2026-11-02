@@ -136,9 +136,17 @@ func (m *MainWindow) leaveChannel(channelID string) {
 				m.fail("leave channel", fmt.Errorf("leave channel %s: %w", channelID, err))
 				return
 			}
+			// Сразу, без ожидания перезагрузки сайдбара (на настоящем сервере
+			// это несколько запросов): канал пропадает, открыт — вместо него
+			// канал по умолчанию.
 			if m.current == channelID {
-				m.current = "" // сайдбар откроет канал по умолчанию
+				m.current = ""
 			}
+			if t := m.thread; t != nil && t.channelID == channelID {
+				m.closeThread()
+			}
+			m.st.RemoveChannel(channelID)
+			m.fillSidebar()
 			m.reloadSidebar()
 		})
 	}()
@@ -154,15 +162,23 @@ func (m *MainWindow) joinChannel(ch *model.Channel, done func(err error)) {
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
-		_, _, err := m.s.Client.AddChannelMember(ctx, ch.Id, m.s.Me.Id)
+		member, _, err := m.s.Client.AddChannelMember(ctx, ch.Id, m.s.Me.Id)
 		m.ui(func() {
 			if err == nil {
-				m.selectAfterLoad = ch.Id
-				m.reloadSidebar()
+				m.addChannel(ch, member)
 			}
 			done(err)
 		})
 	}()
+}
+
+// addChannel — вошли в канал или создали его: в сайдбар и открыть сразу,
+// счётчики и остальное — перезагрузкой сайдбара следом.
+func (m *MainWindow) addChannel(ch *model.Channel, member *model.ChannelMember) {
+	m.st.AddChannel(ch, member)
+	m.selectAfterLoad = ch.Id
+	m.fillSidebar()
+	m.reloadSidebar()
 }
 
 // teamForAction — команда для «Обзор каналов» и «Создать канал» из меню:
@@ -372,8 +388,7 @@ func (m *MainWindow) showCreateChannel(team string) {
 				if !d.closed {
 					d.w.Close()
 				}
-				m.selectAfterLoad = created.Id
-				m.reloadSidebar()
+				m.addChannel(created, nil)
 			})
 		}()
 	})

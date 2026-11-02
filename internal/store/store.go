@@ -233,6 +233,22 @@ func (s *Store) SetMuted(channelID string, muted bool) {
 	}
 }
 
+// AddChannel — вошли в канал или создали его: в сайдбаре сразу, не дожидаясь
+// перезагрузки. member nil — пока без счётчиков (их принесёт перезагрузка).
+func (s *Store) AddChannel(ch *model.Channel, member *model.ChannelMember) {
+	s.channels[ch.Id] = ch
+	if member != nil {
+		s.members[ch.Id] = member
+	}
+}
+
+// RemoveChannel — вышли из канала: из сайдбара сразу, вместе с лентой.
+func (s *Store) RemoveChannel(id string) {
+	delete(s.channels, id)
+	delete(s.members, id)
+	delete(s.timelines, id)
+}
+
 // LastViewed — когда канал был прочитан в последний раз (мс); 0 — неизвестно.
 func (s *Store) LastViewed(channelID string) int64 {
 	if m := s.members[channelID]; m != nil {

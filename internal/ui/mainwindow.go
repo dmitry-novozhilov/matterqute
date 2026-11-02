@@ -6,6 +6,7 @@ import (
 	"html"
 	"log/slog"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -412,11 +413,26 @@ func (m *MainWindow) setConnection(c ConnState) {
 	}
 }
 
+// slowUI — дольше этого задача из горутины держит главный поток: окно
+// не отвечает. С MATTERQUTE_DEBUG=1 такие пишутся в лог с местом вызова ui.
+const slowUI = 100 * time.Millisecond
+
 // ui запускает f в главном потоке, если окно ещё живо.
 func (m *MainWindow) ui(f func()) {
+	var from string
+	if m.log.Enabled(context.Background(), slog.LevelDebug) {
+		if _, file, line, ok := runtime.Caller(1); ok {
+			from = fmt.Sprintf("%s:%d", filepath.Base(file), line)
+		}
+	}
 	mainthread.Start(func() {
-		if !m.closed {
-			f()
+		if m.closed {
+			return
+		}
+		start := time.Now()
+		f()
+		if d := time.Since(start); from != "" && d > slowUI {
+			m.log.Debug("main thread busy", "took", d.Round(time.Millisecond), "from", from)
 		}
 	})
 }

@@ -102,6 +102,26 @@ func TestUnreadAndMentions(t *testing.T) {
 	}
 }
 
+func TestAddRemoveChannel(t *testing.T) {
+	s, _, _ := newStore()
+	s.SetTimeline("ch", &Timeline{})
+	s.RemoveChannel("ch")
+	if s.Channel("ch") != nil || s.Timeline("ch") != nil || s.Muted("ch") || len(s.TeamChannels("t")) != 0 {
+		t.Error("channel, member or timeline left after RemoveChannel")
+	}
+	s.AddChannel(&model.Channel{Id: "new", TeamId: "t", Type: model.ChannelTypePrivate, TotalMsgCount: 3}, nil)
+	if got := s.TeamChannels("t"); len(got) != 1 || got[0].Id != "new" {
+		t.Errorf("TeamChannels after AddChannel = %v", got)
+	}
+	if unread, _ := s.Unread("new"); unread {
+		t.Error("channel without membership is unread")
+	}
+	s.AddChannel(s.Channel("new"), &model.ChannelMember{ChannelId: "new", UserId: "me", MsgCount: 1})
+	if unread, _ := s.Unread("new"); !unread {
+		t.Error("membership from AddChannel not used")
+	}
+}
+
 func TestOwnPostKeepsChannelRead(t *testing.T) {
 	s, ch, _ := newStore()
 	s.SetTimeline("ch", &Timeline{})

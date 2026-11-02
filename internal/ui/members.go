@@ -220,7 +220,7 @@ func (m *MainWindow) showMembers(channelID string) {
 	if ch == nil || m.membersShown() && mp.channel == channelID {
 		return
 	}
-	if m.thread != nil {
+	if m.thread != nil && !m.threadDetached() { // отстёгнутый тред правой колонке не мешает
 		m.closeThread()
 	}
 	mp.channel = channelID

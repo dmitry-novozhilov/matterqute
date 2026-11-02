@@ -83,6 +83,7 @@ type MainWindow struct {
 	mentionsBtn    *qt.QToolButton // упоминания — в шапке
 	manualUnread   map[string]bool // каналы и треды, помеченные непрочитанными: сами не отмечаем прочитанными (postactions.go)
 	threadsHead    *header
+	threadWin      *qt.QWidget // окно отстёгнутого треда; nil — тред в правой колонке
 	threadsList    *qt.QListWidget
 	panel          *ThreadPanel
 	thread         *threadView // открытый в панели тред; nil — панель закрыта
@@ -300,6 +301,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		}
 	})
 	m.panel.follow.SetVisible(false)
+	m.panel.detach = m.panel.head.addTool("В отдельном окне", m.toggleDetach)
 	m.members = m.newMembersPanel()
 	m.files = m.newFilesPanel()
 	m.membersBtn = m.head.addTool("Участники канала", m.toggleMembers)
@@ -464,6 +466,10 @@ func (m *MainWindow) Close() {
 	if m.closed {
 		return
 	}
+	if w := m.threadWin; w != nil { // окно треда — тоже, панель — на место
+		m.attachThread()
+		w.Close()
+	}
 	m.drafts.save(true) // набранное за последние доли секунды — тоже
 	m.saveState(true)
 	m.closed = true
@@ -501,6 +507,7 @@ func (m *MainWindow) restyle() {
 	m.mentionsBtn.SetIcon(icon("at-sign", Pal().Tx2, 18))
 	m.filesBtn.SetIcon(icon("file-text", Pal().Tx2, 18))
 	m.panel.back.SetIcon(icon("arrow-left", Pal().Tx2, 18))
+	m.updateDetachButton()
 	m.head.chev.SetPixmap(iconPixmap("chevron-down", Pal().Tx2, 14))
 	m.updateFollowButton()
 	m.refreshHeader()

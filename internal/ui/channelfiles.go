@@ -177,7 +177,7 @@ func (m *MainWindow) showFiles(channelID string) {
 	if ch == nil {
 		return
 	}
-	if m.thread != nil {
+	if m.thread != nil && !m.threadDetached() { // отстёгнутый тред правой колонке не мешает
 		m.closeThread()
 	}
 	if fp.channel != channelID {

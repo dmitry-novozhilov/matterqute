@@ -147,7 +147,7 @@ func searchTerms(q string) []string {
 
 // openSearch — Ctrl+F: панель поиска справа (тред закрывается), курсор в строке.
 func (m *MainWindow) openSearch() {
-	if m.thread != nil {
+	if m.thread != nil && !m.threadDetached() {
 		m.closeThread()
 	}
 	if m.search.list != "" {
@@ -172,6 +172,9 @@ func (m *MainWindow) closeSearch() {
 // rightPanels — что бывает в правой колонке, в порядке в разделителе после
 // сайдбара и центра.
 func (m *MainWindow) rightPanels() []*qt.QWidget {
+	if m.threadDetached() { // панель треда — в своём окне, не в разделителе
+		return []*qt.QWidget{m.search.w, m.members.w, m.files.w}
+	}
 	return []*qt.QWidget{m.panel.w, m.search.w, m.members.w, m.files.w}
 }
 

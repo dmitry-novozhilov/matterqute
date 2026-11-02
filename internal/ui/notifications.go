@@ -33,14 +33,12 @@ func (m *MainWindow) maybeNotify(e store.NewPost) {
 		return
 	}
 	p := e.Post
-	if m.w.IsActiveWindow() {
-		if m.st.CRT() && p.RootId != "" {
-			if t := m.thread; t != nil && t.rootID == p.RootId {
-				return
-			}
-		} else if p.ChannelId == m.current {
-			return
+	if m.st.CRT() && p.RootId != "" {
+		if t := m.thread; t != nil && t.rootID == p.RootId && m.threadOnScreen() {
+			return // тред перед глазами — в правой колонке или своём окне
 		}
+	} else if m.w.IsActiveWindow() && p.ChannelId == m.current {
+		return
 	}
 	m.withUsers([]string{p.UserId}, func() {
 		key := p.ChannelId

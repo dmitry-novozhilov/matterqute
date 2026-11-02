@@ -27,6 +27,7 @@ type ThreadPanel struct {
 	head        *header
 	back        *qt.QToolButton // «к результатам поиска», когда тред открыли из них
 	follow      *qt.QToolButton // подписаться на тред и отписаться (follow.go)
+	detach      *qt.QToolButton // в отдельное окно и обратно (threadwindow.go)
 	feed        *Feed
 	composer    *Composer
 	unsubscribe func()
@@ -85,8 +86,14 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 	m.panel.head.set(nil, m.threadTitleHTML(t), "")
 	m.panel.feed.Loading()
 	m.panel.feed.OnRetry = func() { m.openThread(rootID) }
-	m.panel.back.SetVisible(m.search.query != "" || m.search.list != "")
-	m.showRight(m.panel.w)
+	m.panel.back.SetVisible(!m.threadDetached() && (m.search.query != "" || m.search.list != ""))
+	if w := m.threadWin; w != nil {
+		w.Show()
+		w.Raise()
+		w.ActivateWindow()
+	} else {
+		m.showRight(m.panel.w)
+	}
 	m.panel.composer.SetEnabled(false)
 	m.panel.composer.SwitchTo(rootID)
 	crt := m.st.CRT()
@@ -116,6 +123,7 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 					t.channelID = root.ChannelId
 				}
 				m.panel.head.set(nil, m.threadTitleHTML(t), "")
+				m.updateThreadWindowTitle()
 				m.updateFollowButton()
 				m.panel.feed.SetPosts(t.tl.Posts, false)
 				m.panel.composer.SetEnabled(t.channelID != "")
@@ -145,6 +153,10 @@ func (m *MainWindow) threadTitleHTML(t *threadView) string {
 }
 
 func (m *MainWindow) closeThread() {
+	if w := m.threadWin; w != nil { // отстёгнут — окно прочь, панель на место
+		m.attachThread()
+		w.Close()
+	}
 	m.thread = nil
 	m.panel.w.SetVisible(false)
 	m.updateScheduledNotes()
@@ -188,7 +200,7 @@ func (m *MainWindow) applyToThread(p *model.Post) {
 			m.panel.feed.Upsert(p)
 		}
 	})
-	if m.st.CRT() && p.UserId != m.s.Me.Id && m.w.IsActiveWindow() && !m.manualUnread[t.rootID] {
+	if m.st.CRT() && p.UserId != m.s.Me.Id && m.threadOnScreen() && !m.manualUnread[t.rootID] {
 		m.markThreadRead(t.rootID, p.ChannelId)
 	}
 }

@@ -203,6 +203,7 @@ type Feed struct {
 
 	OnNeedOlder      func()                                      // докрутили до верха, а на сервере есть ещё
 	OnOpenThread     func(rootID string)                         // открыть тред поста
+	OnThreadWindow   func(rootID string)                         // «Открыть тред в отдельном окне»
 	OnToggleReaction func(p *model.Post, emoji string)           // поставить или снять свою реакцию
 	OnPickReaction   func(p *model.Post)                         // окно выбора эмодзи для реакции
 	OnPermalink      func(channelID, postID string)              // «Перейти к сообщению» в предпросмотре ссылки
@@ -2272,6 +2273,10 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 			if !f.d.Thread {
 				reply := menu.QWidget.AddActionWithText("Ответить в треде")
 				reply.OnTriggered(func() { f.openThread(threadRoot(p)) })
+				if f.OnThreadWindow != nil {
+					win := menu.QWidget.AddActionWithText("Открыть тред в отдельном окне")
+					win.OnTriggered(func() { f.OnThreadWindow(threadRoot(p)) })
+				}
 			}
 			// Эмодзи в QMenu не кладём: шрифт меню выбирает система, и они
 			// бывают чёрно-белыми. Выбор — в своём окне, эмодзи там картинками.

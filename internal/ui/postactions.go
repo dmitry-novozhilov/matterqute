@@ -215,7 +215,7 @@ func (m *MainWindow) toggleList(kind string) {
 // вместо поиска, тем же видом (где · когда · Перейти), новые сверху.
 func (m *MainWindow) showList(kind string) {
 	sp := m.search
-	if m.thread != nil {
+	if m.thread != nil && !m.threadDetached() { // отстёгнутый тред правой колонке не мешает
 		m.closeThread()
 	}
 	channel := m.current

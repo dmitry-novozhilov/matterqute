@@ -257,3 +257,92 @@ func (pp *peoplePicker) ids() []string {
 	}
 	return out
 }
+
+// showNewMessage — «Новое личное сообщение…» (Ctrl+Shift+K, как в
+// веб-клиенте): один человек — личка с ним, несколько (до 7, вместе с вами
+// 8 — предел сервера) — групповая; такая уже есть — откроется она.
+// Кандидаты — с кем есть лички (недавние выше), другие известные и, по
+// запросу, поиск по серверу. Возвращает окно выбора (тесты).
+func (m *MainWindow) showNewMessage() *peoplePicker {
+	d := newDialog(m.w, "Новое личное сообщение")
+	m.channelDialog = d
+	d.w.SetMinimumWidth(460)
+	note := qt.NewQLabel3("Один человек — личка, несколько — групповая (до 7 человек).")
+	note.SetProperty("role", qt.NewQVariant11("hint"))
+	note.SetWordWrap(true)
+	d.lay.AddWidget(note.QWidget)
+	local := func(q string) []*model.User {
+		recent := map[string]int64{}
+		for _, ch := range m.st.DirectChannels() {
+			if ch.Type == model.ChannelTypeDirect {
+				recent[m.st.DMPeer(ch)] = max(ch.LastPostAt, 1)
+			}
+		}
+		users := m.st.KnownUsers()
+		slices.SortFunc(users, func(a, b *model.User) int {
+			if c := cmp.Compare(recent[b.Id], recent[a.Id]); c != 0 {
+				return c
+			}
+			return cmp.Compare(strings.ToLower(a.Username), strings.ToLower(b.Username))
+		})
+		return users
+	}
+	remote := func(ctx context.Context, q string) ([]*model.User, error) {
+		if q == "" {
+			return nil, nil
+		}
+		users, _, err := m.s.Client.SearchUsers(ctx, &model.UserSearch{Term: q, Limit: peopleLimit})
+		return users, err
+	}
+	pp := m.newPeoplePicker(d, model.ChannelGroupMaxUsers-1, local, remote)
+	d.bottom.AddStretch()
+	cancel := qt.NewQPushButton3("Отмена")
+	cancel.OnClicked(func() { d.w.Close() })
+	ok := qt.NewQPushButton3("Написать")
+	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetEnabled(false)
+	pp.OnChange = func() { ok.SetEnabled(len(pp.chosen) > 0) }
+	pp.OnSubmit = func() {
+		ids := pp.ids()
+		switch len(ids) {
+		case 0:
+			return
+		case 1:
+			d.w.Close()
+			m.openDM(ids[0])
+			return
+		}
+		ok.SetEnabled(false)
+		pp.hint.SetText("Создаём…")
+		go func() {
+			ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
+			defer cancel()
+			ch, _, err := m.s.Client.CreateGroupChannel(ctx, append(ids, m.s.Me.Id))
+			m.ui(func() {
+				if err != nil {
+					m.log.Warn("create group channel", "users", ids, "err", err)
+					if !d.closed {
+						ok.SetEnabled(true)
+						pp.hint.SetText("Не создана: " + commandError(err))
+					}
+					return
+				}
+				if !d.closed {
+					d.w.Close()
+				}
+				if m.items[ch.Id] != nil {
+					m.selectChannel(ch.Id)
+					return
+				}
+				m.selectAfterLoad = ch.Id
+				m.reloadSidebar()
+			})
+		}()
+	}
+	ok.OnClicked(pp.OnSubmit)
+	d.bottom.AddWidget(cancel.QWidget)
+	d.bottom.AddWidget(ok.QWidget)
+	d.w.Show()
+	pp.field.SetFocus()
+	return pp
+}

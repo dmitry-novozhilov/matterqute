@@ -38,6 +38,7 @@ type Shell struct {
 	trayAct    *qt.QAction // «Вид → Значок в трее…»
 	browseAct  *qt.QAction // «Обзор каналов…» и «Создать канал…»: есть, когда вошли
 	switchAct  *qt.QAction // «Перейти к каналу…»
+	newMsgAct  *qt.QAction // «Новое личное сообщение…»
 	createAct  *qt.QAction
 	typingActs [2]*qt.QAction // «Вид → «Печатает…»»: показывать, сообщать
 	alertAct   *qt.QAction    // «Вид → Мигать на панели задач»
@@ -60,6 +61,7 @@ type Shell struct {
 	OnTrayColors     func() // «Вид → Значок в трее…»
 	OnBrowseChannels func() // «Файл → Обзор каналов…» — на текущем сервере
 	OnSwitcher       func() // «Файл → Перейти к каналу…» — на текущем сервере
+	OnNewMessage     func() // «Файл → Новое личное сообщение…»
 	OnCreateChannel  func() // «Файл → Создать канал…»
 }
 
@@ -92,6 +94,13 @@ func NewShell() *Shell {
 	s.switchAct.OnTriggered(func() {
 		if s.OnSwitcher != nil {
 			s.OnSwitcher()
+		}
+	})
+	// Сочетание у действия окна сервера: в меню — только подпись (см. Ctrl+K).
+	s.newMsgAct = file.QWidget.AddActionWithText("Новое личное сообщение…\tCtrl+Shift+K")
+	s.newMsgAct.OnTriggered(func() {
+		if s.OnNewMessage != nil {
+			s.OnNewMessage()
 		}
 	})
 	s.browseAct = file.QWidget.AddActionWithText("Обзор каналов…")

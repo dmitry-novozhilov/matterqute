@@ -68,6 +68,9 @@ func (m *MainWindow) sidebarMenu(pos *qt.QPoint) {
 		return
 	}
 	items := m.sidebarItems(it.Data(0, teamRole).ToString(), it.Data(0, channelIDRole).ToString())
+	if it.Data(0, groupRole).ToString() != "" && it.Data(0, teamRole).ToString() == "" { // «Личные сообщения»
+		items = []menuItem{{title: "Новое личное сообщение…", do: func() { m.showNewMessage() }}}
+	}
 	if len(items) == 0 {
 		return
 	}

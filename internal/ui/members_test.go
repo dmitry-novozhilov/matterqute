@@ -200,3 +200,68 @@ func TestChannelSettings(t *testing.T) {
 		}
 	})
 }
+
+// Новое личное сообщение: один — личка, несколько — групповая; кандидаты —
+// сначала те, с кем есть лички, остальные — поиском по серверу.
+func TestNewMessage(t *testing.T) {
+	_, s := startFake(t, model.CollapsedThreadsAlwaysOn)
+	onMain(func() {
+		m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
+		defer m.Close()
+		if openTown(t, m) == nil {
+			return
+		}
+		pp := m.showNewMessage()
+		if len(pp.shown) < 2 || pp.shown[0].Username != "bob" || pp.shown[1].Username != "carol" {
+			var got []string
+			for _, u := range pp.shown {
+				got = append(got, u.Username)
+			}
+			t.Errorf("candidates %v", got)
+		}
+		// erin клиенту не знакома — её находит сервер.
+		pp.field.SetText("эри")
+		if !waitFor(t, "erin from server", func() bool { return len(pp.shown) == 1 && pp.shown[0].Username == "erin" }) {
+			return
+		}
+		pp.pick()
+		pp.field.SetText("bob")
+		pp.pick()
+		if got := len(pp.chosen); got != 2 {
+			t.Errorf("chosen %d", got)
+		}
+		shotWidget(t, m.channelDialog.w.QWidget, "new-message")
+		pp.OnSubmit()
+		if !waitFor(t, "group message opened", func() bool {
+			ch := m.st.Channel(m.current)
+			return ch != nil && ch.Type == model.ChannelTypeGroup && strings.Contains(ch.DisplayName, "erin") && m.channelDialog.closed
+		}) {
+			return
+		}
+
+		// Один человек — личка с ним.
+		pp = m.showNewMessage()
+		pp.field.SetText("carol")
+		pp.pick()
+		pp.OnSubmit()
+		if !waitFor(t, "DM opened", func() bool {
+			ch := m.st.Channel(m.current)
+			return ch != nil && ch.Type == model.ChannelTypeDirect && m.st.DMPeer(ch) == m.st.UserByName("carol").Id
+		}) {
+			return
+		}
+
+		// Больше 7 не выбрать.
+		pp = m.showNewMessage()
+		for range 8 {
+			pp.chosen = append(pp.chosen, &model.User{Id: model.NewId(), Username: "x"})
+		}
+		pp.chosen = pp.chosen[:7]
+		pp.changed()
+		pp.field.SetText("dave")
+		if pp.pick(); len(pp.chosen) != 7 || !strings.Contains(pp.hint.Text(), "больше нельзя") {
+			t.Errorf("limit: chosen %d, hint %q", len(pp.chosen), pp.hint.Text())
+		}
+		m.channelDialog.w.Close()
+	})
+}

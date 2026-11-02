@@ -193,20 +193,3 @@ func (s *Server) Last(channelID string) *model.Post {
 	}
 	return nil
 }
-
-// EditPost — автор правит пост (как бот, дописывающий «UPD»): всем в канале
-// post_edited; для тестов.
-func (s *Server) EditPost(id, message string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	p := s.post(id)
-	if p == nil {
-		return
-	}
-	p.Message = message
-	p.EditAt, p.UpdateAt = model.GetMillis(), model.GetMillis()
-	postJSON, _ := json.Marshal(p)
-	ev := model.NewWebSocketEvent(model.WebsocketEventPostEdited, "", p.ChannelId, "", nil, "")
-	ev.Add("post", string(postJSON))
-	s.sendToChannel(p.ChannelId, ev)
-}

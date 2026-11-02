@@ -112,12 +112,12 @@ type MainWindow struct {
 
 	OnChannelOpened   func(id string)
 	OnConnection      func(ConnState)
-	OnMessage         func(text string)                // короткое сообщение в строке состояния окна
-	OnColumnsChanged  func(sidebar, thread int)        // пользователь передвинул разделитель
-	OnRaise           func()                           // показать окно поверх остальных (клик по уведомлению)
-	OnCounts          func(Counts)                     // изменилось, сколько ждёт сообщений (трей)
-	OnOtherServerLink func(link string) bool           // ссылка на другой добавленный сервер: открыть там; false — не он
-	OnOwnStatus       func(pm *qt.QPixmap, tip string) // свой статус: эмодзи и подсказка, nil — нет
+	OnMessage         func(text string)                      // короткое сообщение в строке состояния окна
+	OnColumnsChanged  func(sidebar, thread int)              // пользователь передвинул разделитель
+	OnRaise           func()                                 // показать окно поверх остальных (клик по уведомлению)
+	OnCounts          func(Counts)                           // изменилось, сколько ждёт сообщений (трей)
+	OnOtherServerLink func(link string) bool                 // ссылка на другой добавленный сервер: открыть там; false — не он
+	OnOwnStatus       func(pm *qt.QPixmap, text, tip string) // свой статус: эмодзи, текст и подсказка, nil — нет
 }
 
 // Ширины колонок по дизайну: сайдбар 240 (от 180 до 360), тред 380 (от 280).

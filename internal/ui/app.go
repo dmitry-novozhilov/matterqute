@@ -43,14 +43,15 @@ type App struct {
 
 // server — сервер из списка: окно, если вошли, иначе страница входа.
 type server struct {
-	url     string
-	main    *MainWindow
-	login   *LoginView
-	conn    ConnState
-	counts  Counts
-	mood    *qt.QPixmap // свой статус на этом сервере (эмодзи) и подсказка
-	moodTip string
-	pending string // путь из ссылки снаружи: открыть, когда войдём
+	url      string
+	main     *MainWindow
+	login    *LoginView
+	conn     ConnState
+	counts   Counts
+	mood     *qt.QPixmap // свой статус на этом сервере: эмодзи, текст, подсказка
+	moodText string
+	moodTip  string
+	pending  string // путь из ссылки снаружи: открыть, когда войдём
 }
 
 // SetNotifier включает уведомления рабочего стола; звать до Start.
@@ -190,7 +191,7 @@ func (a *App) activate(sv *server) {
 		sv.main.SetColumns(a.cfg.Window.Sidebar, a.cfg.Window.Thread)
 		a.shell.SetPage(sv.main.Widget())
 		a.shell.SetUser(sv.main.s.Me.Username, sv.url)
-		a.shell.SetMood(sv.mood, sv.moodTip)
+		a.shell.SetMood(sv.mood, sv.moodText, sv.moodTip)
 	} else {
 		a.shell.SetPage(sv.login.Widget())
 		a.shell.SetUser("", "")
@@ -529,10 +530,10 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool) {
 		m.OpenPath(sv.pending)
 		sv.pending = ""
 	}
-	m.OnOwnStatus = func(pm *qt.QPixmap, tip string) {
-		sv.mood, sv.moodTip = pm, tip
+	m.OnOwnStatus = func(pm *qt.QPixmap, text, tip string) {
+		sv.mood, sv.moodText, sv.moodTip = pm, text, tip
 		if sv == a.active {
-			a.shell.SetMood(pm, tip)
+			a.shell.SetMood(pm, text, tip)
 		}
 	}
 	m.OnMessage = func(text string) {

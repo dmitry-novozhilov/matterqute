@@ -35,8 +35,8 @@ func TestStatus(t *testing.T) {
 		m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
 		defer m.Close()
 		var mood *qt.QPixmap
-		var moodTip string
-		m.OnOwnStatus = func(pm *qt.QPixmap, tip string) { mood, moodTip = pm, tip }
+		var moodText, moodTip string
+		m.OnOwnStatus = func(pm *qt.QPixmap, text, tip string) { mood, moodText, moodTip = pm, text, tip }
 		if openTown(t, m) == nil {
 			return
 		}
@@ -132,8 +132,8 @@ func TestStatus(t *testing.T) {
 		}) {
 			return
 		}
-		if !strings.HasPrefix(moodTip, "На встрече · до ") {
-			t.Errorf("status bar tip %q", moodTip)
+		if !strings.HasPrefix(moodTip, "На встрече · до ") || moodText != "На встрече" {
+			t.Errorf("status bar text %q, tip %q", moodText, moodTip)
 		}
 		u, _, err := m.s.Client.GetMe(ctx, "")
 		if cs := u.GetCustomStatus(); err != nil || cs == nil || cs.Text != "На встрече" || cs.ExpiresAt.Before(time.Now().Add(50*time.Minute)) {
@@ -154,4 +154,34 @@ func labelText(o *qt.QObject, text string) *qt.QLabel {
 		}
 	}
 	return nil
+}
+
+// Строка состояния: эмодзи своего статуса и его текст рядом с @user.
+func TestShellMood(t *testing.T) {
+	onMain(func() {
+		s := NewShell()
+		defer s.w.Close()
+		s.SetUser("alice", "https://mm.example.com")
+		s.SetMood(qt.NewQPixmap2(16, 16), "На встрече", "На встрече · до 15:30")
+		if s.mood.IsHidden() || s.moodText.IsHidden() || s.moodText.Text() != "На встрече" || s.moodText.ToolTip() != "На встрече · до 15:30" {
+			t.Errorf("mood: icon hidden %v, text %q hidden %v, tip %q", s.mood.IsHidden(), s.moodText.Text(), s.moodText.IsHidden(), s.moodText.ToolTip())
+		}
+		s.w.Resize(900, 400)
+		s.w.Show()
+		settle()
+		shotWidget(t, s.w.StatusBar().QWidget, "status-bar-mood")
+		long := strings.Repeat("очень длинный статус ", 20)
+		s.SetMood(qt.NewQPixmap2(16, 16), long, long)
+		if text := s.moodText.Text(); !strings.HasSuffix(text, "…") || s.moodText.FontMetrics().HorizontalAdvance(text) > moodWidth {
+			t.Errorf("long status not elided: %q", text)
+		}
+		s.SetMood(qt.NewQPixmap2(16, 16), "", "до 15:30") // только эмодзи
+		if s.mood.IsHidden() || !s.moodText.IsHidden() {
+			t.Error("emoji-only status shows text")
+		}
+		s.SetMood(nil, "", "")
+		if !s.mood.IsHidden() || !s.moodText.IsHidden() {
+			t.Error("cleared status still shown")
+		}
+	})
 }

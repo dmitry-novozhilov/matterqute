@@ -65,10 +65,10 @@ func (m *MainWindow) ownStatusChanged() {
 	}
 	cs := status.Current(m.me(), time.Now())
 	if cs == nil {
-		m.OnOwnStatus(nil, "")
+		m.OnOwnStatus(nil, "", "")
 		return
 	}
-	m.OnOwnStatus(m.statusPixmap(cs, 16, m.ownStatusChanged), statusTip(cs))
+	m.OnOwnStatus(m.statusPixmap(cs, 16, m.ownStatusChanged), cs.Text, statusTip(cs))
 }
 
 // presences — присутствие в панели статуса.

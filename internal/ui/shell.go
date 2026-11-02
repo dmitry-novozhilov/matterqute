@@ -26,6 +26,7 @@ type Shell struct {
 	stack    *qt.QStackedWidget
 	user     *qt.QLabel
 	mood     *qt.QLabel // свой статус: эмодзи рядом с @user
+	moodText *qt.QLabel // и его текст
 	server   *qt.QLabel
 	myStatus *qt.QAction
 	dot      *qt.QLabel
@@ -191,9 +192,10 @@ func NewShell() *Shell {
 
 	s.user = qt.NewQLabel2()
 	s.mood = qt.NewQLabel2()
+	s.moodText = qt.NewQLabel2()
 	s.server = qt.NewQLabel2()
 	// Клик по своему имени или статусу — панель статуса, как аватар в веб-клиенте.
-	for _, l := range []*qt.QLabel{s.user, s.mood} {
+	for _, l := range []*qt.QLabel{s.user, s.mood, s.moodText} {
 		l.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
 		l.SetToolTip("Статус")
 		l.OnMousePressEvent(func(_ func(*qt.QMouseEvent), e *qt.QMouseEvent) {
@@ -209,7 +211,12 @@ func NewShell() *Shell {
 	ll.SetContentsMargins(10, 0, 0, 0)
 	ll.SetSpacing(8)
 	ll.AddWidget(s.user.QWidget)
-	ll.AddWidget(s.mood.QWidget)
+	mood := qt.NewQHBoxLayout2() // эмодзи и текст — вплотную
+	mood.SetSpacing(4)
+	mood.AddWidget(s.mood.QWidget)
+	mood.AddWidget(s.moodText.QWidget)
+	ll.AddLayout(mood.QLayout)
+	ll.AddSpacing(4)
 	ll.AddWidget(s.server.QWidget)
 	right := qt.NewQWidget2()
 	rl := qt.NewQHBoxLayout(right)
@@ -253,23 +260,32 @@ func (s *Shell) SetUser(username, serverURL string) {
 	if username == "" {
 		s.user.SetText("")
 		s.server.SetText("")
-		s.SetMood(nil, "")
+		s.SetMood(nil, "", "")
 		return
 	}
 	s.user.SetText("@" + username)
 	s.server.SetText(hostOf(serverURL))
 }
 
-// SetMood — свой статус рядом с @user: эмодзи и подсказка; nil — статуса нет.
-func (s *Shell) SetMood(pm *qt.QPixmap, tip string) {
+// moodWidth — дальше текст своего статуса в строке состояния обрезается «…».
+const moodWidth = 280
+
+// SetMood — свой статус рядом с @user: эмодзи, текст (длинный — обрезан,
+// целиком — в подсказке) и подсказка с текстом и сроком; nil — статуса нет.
+func (s *Shell) SetMood(pm *qt.QPixmap, text, tip string) {
 	if pm == nil {
 		s.mood.Clear()
 		s.mood.SetVisible(false)
+		s.moodText.Clear()
+		s.moodText.SetVisible(false)
 		return
 	}
 	s.mood.SetPixmap(pm)
 	s.mood.SetToolTip(tip)
 	s.mood.SetVisible(true)
+	s.moodText.SetText(s.moodText.FontMetrics().ElidedText(text, qt.ElideRight, moodWidth))
+	s.moodText.SetToolTip(tip)
+	s.moodText.SetVisible(text != "")
 }
 
 // SetServers — меню «Сервер» (решение 6d): текущий сервер с галочкой, у
@@ -353,6 +369,7 @@ func (s *Shell) restyle() {
 	s.dot.SetPixmap(dotPixmap(color, 8))
 	s.user.SetStyleSheet(fmt.Sprintf("font-weight:600;color:%s", p.Tx))
 	s.server.SetStyleSheet("color:" + p.Tx2)
+	s.moodText.SetStyleSheet("color:" + p.Tx) // свой текст, а не служебное: темнее адреса сервера
 	s.status.SetStyleSheet("color:" + p.Tx2)
 }
 

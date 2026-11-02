@@ -2,33 +2,46 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 
+	"matterqute/internal/config"
 	"matterqute/internal/qtx"
 	"matterqute/internal/theme"
 )
 
-// Tray — значок в системном трее: монохромный знак в цвет панели и счётчик
-// упоминаний поверх (внутри картинки, по дизайну), меню «Открыть», «Выход».
+// Tray — значок в системном трее: облачко с «#» в цвет панели; когда есть
+// новое, вместо «#» — число: облачко зелёное, если новые сообщения только в
+// каналах, и красное, если есть сообщения мне (упоминания, лички). Цвета —
+// «Вид → Значок в трее…». Меню: «Открыть», «Выход».
 type Tray struct {
-	icon     *qt.QSystemTrayIcon
-	count    *qt.QAction // «2 упоминания», только когда они есть
-	mentions int64
+	icon   *qt.QSystemTrayIcon
+	count  *qt.QAction // «2 упоминания», «5 новых сообщений» — только когда есть
+	counts Counts
+	colors config.Tray
 
 	OnOpen func()
 	OnQuit func()
 }
 
+// Counts — что ждёт на сервере: сообщения мне (упоминания и непрочитанные
+// лички) и вообще новые сообщения в незаглушённых каналах.
+type Counts struct{ Mentions, Unread int64 }
+
+func (c Counts) add(o Counts) Counts {
+	return Counts{Mentions: c.Mentions + o.Mentions, Unread: c.Unread + o.Unread}
+}
+
 // NewTray — значок в трее; nil, если трея нет (GNOME без расширения
 // AppIndicator, offscreen).
-func NewTray() *Tray {
+func NewTray(colors config.Tray) *Tray {
 	if !qt.QSystemTrayIcon_IsSystemTrayAvailable() {
 		return nil
 	}
-	t := &Tray{icon: qt.NewQSystemTrayIcon()}
+	t := &Tray{icon: qt.NewQSystemTrayIcon(), colors: colors}
 	menu := qt.NewQMenu2()
 	open := menu.QWidget.AddActionWithText("Открыть matterqute")
 	open.OnTriggered(func() { t.open() })
@@ -47,8 +60,8 @@ func NewTray() *Tray {
 			t.open()
 		}
 	})
-	t.SetMentions(0)
-	qtx.WatchSystemScheme(func(bool) { t.SetMentions(t.mentions) })
+	t.refresh()
+	qtx.WatchSystemScheme(func(bool) { t.refresh() })
 	t.icon.Show()
 	return t
 }
@@ -59,17 +72,60 @@ func (t *Tray) open() {
 	}
 }
 
-// SetMentions — сколько упоминаний и непрочитанных личных сообщений ждёт.
-func (t *Tray) SetMentions(n int64) {
-	t.mentions = n
-	t.icon.SetIcon(trayIcon(trayPanelDark(), badgeText(n)))
-	t.count.SetVisible(n > 0)
+// SetCounts — сколько ждёт сообщений мне и новых вообще (сумма по серверам).
+func (t *Tray) SetCounts(c Counts) {
+	t.counts = c
+	t.refresh()
+}
+
+// SetColors — цвета из «Вид → Значок в трее…»; пустые — по панели.
+func (t *Tray) SetColors(c config.Tray) {
+	t.colors = c
+	t.refresh()
+}
+
+func (t *Tray) refresh() {
+	color, text, what := trayLook(t.counts, trayColors(t.colors, trayPanelDark()))
+	t.icon.SetIcon(trayIcon(color, text))
+	t.count.SetVisible(what != "")
 	tip := "matterqute"
-	if n > 0 {
-		t.count.SetText(pluralMentions(n))
-		tip += " — " + pluralMentions(n)
+	if what != "" {
+		t.count.SetText(what)
+		tip += " — " + what
 	}
 	t.icon.SetToolTip(tip)
+}
+
+// trayLook — цвет облачка, число в нём (пусто — «#») и подпись для меню и
+// подсказки: сообщения мне важнее прочих новых.
+func trayLook(c Counts, colors config.Tray) (color, text, what string) {
+	switch {
+	case c.Mentions > 0:
+		return colors.Mentions, badgeText(c.Mentions), pluralMentions(c.Mentions)
+	case c.Unread > 0:
+		return colors.Unread, badgeText(c.Unread), plural(c.Unread, "новое сообщение", "новых сообщения", "новых сообщений")
+	}
+	return colors.Idle, "", ""
+}
+
+// trayColors — цвета значка: заданные (если это цвет) или по умолчанию для
+// панели: текст панели, «хорошо» и «опасно» из темы.
+func trayColors(c config.Tray, dark bool) config.Tray {
+	pal := theme.Light
+	if dark {
+		pal = theme.Dark
+	}
+	pick := func(set, def string) string {
+		if set != "" && qt.NewQColor6(set).IsValid() {
+			return set
+		}
+		return def
+	}
+	return config.Tray{
+		Idle:     pick(c.Idle, pal.Tx),
+		Unread:   pick(c.Unread, pal.Good),
+		Mentions: pick(c.Mentions, pal.Dang),
+	}
 }
 
 // trayPanelDark — панель тёмная: у GNOME верхняя панель тёмная всегда, у
@@ -105,55 +161,100 @@ func plural(n int64, one, few, many string) string {
 	return fmt.Sprintf("%d %s", n, many)
 }
 
-func trayIcon(dark bool, badge string) *qt.QIcon {
+// traySizes — размеры значка: трей берёт ближайший и масштабирует, поэтому
+// каждый нарисован отдельно и по пикселям, без DPR (SNI шлёт их как есть).
+var traySizes = []int{16, 20, 22, 24, 32, 40, 44, 48, 64}
+
+func trayIcon(color, text string) *qt.QIcon {
 	ic := qt.NewQIcon()
-	for _, size := range []int{16, 22, 24, 32, 48} {
-		ic.AddPixmap(trayPixmap(size, dark, badge))
+	for _, size := range traySizes {
+		ic.AddPixmap(trayPixmap(size, color, text))
 	}
 	return ic
 }
 
-// trayPixmap — знак «облачко с #» без плитки (AppIcon, режим mono): облачко
-// цвета панельного текста, «#» вырезана насквозь; счётчик — в правом верхнем углу.
-func trayPixmap(size int, dark bool, badge string) *qt.QPixmap {
-	ink, badgeBg, badgeFg := "#211d18", "#c13c36", "#fcfcfc"
-	if dark {
-		ink, badgeBg, badgeFg = "#e9e6e1", "#ea6b60", "#1b1916"
-	}
-	px := size * resourceDPR
-	img := qt.NewQImage3(px, px, qt.QImage__Format_ARGB32_Premultiplied)
-	img.SetDevicePixelRatio(resourceDPR)
+// trayBox — где в значке size×size облачко и знак внутри него; всё в целых
+// пикселях, чтобы прямые края «#» не размывались.
+type trayBox struct {
+	top, h           int // облачко: во всю ширину, по высоте — top…top+h
+	x, y, side       int // квадрат «#» (и высота числа)
+	stroke, overhang int
+}
+
+func trayLayout(size int) trayBox {
+	b := trayBox{h: int(math.Round(float64(size) * 0.82)), side: int(math.Round(float64(size) * 0.5))}
+	b.top = (size - b.h) / 2
+	b.x = (size - b.side) / 2
+	b.y = b.top + (b.h-b.side)/2
+	b.stroke = max(2, int(math.Round(float64(size)*0.085)))
+	b.overhang = int(math.Round(float64(b.side) * 0.18))
+	return b
+}
+
+// trayPixmap — знак «облачко с #» без плитки (AppIcon, режим mono) размером
+// size физических пикселей: облачко цвета color, «#» (или text — число)
+// вырезан насквозь, сквозь него видно панель.
+func trayPixmap(size int, color, text string) *qt.QPixmap {
+	img := qt.NewQImage3(size, size, qt.QImage__Format_ARGB32_Premultiplied)
 	img.Fill2(qt.Transparent)
 	p := qt.NewQPainter2(img.QPaintDevice)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
-	p.SetRenderHint(qt.QPainter__TextAntialiasing)
-	// Макет рисует знак на поле 192 и в трее показывает середину 140×140.
-	k := float64(size) / 140
-	at := func(v float64) float64 { return (v - 26) * k }
-	drawBubble(p, at(34), at(38), 124*k, 108*k, 54*k, 12*k, ink)
+	b := trayLayout(size)
+	h := float64(b.h)
+	drawBubble(p, 0, float64(b.top), float64(size), h, h/2, max(1, math.Round(h*0.11)), color)
 	p.SetCompositionMode(qt.QPainter__CompositionMode_Clear)
-	drawHash(p, at(34), at(38), 124*k, 108*k, 72*k, "#000000") // цвет не важен: режим Clear
-	p.SetCompositionMode(qt.QPainter__CompositionMode_SourceOver)
-
-	if badge != "" {
-		bs, bf := 12.0, 9
-		if size > 24 {
-			bs, bf = 18, 11
+	if text == "" {
+		// «#» прямоугольниками по сетке: две стойки и две перекладины.
+		gap := b.side - 2*b.overhang - 2*b.stroke
+		for _, off := range []int{b.overhang, b.overhang + b.stroke + gap} {
+			p.FillRect7(b.x+off, b.y, b.stroke, b.side, qt.Black)
+			p.FillRect7(b.x, b.y+off, b.side, b.stroke, qt.Black)
 		}
-		f := pixelFont(bf, qt.QFont__DemiBold)
-		bw := max(bs, float64(qt.NewQFontMetrics(f).HorizontalAdvance(badge))+6)
-		r := qt.NewQRectF4(float64(size)-bw, 0, bw, bs)
-		p.SetPenWithStyle(qt.NoPen)
-		p.SetBrush(qt.NewQBrush3(qt.NewQColor6(badgeBg)))
-		p.DrawRoundedRect(r, bs/2, bs/2)
-		p.SetFont(f)
-		p.SetPen(qt.NewQColor6(badgeFg))
-		p.DrawText5(r, int(qt.AlignCenter), badge)
+	} else {
+		cutText(p, size, b, text)
 	}
 	p.End()
-	pm := qt.QPixmap_FromImage(img)
-	pm.SetDevicePixelRatio(resourceDPR)
-	return pm
+	return qt.QPixmap_FromImage(img)
+}
+
+// trayGlyphs — цифры и «+» по сетке 3×5. В значке их рисуем клетками, как и
+// «#», а не шрифтом: шрифт в 10 px мылится, а с хинтингом теряет форму.
+var trayGlyphs = map[rune][5]string{
+	'0': {"###", "#.#", "#.#", "#.#", "###"},
+	'1': {".#.", "##.", ".#.", ".#.", "###"},
+	'2': {"###", "..#", "###", "#..", "###"},
+	'3': {"###", "..#", ".##", "..#", "###"},
+	'4': {"#.#", "#.#", "###", "..#", "..#"},
+	'5': {"###", "#..", "###", "..#", "###"},
+	'6': {"###", "#..", "###", "#.#", "###"},
+	'7': {"###", "..#", "..#", "..#", "..#"},
+	'8': {"###", "#.#", "###", "#.#", "###"},
+	'9': {"###", "#.#", "###", "..#", "###"},
+	'+': {"...", ".#.", "###", ".#.", "..."},
+}
+
+// cutText — число по центру облачка, высотой примерно со знак «#» и не шире
+// облачка без скруглённых краёв; клетки рисуются в текущем режиме (Clear —
+// вырезает).
+func cutText(p *qt.QPainter, size int, b trayBox, text string) {
+	glyphs := []rune(text)
+	cols := 4*len(glyphs) - 1 // 3 клетки на знак и 1 между знаками
+	cell := max(1, int(math.Round(float64(b.side)/5)))
+	for maxW := size - 2*max(2, size/7); cell > 1 && cols*cell > maxW; {
+		cell--
+	}
+	x := (size - cols*cell) / 2
+	y := b.top + (b.h-5*cell)/2
+	for _, r := range glyphs {
+		for row, line := range trayGlyphs[r] {
+			for col, c := range line {
+				if c == '#' {
+					p.FillRect7(x+col*cell, y+row*cell, cell, cell, qt.Black)
+				}
+			}
+		}
+		x += 4 * cell
+	}
 }
 
 // drawBubble — облачко: прямоугольник со скруглением r, у левого нижнего угла
@@ -184,4 +285,111 @@ func drawHash(p *qt.QPainter, x, y, w, h, px float64, color string) {
 	p.SetFont(f)
 	p.SetPen(qt.NewQColor6(color))
 	p.DrawText5(qt.NewQRectF4(x, y, w, h), int(qt.AlignCenter), "#")
+}
+
+// showTrayDialog — «Вид → Значок в трее…»: цвет облачка для каждого
+// состояния; меняется сразу (onChange), пустой цвет — по панели.
+func showTrayDialog(parent *qt.QWidget, colors config.Tray, onChange func(config.Tray)) *dialog {
+	d := newDialog(parent, "Значок в трее")
+	preview := qt.NewQLabel2()
+	preview.SetAlignment(qt.AlignCenter)
+	d.lay.AddWidget(preview.QWidget)
+	rows := []struct {
+		title string
+		color *string
+	}{
+		{"Нового нет", &colors.Idle},
+		{"Новые сообщения в каналах", &colors.Unread},
+		{"Сообщения мне: упоминания и лички", &colors.Mentions},
+	}
+	buttons := make([]*qt.QPushButton, len(rows))
+	refresh := func() {
+		dark := trayPanelDark()
+		eff := trayColors(colors, dark)
+		for i, c := range []string{eff.Idle, eff.Unread, eff.Mentions} {
+			text := c
+			if *rows[i].color == "" {
+				text += " · по умолчанию"
+			}
+			buttons[i].SetText(text)
+			buttons[i].SetIcon(qt.NewQIcon2(swatch(c, 14)))
+		}
+		preview.SetPixmap(trayPreview(eff, dark, max(1, int(math.Round(d.w.DevicePixelRatioF())))))
+	}
+	grid := qt.NewQGridLayout2()
+	grid.SetHorizontalSpacing(12)
+	grid.SetVerticalSpacing(8)
+	for i, r := range rows {
+		b := qt.NewQPushButton2()
+		b.SetStyleSheet("text-align:left; padding-left:8px")
+		b.OnClicked(func() {
+			cur := trayColors(colors, trayPanelDark())
+			start := []string{cur.Idle, cur.Unread, cur.Mentions}[i]
+			c := qt.QColorDialog_GetColor3(qt.NewQColor6(start), d.w.QWidget, r.title)
+			if d.closed || !c.IsValid() {
+				return
+			}
+			*r.color = c.Name()
+			refresh()
+			onChange(colors)
+		})
+		buttons[i] = b
+		grid.AddWidget2(fieldLabel(r.title).QWidget, i, 0)
+		grid.AddWidget2(b.QWidget, i, 1)
+	}
+	grid.SetColumnStretch(1, 1)
+	d.lay.AddLayout(grid.QLayout)
+	refresh()
+
+	reset := qt.NewQPushButton3("Сбросить")
+	reset.OnClicked(func() {
+		colors = config.Tray{}
+		refresh()
+		onChange(colors)
+	})
+	d.bottom.AddWidget(reset.QWidget)
+	d.bottom.AddStretch()
+	done := qt.NewQPushButton3("Готово")
+	done.SetProperty("primary", qt.NewQVariant11("true"))
+	done.SetDefault(true)
+	done.OnClicked(func() { d.w.Close() })
+	d.bottom.AddWidget(done.QWidget)
+	d.w.SetMinimumWidth(480)
+	d.w.Show()
+	return d
+}
+
+// swatch — квадратик цвета для кнопки.
+func swatch(color string, size int) *qt.QPixmap {
+	pm := qt.NewQPixmap2(size*resourceDPR, size*resourceDPR)
+	pm.SetDevicePixelRatio(resourceDPR)
+	pm.FillWithFillColor(qt.NewQColor2(qt.Transparent))
+	p := qt.NewQPainter2(pm.QPaintDevice)
+	p.SetRenderHint(qt.QPainter__Antialiasing)
+	p.SetPen(qt.NewQColor6(Pal().Line2))
+	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(color)))
+	p.DrawRoundedRect(qt.NewQRectF4(0.5, 0.5, float64(size)-1, float64(size)-1), 3, 3)
+	p.End()
+	return pm
+}
+
+// trayPreview — три состояния значка на полоске цвета панели, как в трее;
+// значки — тех же пикселей, что уйдут в трей при масштабе dpr.
+func trayPreview(c config.Tray, dark bool, dpr int) *qt.QPixmap {
+	const size, gap = 22, 16
+	bg := "#f0efed"
+	if dark {
+		bg = "#1c1b1a"
+	}
+	pm := qt.NewQPixmap2((3*size+4*gap)*dpr, (size+12)*dpr)
+	pm.SetDevicePixelRatio(float64(dpr))
+	pm.FillWithFillColor(qt.NewQColor6(bg))
+	p := qt.NewQPainter2(pm.QPaintDevice)
+	for i, v := range []struct{ color, text string }{{c.Idle, ""}, {c.Unread, "5"}, {c.Mentions, "2"}} {
+		icon := trayPixmap(size*dpr, v.color, v.text)
+		icon.SetDevicePixelRatio(float64(dpr))
+		p.DrawPixmap9(gap+i*(size+gap), 6, icon)
+	}
+	p.End()
+	return pm
 }

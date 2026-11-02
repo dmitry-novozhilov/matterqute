@@ -34,6 +34,7 @@ type Shell struct {
 
 	logout     *qt.QAction
 	themeActs  map[ThemeMode]*qt.QAction
+	trayAct    *qt.QAction // «Вид → Значок в трее…»
 	serverMenu *qt.QMenu
 
 	// HideOnClose — крестик прячет окно в трей, а не завершает приложение:
@@ -48,6 +49,7 @@ type Shell struct {
 	OnStatus       func(at *qt.QPoint) // открыть панель статуса (клик по @user или «Файл → Статус…»)
 	OnAddServer    func()
 	OnRemoveServer func() // «Удалить сервер…» — текущий
+	OnTrayColors   func() // «Вид → Значок в трее…»
 }
 
 // ServerItem — пункт меню «Сервер».
@@ -100,6 +102,13 @@ func NewShell() *Shell {
 	themes := view.AddMenuWithTitle("Тема")
 	fontsAct := view.QWidget.AddActionWithText("Шрифты…")
 	fontsAct.OnTriggered(func() { showFontsDialog(s.w.QWidget) })
+	s.trayAct = view.QWidget.AddActionWithText("Значок в трее…")
+	s.trayAct.SetVisible(false) // только если трей есть
+	s.trayAct.OnTriggered(func() {
+		if s.OnTrayColors != nil {
+			s.OnTrayColors()
+		}
+	})
 	group := qt.NewQActionGroup(s.w.QObject)
 	for _, t := range []struct {
 		mode  ThemeMode

@@ -255,3 +255,24 @@ func TestMentions(t *testing.T) {
 		t.Errorf("Mentions with CRT = %d, want 2+3 root mentions + 1 in thread = 6", got)
 	}
 }
+
+func TestNewMessages(t *testing.T) {
+	s := New(&model.User{Id: "me"})
+	s.SetSidebar(&Sidebar{
+		CRT: true,
+		Channels: []*model.Channel{
+			{Id: "a", Type: model.ChannelTypeOpen, TotalMsgCountRoot: 7, TotalMsgCount: 20},
+			{Id: "m", Type: model.ChannelTypeOpen, TotalMsgCountRoot: 5},
+			{Id: "r", Type: model.ChannelTypeOpen, TotalMsgCountRoot: 2},
+		},
+		Members: []*model.ChannelMember{
+			{ChannelId: "a", MsgCountRoot: 4, MsgCount: 10},
+			{ChannelId: "m", MsgCountRoot: 0, NotifyProps: model.StringMap{model.MarkUnreadNotifyProp: model.ChannelMarkUnreadMention}},
+			{ChannelId: "r", MsgCountRoot: 2},
+		},
+		Threads: []*model.ThreadResponse{{PostId: "t", UnreadReplies: 2, Post: &model.Post{Id: "t", ChannelId: "a"}}},
+	})
+	if got := s.NewMessages(); got != 5 {
+		t.Errorf("NewMessages with CRT = %d, want 3 roots in a + 2 thread replies (muted m skipped)", got)
+	}
+}

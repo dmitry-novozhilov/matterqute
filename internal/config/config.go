@@ -29,8 +29,16 @@ type Config struct {
 	Theme   string   `json:"theme,omitempty"` // system, light, dark; пусто — system
 	Window  Window   `json:"window,omitzero"` // окно и колонки, как их оставили
 	Fonts   Fonts    `json:"fonts,omitzero"`  // шрифты сайдбара, ленты, моноширинного; пусто — по дизайну
+	Tray    Tray     `json:"tray,omitzero"`   // цвета значка в трее; пусто — по панели
 
 	path string
+}
+
+// Tray — цвета значка в трее (#rrggbb); пусто — по теме панели.
+type Tray struct {
+	Idle     string `json:"idle,omitempty"`     // нового нет
+	Unread   string `json:"unread,omitempty"`   // новые сообщения в каналах, но не мне
+	Mentions string `json:"mentions,omitempty"` // сообщения мне: упоминания и лички
 }
 
 // Fonts — шрифты, выбранные в «Вид → Шрифты…».

@@ -69,7 +69,7 @@ type MainWindow struct {
 	recent       emoji.Recent // недавние эмодзи (настройка recent_emojis)
 	customEmoji  []string     // имена кастомных эмодзи сервера
 	emojiLoaded  bool
-	mentions     int64 // последнее отданное в OnMentions; -1 — ещё не отдавали
+	counts       Counts // последнее отданное в OnCounts; -1 — ещё не отдавали
 	retryNow     chan struct{}
 	unsubscribe  func()
 
@@ -86,7 +86,7 @@ type MainWindow struct {
 	OnMessage        func(text string)                // короткое сообщение в строке состояния окна
 	OnColumnsChanged func(sidebar, thread int)        // пользователь передвинул разделитель
 	OnRaise          func()                           // показать окно поверх остальных (клик по уведомлению)
-	OnMentions       func(n int64)                    // изменилось число ждущих упоминаний (трей)
+	OnCounts         func(Counts)                     // изменилось, сколько ждёт сообщений (трей)
 	OnOwnStatus      func(pm *qt.QPixmap, tip string) // свой статус: эмодзи и подсказка, nil — нет
 }
 
@@ -111,7 +111,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		items:    map[string]*qt.QTreeWidgetItem{},
 		notes:    map[string]uint32{},
 		players:  map[string]*player{},
-		mentions: -1,
+		counts:   Counts{-1, -1},
 		retryNow: make(chan struct{}, 1),
 
 		initialChannel: initialChannel,

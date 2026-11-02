@@ -41,13 +41,13 @@ type App struct {
 
 // server — сервер из списка: окно, если вошли, иначе страница входа.
 type server struct {
-	url      string
-	main     *MainWindow
-	login    *LoginView
-	conn     ConnState
-	mentions int64
-	mood     *qt.QPixmap // свой статус на этом сервере (эмодзи) и подсказка
-	moodTip  string
+	url     string
+	main    *MainWindow
+	login   *LoginView
+	conn    ConnState
+	counts  Counts
+	mood    *qt.QPixmap // свой статус на этом сервере (эмодзи) и подсказка
+	moodTip string
 }
 
 // SetNotifier включает уведомления рабочего стола; звать до Start.
@@ -86,10 +86,18 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		a.cfg.Fonts = f
 		a.saveConfig()
 	}
-	if a.tray = NewTray(); a.tray != nil {
+	if a.tray = NewTray(a.cfg.Tray); a.tray != nil {
 		a.shell.HideOnClose = true
 		a.tray.OnOpen = a.shell.Raise
 		a.tray.OnQuit = a.shell.Quit
+		a.shell.trayAct.SetVisible(true)
+		a.shell.OnTrayColors = func() {
+			showTrayDialog(a.shell.w.QWidget, a.cfg.Tray, func(c config.Tray) {
+				a.cfg.Tray = c
+				a.saveConfig()
+				a.tray.SetColors(c)
+			})
+		}
 	}
 	a.shell.OnClose = func() {
 		a.cfg.Window.Geometry = a.shell.Geometry()
@@ -390,9 +398,9 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool) {
 		a.activate(sv) // уведомление могло прийти с другого сервера
 		a.shell.Raise()
 	}
-	m.OnMentions = func(n int64) {
-		sv.mentions = n
-		a.updateMentions()
+	m.OnCounts = func(c Counts) {
+		sv.counts = c
+		a.updateCounts()
 	}
 	m.OnConnection = func(c ConnState) { a.setConn(sv, c) }
 	m.OnOwnStatus = func(pm *qt.QPixmap, tip string) {
@@ -425,10 +433,10 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool) {
 
 func (a *App) closeMain(sv *server) {
 	m := sv.main
-	sv.main, sv.mentions, sv.conn = nil, 0, ConnNone
+	sv.main, sv.counts, sv.conn = nil, Counts{}, ConnNone
 	m.Close()
 	a.shell.RemovePage(m.Widget())
-	a.updateMentions()
+	a.updateCounts()
 }
 
 // logout — выйти с сервера: сессия закрывается, сервер остаётся в списке со
@@ -456,17 +464,18 @@ func (a *App) dropToken(serverURL string) {
 	}
 }
 
-// updateMentions — счётчик трея: упоминания и непрочитанные лички всех серверов.
-func (a *App) updateMentions() {
-	var total int64
+// updateCounts — трей и док: сумма по всем серверам. В доке — только
+// сообщения мне (упоминания и лички).
+func (a *App) updateCounts() {
+	var total Counts
 	for _, sv := range a.servers {
-		total += sv.mentions
+		total = total.add(sv.counts)
 	}
 	if a.tray != nil {
-		a.tray.SetMentions(total)
+		a.tray.SetCounts(total)
 	}
 	if a.launcher != nil {
-		if err := a.launcher.SetCount(total); err != nil {
+		if err := a.launcher.SetCount(total.Mentions); err != nil {
 			a.log.Warn("dock badge", "err", err)
 		}
 	}
@@ -477,7 +486,7 @@ func (a *App) updateMentions() {
 func (a *App) updateServers() {
 	items := make([]ServerItem, len(a.servers))
 	for i, sv := range a.servers {
-		items[i] = ServerItem{Host: hostOf(sv.url), Active: sv == a.active, Mentions: sv.mentions}
+		items[i] = ServerItem{Host: hostOf(sv.url), Active: sv == a.active, Mentions: sv.counts.Mentions}
 	}
 	a.shell.SetServers(items)
 }
@@ -513,7 +522,7 @@ func (a *App) removeServer(sv *server) {
 	a.cfg.Remove(sv.url)
 	a.saveConfig()
 	a.log.Info("server removed", "server", sv.url)
-	a.updateMentions()
+	a.updateCounts()
 	if len(a.servers) == 0 {
 		a.showAdd()
 		return

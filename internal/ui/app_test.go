@@ -118,7 +118,7 @@ func TestAppServers(t *testing.T) {
 		}
 		host := func(i int) string { return hostOf(fakes[i].url) }
 		// У первого (неактивного) — счётчик засеянных упоминаний, у текущего — нет.
-		first := a.servers[0].mentions
+		first := a.servers[0].counts.Mentions
 		if got := strings.Join(menu(), ";"); first == 0 || got != fmt.Sprintf("%s   %d|false;%s|true", host(0), first, host(1)) {
 			t.Errorf("server menu %q (first server has %d mentions)", got, first)
 		}
@@ -129,11 +129,11 @@ func TestAppServers(t *testing.T) {
 			t.Error("Ctrl+1 did not show the first server")
 		}
 		second := a.servers[1]
-		before := second.mentions
+		before := second.counts.Mentions
 		bob := second.main.st.UserByName("bob")
 		backend := channelByName(second.main, "dev", "backend")
 		fakes[1].fake.Post(&model.Post{ChannelId: backend.Id, UserId: bob.Id, Message: "@alice со второго сервера"})
-		waitFor(t, "mention on the inactive server", func() bool { return second.mentions == before+1 })
+		waitFor(t, "mention on the inactive server", func() bool { return second.counts.Mentions == before+1 })
 		if got := menu(); len(got) != 2 || !strings.HasPrefix(got[1], fmt.Sprintf("%s   %d|false", host(1), before+1)) {
 			t.Errorf("server menu after mention %q", got)
 		}
@@ -141,7 +141,7 @@ func TestAppServers(t *testing.T) {
 			t.Errorf("server menu title %q, want a dot for news elsewhere", title)
 		}
 		// Значок в доке — сумма по всем серверам, как и трей.
-		if want := a.servers[0].mentions + a.servers[1].mentions; badge.last != want {
+		if want := a.servers[0].counts.Mentions + a.servers[1].counts.Mentions; badge.last != want {
 			t.Errorf("dock badge %d, want %d", badge.last, want)
 		}
 

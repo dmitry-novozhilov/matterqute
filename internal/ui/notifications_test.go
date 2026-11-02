@@ -26,17 +26,23 @@ func TestNotifications(t *testing.T) {
 		m.notifier = notes
 		raised := 0
 		m.OnRaise = func() { raised++ }
-		var mentions []int64
-		m.OnMentions = func(n int64) { mentions = append(mentions, n) }
+		var counts []Counts
+		m.OnCounts = func(c Counts) { counts = append(counts, c) }
+		lastCounts := func() Counts {
+			if len(counts) == 0 {
+				return Counts{-1, -1}
+			}
+			return counts[len(counts)-1]
+		}
 		root := openTown(t, m)
 		if root == nil {
 			return
 		}
-		// Трей узнаёт число упоминаний сразу после загрузки и при каждом изменении.
-		if len(mentions) == 0 || mentions[len(mentions)-1] != m.st.Mentions() || m.st.Mentions() == 0 {
-			t.Errorf("mentions reported %v, store has %d (seeded: DM from bob and @alice in a thread)", mentions, m.st.Mentions())
+		// Трей узнаёт счётчики сразу после загрузки и при каждом изменении.
+		if c := lastCounts(); c.Mentions != m.st.Mentions() || c.Mentions == 0 || c.Unread != m.st.NewMessages() || c.Unread < c.Mentions {
+			t.Errorf("counts reported %+v, store has %d mentions, %d new (seeded: DM from bob and @alice in a thread)", c, m.st.Mentions(), m.st.NewMessages())
 		}
-		before := m.st.Mentions()
+		before := lastCounts()
 		bob := m.st.UserByName("bob")
 		backend := channelByName(m, "dev", "backend")
 		last := func() notify.Notification { return notes.shown[len(notes.shown)-1] }
@@ -52,13 +58,19 @@ func TestNotifications(t *testing.T) {
 		if n := last(); n.Title != "bob в #backend" || n.Body != "Деплой готов 👍" || n.Replaces != 0 {
 			t.Errorf("first notification %+v", n)
 		}
+		// Новое в канале без упоминания — только в «новых».
+		waitFor(t, "new message counted for the tray", func() bool {
+			return lastCounts() == Counts{Mentions: before.Mentions, Unread: before.Unread + 1}
+		})
 		// Следующий пост там же заменяет уведомление, а не копит их; упоминание
 		// прибавляется к счётчику трея.
 		post(&model.Post{ChannelId: backend.Id, UserId: bob.Id, Message: "@alice глянь"}, 2)
 		if n := last(); n.Replaces != 1 {
 			t.Errorf("second post in backend: Replaces = %d, want 1", n.Replaces)
 		}
-		waitFor(t, "mention counted for the tray", func() bool { return len(mentions) > 0 && mentions[len(mentions)-1] == before+1 })
+		waitFor(t, "mention counted for the tray", func() bool {
+			return lastCounts() == Counts{Mentions: before.Mentions + 1, Unread: before.Unread + 2}
+		})
 
 		// Ответ в треде, на который alice подписана: канал открыт, но тред — нет.
 		if !post(&model.Post{ChannelId: root.ChannelId, RootId: root.Id, UserId: bob.Id, Message: "в треде"}, 3) {

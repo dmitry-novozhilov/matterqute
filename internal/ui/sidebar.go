@@ -120,7 +120,7 @@ func (m *MainWindow) fillSidebar() {
 	if toSelect != nil {
 		m.sidebar.SetCurrentItem(toSelect)
 	}
-	m.updateMentions()
+	m.updateCounts()
 }
 
 // defaultChannel — канал при первом запуске: Town Square первой команды,
@@ -143,15 +143,15 @@ func (m *MainWindow) defaultChannel() string {
 // refreshItem перерисовывает строку канала (непрочитанное, упоминания, статус).
 func (m *MainWindow) refreshItem(string) {
 	m.sidebar.Viewport().Update()
-	m.updateMentions()
+	m.updateCounts()
 }
 
-// updateMentions — счётчик для трея: упоминания и непрочитанные лички.
-func (m *MainWindow) updateMentions() {
-	if n := m.st.Mentions(); n != m.mentions {
-		m.mentions = n
-		if m.OnMentions != nil {
-			m.OnMentions(n)
+// updateCounts — счётчики для трея: сообщения мне и все новые.
+func (m *MainWindow) updateCounts() {
+	if c := (Counts{Mentions: m.st.Mentions(), Unread: m.st.NewMessages()}); c != m.counts {
+		m.counts = c
+		if m.OnCounts != nil {
+			m.OnCounts(c)
 		}
 	}
 }

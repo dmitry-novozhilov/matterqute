@@ -455,6 +455,30 @@ func (s *Store) Mentions() int64 {
 	return n
 }
 
+// NewMessages — сколько новых сообщений в каналах, не заглушённых (при CRT —
+// корневых, плюс новые ответы в тредах, на которые подписан). Для трея: если
+// упоминаний нет, а новое есть.
+func (s *Store) NewMessages() int64 {
+	var n int64
+	for id, ch := range s.channels {
+		m := s.members[id]
+		if m == nil || s.Muted(id) {
+			continue
+		}
+		if s.crt {
+			n += max(0, ch.TotalMsgCountRoot-m.MsgCountRoot)
+		} else {
+			n += max(0, ch.TotalMsgCount-m.MsgCount)
+		}
+	}
+	if s.crt {
+		for _, t := range s.threads {
+			n += max(0, t.UnreadReplies)
+		}
+	}
+	return n
+}
+
 // ThreadsUnread — есть ли непрочитанные треды и сколько в них упоминаний.
 func (s *Store) ThreadsUnread() (unread bool, mentions int64) {
 	for _, t := range s.threads {

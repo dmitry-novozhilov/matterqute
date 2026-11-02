@@ -730,3 +730,67 @@ func TestFeedDebugDump(t *testing.T) {
 		}
 	})
 }
+
+// Проверка раскладки (checkLayout) на обычной ленте — таблицы, код, списки,
+// картинки, ролик, вложение интеграции — не срабатывает: иначе посты
+// переразкладывались бы по кругу.
+func TestFeedLayoutCheckQuiet(t *testing.T) {
+	_, s := startFake(t, model.CollapsedThreadsAlwaysOn)
+	onMain(func() {
+		var buf strings.Builder
+		log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		m := NewMainWindow(s, log, "", t.TempDir())
+		defer m.Close()
+		if openTown(t, m) == nil {
+			return
+		}
+		for _, name := range []string{"backend", "town-square"} {
+			m.selectChannel(m.st.ChannelByName(name, "").Id)
+			drained(m.feed)
+			for _, frac := range []float64{0, 0.5, 1} {
+				m.feed.bar.SetValue(int(float64(m.feed.bar.Maximum()) * frac))
+				m.feed.view.Viewport().Repaint()
+				settle()
+			}
+		}
+		if strings.Contains(buf.String(), "feed relayout") {
+			t.Errorf("layout check fired on a normal feed:\n%s", buf.String())
+		}
+	})
+}
+
+// Пост с устаревшей раскладкой (абзацы без строк, фрейм «разложен») лента
+// замечает при отрисовке и переразкладывает сама.
+func TestFeedRelayoutsStalePost(t *testing.T) {
+	onMain(func() {
+		var buf strings.Builder
+		log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}, Log: log})
+		f.Widget().Resize(600, 400)
+		f.Widget().Show()
+		defer f.Widget().Close()
+		f.SetPosts(makePosts(100, 5), false)
+		drained(f)
+		it := f.items[len(f.items)-1]
+		lines := func() (n int) {
+			for b := f.doc.FindBlock(it.content.FirstPosition()); b.IsValid() && b.Position() <= it.content.LastPosition(); b = b.Next() {
+				if b.Length() > 1 {
+					n += b.Layout().LineCount()
+				}
+			}
+			return n
+		}
+		for b := f.doc.FindBlock(it.content.FirstPosition()); b.IsValid() && b.Position() <= it.content.LastPosition(); b = b.Next() {
+			b.ClearLayout()
+		}
+		if lines() != 0 {
+			t.Error("could not spoil the layout")
+			return
+		}
+		f.view.Viewport().Repaint()
+		settle()
+		if lines() == 0 || !strings.Contains(buf.String(), "feed relayout") {
+			t.Errorf("stale post not laid out again: %d lines, log:\n%s", lines(), buf.String())
+		}
+	})
+}

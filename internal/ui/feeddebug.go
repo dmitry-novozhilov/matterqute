@@ -36,10 +36,16 @@ func (f *Feed) debugDump() {
 			"frame_in_doc", inDoc[uintptr(it.frame.UnsafePointer())], "first", it.frame.FirstPosition(), "last", it.frame.LastPosition()}
 		if it.content != nil {
 			r := lay.FrameBoundingRect(it.content)
-			blocks, squashed, squashedText, chars := 0, 0, 0, 0
+			blocks, squashed, squashedText, chars, unlaid, below := 0, 0, 0, 0, 0, 0
 			for b := f.doc.FindBlock(it.content.FirstPosition()); b.IsValid() && b.Position() <= it.content.LastPosition(); b = b.Next() {
 				blocks++
 				chars += b.Length() - 1
+				if b.Length() > 1 && b.Layout().LineCount() == 0 {
+					unlaid++ // абзац с текстом без строк — раскладка устарела
+				}
+				if b.Length() > 1 && lay.BlockBoundingRect(b).Bottom() > r.Bottom()+1 {
+					below++ // абзац ниже низа своего фрейма
+				}
 				bf := b.BlockFormat()
 				if bf.LineHeightType() == int(qt.QTextBlockFormat__FixedHeight) && bf.LineHeight2() <= 1 {
 					squashed++
@@ -50,7 +56,7 @@ func (f *Feed) debugDump() {
 			}
 			attrs = append(attrs, "nested", it.content.UnsafePointer() != it.frame.UnsafePointer(),
 				"y", int(r.Top()), "h", int(r.Height()), "blocks", blocks, "chars", chars,
-				"squashed", squashed, "squashed_with_text", squashedText)
+				"squashed", squashed, "squashed_with_text", squashedText, "unlaid", unlaid, "below_frame", below)
 		}
 		f.d.Log.Debug("feed post", attrs...)
 	}

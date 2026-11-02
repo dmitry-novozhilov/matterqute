@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6/mainthread"
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/emoji"
@@ -186,7 +187,9 @@ type Feed struct {
 	// канала рисуется по частям); drainTimer дорисовывает их порциями.
 	pending    []*model.Post
 	drainTimer *qt.QTimer
-	stale      map[string]bool // посты перерисовать порциями (тема, ширина, профиль)
+	stale      map[string]bool    // посты перерисовать порциями (тема, ширина, профиль)
+	relayout   map[*postItem]bool // посты с устаревшей раскладкой Qt (checkLayout)
+	disposed   bool
 
 	// Ленты каналов готовы заранее, на экране — одна (MainWindow.showFeed).
 	// Скрытая не прокручивается и не крутит анимации; её порции рисует окно
@@ -229,7 +232,7 @@ func NewFeed(d FeedDeps) *Feed {
 		d.Users = func(string) *model.User { return nil }
 	}
 	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{},
-		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, shown: true, expanded: map[string]bool{}}
+		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, relayout: map[*postItem]bool{}, shown: true, expanded: map[string]bool{}}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.doc.SetDefaultFont(feedFont())
@@ -317,6 +320,7 @@ func NewFeed(d FeedDeps) *Feed {
 func (f *Feed) Widget() *qt.QWidget { return f.view.QWidget }
 
 func (f *Feed) dispose() {
+	f.disposed = true
 	f.unsubscribe()
 	f.stopMovies()
 	f.stopEmojiAnimations()
@@ -624,6 +628,7 @@ func (f *Feed) paintUnder() {
 		if it.content == nil {
 			continue
 		}
+		f.checkLayout(it)
 		r := f.contentRect(it)
 		if it.bg != "" {
 			p.FillRect5(0, r.Y(), w, r.Height(), qt.NewQColor6(it.bg))
@@ -632,6 +637,56 @@ func (f *Feed) paintUnder() {
 			p.DrawPixmap9(16, r.Y()+int(it.content.FrameFormat().TopMargin()), pm)
 		}
 	}
+}
+
+// checkLayout — раскладка Qt поста не устарела? Бывало (окно из снимка:
+// лента строилась до показа окна, потом смена ширины и раскладка заново
+// порциями посреди дорисовки и сверки): текст поста на месте, а фрейм
+// разложен почти пустым — 50 px вместо 300, на экране аватар без текста.
+// Признаки: абзац с текстом без строк или ниже низа своего фрейма. Тогда —
+// после отрисовки (документ в paint не трогаем) — переразложить пост.
+func (f *Feed) checkLayout(it *postItem) {
+	if f.relayout[it] {
+		return
+	}
+	lay := f.doc.DocumentLayout()
+	bottom := lay.FrameBoundingRect(it.content).Bottom()
+	for b := f.doc.FindBlock(it.content.FirstPosition()); b.IsValid() && b.Position() <= it.content.LastPosition(); b = b.Next() {
+		if b.Length() <= 1 {
+			continue // пустые абзацы бывают ужаты до 0–1 px — их не меряем
+		}
+		if b.Layout().LineCount() == 0 || lay.BlockBoundingRect(b).Bottom() > bottom+1 {
+			if len(f.relayout) == 0 {
+				mainthread.Start(f.fixLayout)
+			}
+			f.relayout[it] = true
+			return
+		}
+	}
+}
+
+// fixLayout — переразложить посты, найденные checkLayout.
+func (f *Feed) fixLayout() {
+	if f.disposed {
+		return
+	}
+	n := 0
+	for it := range f.relayout {
+		if f.index(it.post.Id) >= 0 { // ещё в ленте
+			fr := it.frame
+			f.doc.MarkContentsDirty(fr.FirstPosition(), fr.LastPosition()-fr.FirstPosition()+1)
+			n++
+		}
+	}
+	clear(f.relayout)
+	if n == 0 {
+		return
+	}
+	if f.d.Log != nil {
+		f.d.Log.Debug("feed relayout", "posts", n)
+	}
+	f.edit(func() {}) // раскладка до конца, место прокрутки — как было
+	f.view.Viewport().Update()
 }
 
 // contentRect — фрейм текста поста в координатах viewport (с полями).

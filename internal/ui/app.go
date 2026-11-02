@@ -598,10 +598,14 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool, st *savedState) {
 	}
 	sv.main = m
 	sv.conn = ConnConnecting
-	m.Start()
-	if show || sv == a.active {
+	// Окно сервера — на экран до Start: из снимка лента строится в Start, и
+	// виджету лучше уже стоять на своём месте (см. Feed.checkLayout).
+	shown := show || sv == a.active
+	if shown {
 		a.activate(sv)
-	} else {
+	}
+	m.Start()
+	if !shown {
 		a.updateServers()
 	}
 	a.dropLogin(sv)

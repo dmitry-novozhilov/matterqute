@@ -37,6 +37,7 @@ var style = struct {
 	icons     map[string]*qt.QPixmap
 	avatars   map[string]*qt.QPixmap
 	fonts     config.Fonts // выбранные шрифты, умолчания подставлены
+	formatBar bool         // панель оформления над полем ввода
 }{mode: ThemeSystem, pal: theme.Light, listeners: map[int]func(){}, icons: map[string]*qt.QPixmap{}, avatars: map[string]*qt.QPixmap{},
 	fonts: defaultFonts}
 

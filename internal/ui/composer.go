@@ -12,6 +12,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"matterqute/internal/complete"
+	"matterqute/internal/markdown"
 )
 
 // attachment — файл в поле ввода: грузится (percent), загружен (fileID) или
@@ -27,24 +28,30 @@ type attachment struct {
 	err     error
 }
 
-// draft — недописанное сообщение канала или треда.
+// draft — недописанное сообщение канала или треда: абзацы с оформлением.
 type draft struct {
-	key   string
-	text  string
-	files []*attachment
+	key    string
+	blocks []markdown.Block
+	files  []*attachment
 }
 
 // Строк в поле ввода, после которых появляется прокрутка.
 const composerMaxLines = 7
 
-// Composer — поле ввода (QFrame#composer): Enter отправляет, Shift+Enter
-// переносит строку; файлы — кнопкой 📎, перетаскиванием или вставкой картинки.
-// Черновики хранятся по ключу (канал, тред): SwitchTo переключает.
+// Composer — поле ввода (QFrame#composer) с оформлением (richedit.go): Enter
+// отправляет, Shift+Enter — новая строка (в списке — пункт), в блоке кода
+// Enter — новая строка, Ctrl+Enter — отправить; файлы — кнопкой 📎,
+// перетаскиванием или вставкой картинки. Черновики хранятся по ключу (канал,
+// тред): SwitchTo переключает.
 type Composer struct {
 	w        *qt.QWidget // обёртка с полями вокруг рамки
 	frame    *qt.QFrame
 	edit     *qt.QTextEdit
 	attach   *qt.QToolButton
+	fmtBar   *qt.QWidget     // панель оформления над полем
+	fmtShow  *qt.QToolButton // «Aa» — показать или спрятать панель
+	acts     formatActions
+	styleKey string // тема и шрифты, которыми нарисован документ поля
 	chips    *qt.QWidget
 	chipsLay *qt.QHBoxLayout
 	chipWs   []*qt.QWidget
@@ -77,11 +84,18 @@ func NewComposer() *Composer {
 	c := &Composer{w: qt.NewQWidget2(), frame: qt.NewQFrame2(), edit: qt.NewQTextEdit2(), drafts: map[string]*draft{}}
 	setName(c.frame.QObject, "composer")
 	setName(c.edit.QObject, "composerEdit")
-	c.edit.SetAcceptRichText(false)
+	c.edit.SetAcceptRichText(false) // вставка — простым текстом: чужое оформление в markdown не переложить
 	c.edit.SetFrameShape(qt.QFrame__NoFrame)
 	c.edit.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
 	c.edit.SetToolTip("Enter — отправить, Shift+Enter — новая строка")
+	c.edit.OnCurrentCharFormatChanged(func(*qt.QTextCharFormat) { c.syncFormat() })
+	c.edit.OnCursorPositionChanged(c.syncFormat)
+	c.edit.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) {
+		super(e)
+		c.paintQuotes()
+	})
 	c.edit.Document().SetDocumentMargin(4)
+	c.edit.Document().SetIndentWidth(22) // уровень списка; у Qt по умолчанию 40
 	c.edit.Document().OnContentsChanged(c.fitHeight)
 	c.edit.OnTextChanged(c.updateSuggest)
 	c.edit.OnCursorPositionChanged(c.updateSuggest)
@@ -90,11 +104,25 @@ func NewComposer() *Composer {
 		if c.suggestKey(k) {
 			return
 		}
-		if (k == qt.Key_Return || k == qt.Key_Enter) && e.Modifiers()&qt.ShiftModifier == 0 {
-			c.send()
+		mods := e.Modifiers()
+		switch {
+		case k == qt.Key_Return || k == qt.Key_Enter:
+			switch {
+			case mods&qt.ControlModifier != 0:
+				c.send()
+			case mods&qt.ShiftModifier != 0 || blockKind(c.edit.TextCursor().Block()) == markdown.Code:
+				c.newLine()
+			default:
+				c.send()
+			}
+			return
+		case k == qt.Key_Tab && c.indentList(1), k == qt.Key_Backtab && c.indentList(-1):
+			return
+		case k == qt.Key_Backspace && mods == qt.NoModifier && c.backspaceAtStart():
 			return
 		}
 		super(e)
+		c.autoformat(e.Text())
 	})
 	c.edit.OnFocusInEvent(func(super func(*qt.QFocusEvent), e *qt.QFocusEvent) {
 		super(e)
@@ -144,15 +172,19 @@ func NewComposer() *Composer {
 	c.chipsLay.AddStretch()
 	c.chips.SetVisible(false)
 
+	c.buildFormatBar()
+
 	row := qt.NewQHBoxLayout2()
 	row.SetContentsMargins(0, 0, 0, 0)
 	row.SetSpacing(2)
 	row.AddWidget3(c.attach.QWidget, 0, qt.AlignBottom)
 	row.AddWidget(c.edit.QWidget)
+	row.AddWidget3(c.fmtShow.QWidget, 0, qt.AlignBottom)
 	fl := qt.NewQVBoxLayout(c.frame.QWidget)
-	fl.SetContentsMargins(4, 3, 8, 3)
+	fl.SetContentsMargins(4, 3, 4, 3)
 	fl.SetSpacing(4)
 	fl.AddWidget(c.chips)
+	fl.AddWidget(c.fmtBar)
 	fl.AddLayout(row.QLayout)
 
 	c.hint = qt.NewQLabel3("Дождитесь загрузки файлов. Сообщение осталось в поле ввода.")
@@ -179,8 +211,36 @@ func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
 	c.edit.SetFont(feedFont())
 	c.edit.Viewport().SetFont(feedFont()) // плейсхолдер Qt рисует шрифтом viewport
+	c.restyleFormatBar()
+	// Цвета и шрифты оформления записаны в документ — перерисовать его,
+	// если сменились тема или шрифты (история правок при этом сбрасывается).
+	if key := Pal().Surf2 + Pal().Acc + monoFamily(); key != c.styleKey {
+		c.styleKey = key
+		if !c.empty() {
+			pos := c.edit.TextCursor().Position()
+			c.setBlocks(readBlocks(c.edit.Document()))
+			cur := c.edit.TextCursor()
+			cur.SetPosition(min(pos, c.edit.Document().CharacterCount()-1))
+			c.edit.SetTextCursor(cur)
+		}
+	}
 	c.fitHeight()
 	c.renderChips()
+}
+
+// empty — в поле нет текста (пустые пункты и строки не в счёт).
+func (c *Composer) empty() bool { return strings.TrimSpace(c.edit.ToPlainText()) == "" }
+
+// setBlocks — поле с абзацами blocks, курсор в конце.
+func (c *Composer) setBlocks(blocks []markdown.Block) {
+	c.edit.Clear()
+	cur := c.edit.TextCursor()
+	writeBlocks(cur, blocks)
+	c.edit.SetTextCursor(cur)
+	c.edit.SetCurrentCharFormat(qt.NewQTextCharFormat())
+	if blockKind(cur.Block()) == markdown.Code {
+		c.edit.SetCurrentCharFormat(blockCharFormat(markdown.Code))
+	}
 }
 
 // fitHeight — поле растёт с текстом от одной строки до семи, дальше прокрутка.
@@ -225,16 +285,16 @@ func (c *Composer) SwitchTo(key string) {
 	if key == c.key {
 		return
 	}
-	if text := c.edit.ToPlainText(); text != "" || len(c.files) > 0 {
-		c.drafts[c.key] = &draft{key: c.key, text: text, files: c.files}
+	if !c.empty() || len(c.files) > 0 {
+		c.drafts[c.key] = &draft{key: c.key, blocks: readBlocks(c.edit.Document()), files: c.files}
 	}
 	d := c.drafts[key]
 	delete(c.drafts, key)
 	c.key, c.files = key, nil
-	c.edit.Clear()
+	c.setBlocks(nil)
 	c.hint.SetVisible(false)
 	if d != nil {
-		c.edit.SetPlainText(d.text)
+		c.setBlocks(d.blocks)
 		c.files = d.files
 	}
 	c.renderChips()
@@ -431,7 +491,8 @@ func (c *Composer) send() {
 		c.hint.SetVisible(true)
 		return
 	}
-	text := strings.TrimSpace(c.edit.ToPlainText())
+	blocks := readBlocks(c.edit.Document())
+	text := strings.TrimSpace(markdown.FromBlocks(blocks))
 	var ids []string
 	var sent []*attachment
 	for _, a := range c.files {
@@ -443,8 +504,8 @@ func (c *Composer) send() {
 	if text == "" && len(ids) == 0 {
 		return
 	}
-	c.sent = &draft{key: c.key, text: text, files: sent}
-	c.edit.Clear()
+	c.sent = &draft{key: c.key, blocks: blocks, files: sent}
+	c.setBlocks(nil)
 	c.files = slices.DeleteFunc(c.files, func(a *attachment) bool { return a.fileID != "" })
 	c.renderChips()
 	c.hint.SetVisible(false)
@@ -465,14 +526,14 @@ func (c *Composer) Restore() {
 			d = &draft{key: s.key}
 			c.drafts[s.key] = d
 		}
-		if strings.TrimSpace(d.text) == "" {
-			d.text = s.text
+		if blocksEmpty(d.blocks) {
+			d.blocks = s.blocks
 		}
 		d.files = append(s.files, d.files...)
 		return
 	}
-	if strings.TrimSpace(c.edit.ToPlainText()) == "" {
-		c.edit.SetPlainText(s.text)
+	if c.empty() {
+		c.setBlocks(s.blocks)
 	}
 	c.files = append(s.files, c.files...)
 	c.renderChips()

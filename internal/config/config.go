@@ -24,12 +24,13 @@ type Server struct {
 }
 
 type Config struct {
-	Servers []Server `json:"servers"`
-	Active  string   `json:"active"`          // URL сервера, открытого последним
-	Theme   string   `json:"theme,omitempty"` // system, light, dark; пусто — system
-	Window  Window   `json:"window,omitzero"` // окно и колонки, как их оставили
-	Fonts   Fonts    `json:"fonts,omitzero"`  // шрифты сайдбара, ленты, моноширинного; пусто — по дизайну
-	Tray    Tray     `json:"tray,omitzero"`   // цвета значка в трее; пусто — по панели
+	Servers   []Server `json:"servers"`
+	Active    string   `json:"active"`               // URL сервера, открытого последним
+	Theme     string   `json:"theme,omitempty"`      // system, light, dark; пусто — system
+	Window    Window   `json:"window,omitzero"`      // окно и колонки, как их оставили
+	Fonts     Fonts    `json:"fonts,omitzero"`       // шрифты сайдбара, ленты, моноширинного; пусто — по дизайну
+	Tray      Tray     `json:"tray,omitzero"`        // цвета значка в трее; пусто — по панели
+	FormatBar bool     `json:"format_bar,omitempty"` // панель оформления над полем ввода
 
 	path string
 }

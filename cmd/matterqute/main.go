@@ -197,10 +197,8 @@ func registerScheme(dataDir string, log *slog.Logger) {
 	case err != nil:
 		fmt.Println("Не удалось проверить, кто открывает ссылки mattermost://:", err)
 	case handler == desktop.ID:
-		fmt.Println("Ссылки mattermost:// открывает matterqute.")
-		fmt.Println("Если браузер всё равно предлагает другое приложение, он помнит прежний выбор:")
-		fmt.Println("  Firefox — Настройки → Основные → Приложения → mattermost → «Использовать Matterqute»;")
-		fmt.Println("  Chrome/Chromium — спрашивает окружение; если предлагает другое — перезапустите браузер.")
+		fmt.Println("Ссылки mattermost:// открывает matterqute (проверка: xdg-open 'mattermost://сервер/команда/channels/town-square').")
+		fmt.Println("Браузер, запущенный до установки, мог не заметить смены — перезапустите его.")
 	default:
 		fmt.Printf("Ссылки mattermost:// открывает %q, а не matterqute: проверьте ~/.config/*mimeapps.list\n", handler)
 	}

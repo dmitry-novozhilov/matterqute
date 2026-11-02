@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/url"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -96,7 +97,8 @@ type Feed struct {
 	spin        *spinner                // крутилка заглушки «Загружаем сообщения…»
 	videos      map[string]*inlineVideo // ролики, которые играют в ленте, по id файла
 	animSubs    map[string]func()       // подписки на кадры анимированных эмодзи: отписка по имени
-	placeTimer  *qt.QTimer              // поставить ролики на места после правок документа
+	placeTimer  *qt.QTimer              // поставить ролики и кнопку на места после правок документа
+	actions     *postActions            // «Ответить в треде» у поста под курсором
 	unsubscribe func()
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
@@ -138,6 +140,19 @@ func NewFeed(d FeedDeps) *Feed {
 	f.view.OnAnchorClicked(func(u *qt.QUrl) { f.onAnchor(u.ToString()) })
 	f.view.OnHighlighted(func(u *qt.QUrl) { f.onHover(u.ToString()) })
 	f.view.OnContextMenuEvent(func(_ func(*qt.QContextMenuEvent), e *qt.QContextMenuEvent) { f.contextMenu(e) })
+	f.actions = newPostActions(f)
+	f.view.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+		super(e)
+		if e.Buttons() == qt.NoButton {
+			f.actions.hover(e.Pos())
+		} else {
+			f.actions.hide() // выделяют текст
+		}
+	})
+	f.view.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) {
+		super(e)
+		f.actions.hide()
+	})
 	f.view.OnCreateMimeDataFromSelection(f.copySelection)
 	f.view.OnResizeEvent(func(super func(*qt.QResizeEvent), e *qt.QResizeEvent) {
 		super(e)
@@ -150,9 +165,12 @@ func NewFeed(d FeedDeps) *Feed {
 	f.refit.OnTimeout(f.fitImages)
 	f.placeTimer = qt.NewQTimer2(f.view.QObject)
 	f.placeTimer.SetSingleShot(true)
-	f.placeTimer.OnTimeout(f.placeVideos)
+	f.placeTimer.OnTimeout(func() {
+		f.placeVideos()
+		f.actions.follow()
+	})
 	f.doc.OnContentsChanged(func() {
-		if len(f.videos) > 0 {
+		if len(f.videos) > 0 || f.actions.post != "" {
 			f.placeTimer.Start(0)
 		}
 	})
@@ -162,7 +180,10 @@ func NewFeed(d FeedDeps) *Feed {
 	})
 	f.bar = f.view.VerticalScrollBar()
 	f.bar.OnValueChanged(f.onScroll)
-	f.bar.OnValueChanged(func(int) { f.placeVideos() })
+	f.bar.OnValueChanged(func(int) {
+		f.placeVideos()
+		f.actions.follow()
+	})
 	f.bar.OnRangeChanged(f.onRange)
 	f.restyleRenderer()
 	f.unsubscribe = OnThemeChanged(f.restyle)
@@ -194,6 +215,7 @@ func (f *Feed) restyle() {
 	for _, v := range f.videos {
 		v.restyle()
 	}
+	f.actions.restyle()
 	f.renderAll()
 }
 
@@ -262,6 +284,7 @@ func (f *Feed) clearDoc() {
 	f.resources = map[string][2]int{}
 	f.pills = map[string]pill{}
 	f.hovered = ""
+	f.actions.hide()
 	f.doc.Clear()
 	f.doc.SetDocumentMargin(0)
 }
@@ -427,20 +450,35 @@ func (f *Feed) edit(do func()) {
 
 // topPost — пост у верхнего края окна и где его верх (px от края окна).
 func (f *Feed) topPost() (string, int) {
-	f.doc.Size()
 	for y := 0; y < 24; y += 4 {
-		it := f.itemAt(f.view.CursorForPosition(qt.NewQPoint2(feedAvatarCol+8, y)).Position())
-		if it != nil {
+		if it := f.postAtY(y); it != nil {
 			return it.post.Id, f.postTop(f.index(it.post.Id))
 		}
 	}
 	return "", 0
 }
 
+// postTop — верх фрейма i-го поста в координатах viewport. Из раскладки
+// документа, а не из cursorRect у QTextEdit: тот после прокрутки из кода
+// бывает сдвинут на старое смещение — и восстановление места в edit() сдвигало
+// ленту на эту разницу.
 func (f *Feed) postTop(i int) int {
-	c := qt.NewQTextCursor2(f.doc)
-	c.SetPosition(f.items[i].frame.FirstPosition())
-	return f.view.CursorRect(c).Top()
+	f.doc.Size() // раскладка ленивая: без этого место фрейма бывает старым
+	return int(f.doc.DocumentLayout().FrameBoundingRect(f.items[i].frame).Top()) - f.bar.Value()
+}
+
+// cursorRect — место позиции курсора в viewport там, где Qt её рисует и ищет
+// под мышью. QTextEdit::cursorRect после прокрутки из кода бывает сдвинут на
+// старое смещение (у всех позиций поровну), поэтому верх блока сверяем с
+// раскладкой документа.
+func (f *Feed) cursorRect(c *qt.QTextCursor) *qt.QRect {
+	r := f.view.CursorRect(c)
+	start := qt.NewQTextCursor2(f.doc)
+	start.SetPosition(c.Block().Position())
+	f.doc.Size()
+	top := int(f.doc.DocumentLayout().BlockBoundingRect(c.Block()).Top()) - f.bar.Value()
+	r.Translate(0, top-f.view.CursorRect(start).Top())
+	return r
 }
 
 // ScrollToPost прокручивает к посту (и ставит курсор в его начало).
@@ -556,6 +594,23 @@ func (f *Feed) index(id string) int {
 func (f *Feed) post(id string) *model.Post {
 	if i := f.index(id); i >= 0 {
 		return f.items[i].post
+	}
+	return nil
+}
+
+// postAtY — пост, в чей фрейм (вместе с полями) попадает строка y viewport.
+// CursorForPosition для этого не годится: в верхнем поле поста он отдаёт
+// ближайшую позицию — конец предыдущего.
+func (f *Feed) postAtY(y int) *postItem {
+	f.doc.Size() // раскладка ленивая: без этого место фрейма бывает старым
+	lay := f.doc.DocumentLayout()
+	dy := float64(y + f.bar.Value())
+	i := sort.Search(len(f.items), func(i int) bool {
+		r := lay.FrameBoundingRect(f.items[i].frame)
+		return r.Y()+r.Height() > dy
+	})
+	if i < len(f.items) && lay.FrameBoundingRect(f.items[i].frame).Y() <= dy {
+		return f.items[i]
 	}
 	return nil
 }
@@ -1289,9 +1344,10 @@ func (f *Feed) fileAndPost(id string) (*model.FileInfo, *model.Post) {
 	return nil, nil
 }
 
-// contextMenu — все действия с сообщением: кнопок при наведении в ленте нет.
+// contextMenu — все действия с сообщением; при наведении — только кнопка
+// «Ответить в треде» (postActions).
 func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
-	it := f.itemAt(f.view.CursorForPosition(e.Pos()).Position())
+	it := f.postAtY(e.Pos().Y())
 	menu := qt.NewQMenu(f.view.QWidget)
 	cp := menu.QWidget.AddActionWithText("Копировать выделенное")
 	cp.SetShortcut(qt.NewQKeySequence2("Ctrl+C"))
@@ -1458,6 +1514,7 @@ func newTextLabel(format qt.TextFormat) *qt.QLabel {
 func (f *Feed) onResize() {
 	f.pinToBottom()
 	f.placeVideos()
+	f.actions.follow()
 	if abs(f.view.Viewport().Width()-f.lastWidth) >= 24 {
 		f.refit.Start2()
 	}

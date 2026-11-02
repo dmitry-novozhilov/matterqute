@@ -342,4 +342,26 @@ func testFeedRerenderKeepsScroll(t *testing.T) {
 	if i := f.index(id); i < 0 || abs(f.postTop(i)-top) > 1 {
 		t.Errorf("post %s at the top moved from %d to %d px", id, top, f.postTop(i))
 	}
+	// postTop — там, где Qt ищет пост под мышью (а значит, и рисует): на
+	// первой строке — этот пост, сразу над верхом — уже нет. QTextEdit::cursorRect
+	// после такой перерисовки сдвинут на старое смещение, и место по нему
+	// восстанавливалось с ошибкой.
+	x := feedAvatarCol + 8
+	for i := range f.items {
+		y := f.postTop(i)
+		if y < 0 || y > f.view.Viewport().Height()-4 {
+			continue
+		}
+		if f.itemAt(f.view.CursorForPosition(qt.NewQPoint2(x, y+10)).Position()) != f.items[i] {
+			t.Errorf("post %d: Qt finds another post 10 px below postTop %d", i, y)
+		}
+		if f.itemAt(f.view.CursorForPosition(qt.NewQPoint2(x, y-3)).Position()) == f.items[i] && i > 0 {
+			t.Errorf("post %d: Qt finds it 3 px above postTop %d", i, y)
+		}
+		c := qt.NewQTextCursor2(f.doc)
+		c.SetPosition(f.items[i].frame.FirstPosition())
+		if r := f.cursorRect(c); r.Top() != y {
+			t.Errorf("post %d: cursorRect top %d, postTop %d", i, r.Top(), y)
+		}
+	}
 }

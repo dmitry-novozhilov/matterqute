@@ -291,7 +291,7 @@ func (f *Feed) placeVideos() {
 		c := qt.NewQTextCursor2(f.doc)
 		c.SetPosition(v.pos)
 		img := v.imageAt(v.pos)
-		r := f.view.CursorRect(c)
+		r := f.cursorRect(c)
 		v.w.SetGeometry(r.Left(), r.Top(), int(img.Width()), int(img.Height()))
 		v.w.Show()
 	}

@@ -55,6 +55,9 @@ func main() {
 		}
 	}
 	app := qt.NewQApplication(os.Args)
+	if level == slog.LevelDebug {
+		defer ui.WatchMainThread(log, os.Stderr)()
+	}
 	// Имя приложения — служебное (WM_CLASS для дока, как StartupWMClass ярлыка),
 	// показываемое — с большой буквы.
 	qt.QCoreApplication_SetApplicationName("matterqute")

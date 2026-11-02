@@ -291,6 +291,12 @@ func (s *Server) userRoute(w http.ResponseWriter, r *http.Request, _ *model.User
 			s.json(w, &model.Status{UserId: a, Status: st, LastActivityAt: model.GetMillis() - 3600_000, DNDEndTime: s.dndEnd[a]})
 			return
 		}
+	case b == "image":
+		if data := s.avatars[a]; data != nil {
+			w.Header().Set("Content-Type", "image/png")
+			w.Write(data)
+			return
+		}
 	}
 	s.fail(w, http.StatusNotFound, "app.user.missing_account.const")
 }

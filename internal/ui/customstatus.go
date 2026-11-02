@@ -183,6 +183,13 @@ QFrame[role="line"] { background: %s; max-height: 1px; min-height: 1px; border: 
 		})
 		c.lay.AddWidget(b.QWidget)
 	}
+	line()
+	prof := row(iconPixmap("user", pal.Tx2, 20), "Профиль и уведомления…", false)
+	prof.OnClicked(func() {
+		c.w.Close()
+		m.showProfile()
+	})
+	c.lay.AddWidget(prof.QWidget)
 	c.frame.SetFixedWidth(300) // окно по ширине карточки: лишнее место было бы пустым (чёрным) краем
 	c.showAbove(at)
 }
@@ -258,6 +265,18 @@ func (m *MainWindow) saveCustomStatus(cs *model.CustomStatus) {
 
 // applyUser — профиль изменился (свой статус, имя): перерисовать, где он виден.
 func (m *MainWindow) applyUser(u *model.User) {
+	if u.Id == m.s.Me.Id {
+		// Свой профиль: и в сессии, и в store («me»). События бывают без
+		// настроек уведомлений и почты — прежние не теряем.
+		if len(u.NotifyProps) == 0 {
+			u.NotifyProps = m.s.Me.NotifyProps
+		}
+		if u.Email == "" {
+			u.Email = m.s.Me.Email
+		}
+		m.s.Me = u // в главном потоке; горутины читают из него только Id — тот же
+		m.st.SetMe(u)
+	}
 	m.st.AddUsers([]*model.User{u})
 	m.eachFeed(func(f *Feed) { f.RefreshUser(u.Id) })
 	m.panel.feed.RefreshUser(u.Id)

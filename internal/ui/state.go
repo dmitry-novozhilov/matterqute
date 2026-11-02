@@ -146,11 +146,5 @@ func (m *MainWindow) applyState(st *savedState) {
 	}
 }
 
-// setMe — свой профиль с сервера, когда окно открыто из снимка.
-func (m *MainWindow) setMe(u *model.User) {
-	// Указатель меняется в главном потоке, горутины читают из него только
-	// Id — тот же самый.
-	m.s.Me = u
-	m.st.SetMe(u)
-	m.applyUser(u)
-}
+// setMe — свой профиль с сервера (окно из снимка, правка профиля).
+func (m *MainWindow) setMe(u *model.User) { m.applyUser(u) }

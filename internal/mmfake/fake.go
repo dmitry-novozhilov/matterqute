@@ -58,7 +58,8 @@ type Server struct {
 	conns     map[*wsConn]bool
 	// Категории сайдбара: «пользователь/команда» → (categories.go).
 	categories map[string]*userCategories
-	reminders  map[string]int64 // пост → когда напомнить, секунды
+	reminders  map[string]int64  // пост → когда напомнить, секунды
+	avatars    map[string][]byte // user id → загруженное фото
 }
 
 type wsConn struct {
@@ -96,6 +97,7 @@ func New(log *slog.Logger) *Server {
 		drafts:           map[string]*model.Draft{},
 		categories:       map[string]*userCategories{},
 		reminders:        map[string]int64{},
+		avatars:          map[string][]byte{},
 	}
 	s.seed()
 	s.mux.HandleFunc("POST /api/v4/users/login", s.login)
@@ -157,6 +159,9 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/teams/{tid}/channels/categories/{cid}", s.auth(s.deleteCategory))
 	s.mux.HandleFunc("POST /api/v4/channels/members/{uid}/mark_read", s.auth(s.markRead))
 	s.mux.HandleFunc("POST /api/v4/users/{uid}/posts/{pid}/reminder", s.auth(s.setReminder))
+	s.mux.HandleFunc("PUT /api/v4/users/{uid}/patch", s.auth(s.patchUser))
+	s.mux.HandleFunc("POST /api/v4/users/{uid}/image", s.auth(s.setAvatar))
+	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/image", s.auth(s.setAvatar))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/threads/read", s.auth(s.threadsRead))
 	s.mux.HandleFunc("GET /api/v4/channels/{cid}/stats", s.auth(s.channelStats))
 	s.mux.HandleFunc("PUT /api/v4/channels/{cid}/patch", s.auth(s.patchChannel))

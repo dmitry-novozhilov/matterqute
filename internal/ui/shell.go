@@ -40,6 +40,7 @@ type Shell struct {
 	switchAct  *qt.QAction // «Перейти к каналу…»
 	newMsgAct  *qt.QAction // «Новое личное сообщение…»
 	readAllAct *qt.QAction // «Отметить всё прочитанным»
+	profileAct *qt.QAction // «Профиль и уведомления…»
 	createAct  *qt.QAction
 	typingActs [2]*qt.QAction // «Вид → «Печатает…»»: показывать, сообщать
 	alertAct   *qt.QAction    // «Вид → Мигать на панели задач»
@@ -66,6 +67,7 @@ type Shell struct {
 	OnSwitcher       func() // «Файл → Перейти к каналу…» — на текущем сервере
 	OnNewMessage     func() // «Файл → Новое личное сообщение…»
 	OnMarkAllRead    func() // «Файл → Отметить всё прочитанным» — на текущем сервере
+	OnProfile        func() // «Файл → Профиль и уведомления…»
 	OnCreateChannel  func() // «Файл → Создать канал…»
 }
 
@@ -126,6 +128,12 @@ func NewShell() *Shell {
 		}
 	})
 	file.AddSeparator()
+	s.profileAct = file.QWidget.AddActionWithText("Профиль и уведомления…")
+	s.profileAct.OnTriggered(func() {
+		if s.OnProfile != nil {
+			s.OnProfile()
+		}
+	})
 	s.myStatus = file.QWidget.AddActionWithText("Статус…")
 	// Панель статуса — всегда над своим именем в строке состояния, и из меню тоже.
 	s.myStatus.OnTriggered(func() {

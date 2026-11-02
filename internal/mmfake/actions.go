@@ -2,6 +2,7 @@ package mmfake
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"slices"
 
@@ -192,4 +193,59 @@ func (s *Server) Last(channelID string) *model.Post {
 		return ps[len(ps)-1]
 	}
 	return nil
+}
+
+// patchUser — PUT /users/{uid}/patch: свой профиль; настройки уведомлений
+// заменяются целиком, как у сервера. Всем — user_updated.
+func (s *Server) patchUser(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var patch model.UserPatch
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil || r.PathValue("uid") != me.Id || patch.Username != nil || patch.Email != nil {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	me.Patch(&patch)
+	me.UpdateAt = model.GetMillis()
+	s.userUpdated(me)
+	s.json(w, me)
+}
+
+// setAvatar — POST /users/{uid}/image (multipart, поле image) — своё фото,
+// DELETE — убрать. Всем — user_updated с новым LastPictureUpdate.
+func (s *Server) setAvatar(w http.ResponseWriter, r *http.Request, me *model.User) {
+	if r.PathValue("uid") != me.Id {
+		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
+		return
+	}
+	var data []byte
+	if r.Method == http.MethodPost {
+		f, _, err := r.FormFile("image")
+		if err != nil {
+			s.fail(w, http.StatusBadRequest, "api.user.upload_profile_user.no_file.app_error")
+			return
+		}
+		data, _ = io.ReadAll(f)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if data != nil {
+		s.avatars[me.Id] = data
+		me.LastPictureUpdate = model.GetMillis()
+	} else {
+		delete(s.avatars, me.Id)
+		me.LastPictureUpdate = 0
+	}
+	s.userUpdated(me)
+	s.json(w, map[string]string{"status": "OK"})
+}
+
+// userUpdated — всем: профиль изменился (под s.mu).
+func (s *Server) userUpdated(u *model.User) {
+	ev := model.NewWebSocketEvent(model.WebsocketEventUserUpdated, "", "", "", nil, "")
+	ev.Add("user", u)
+	data, _ := ev.ToJSON()
+	for c := range s.conns {
+		c.write(data)
+	}
 }

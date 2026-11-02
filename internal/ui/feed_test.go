@@ -470,3 +470,58 @@ func testFeedDrawsInParts(t *testing.T) {
 		t.Errorf("ScrollToPost to a not yet drawn post: %d pending", len(f.pending))
 	}
 }
+
+// Тред по частям: корень рисуется последним, но с верным «N ответов», первый
+// ответ после корня — с заголовком; итог — как при отрисовке целиком.
+// Перерисовка всего (тема, ширина) рисует сразу только видимое.
+func TestFeedThreadInParts(t *testing.T) { onMain(func() { testFeedThreadInParts(t) }) }
+
+func testFeedThreadInParts(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}, Thread: true})
+	f.Widget().Resize(400, 400)
+	f.Widget().Show()
+	defer f.Widget().Close()
+	posts := makePosts(100, 30)
+	for i, p := range posts {
+		p.Message = strings.Repeat("ответ в треде, довольно длинный, чтобы занять место. ", 20)
+		p.UserId = "u1" // один автор подряд: заголовок только там, где начинается группа
+		if i > 0 {
+			p.RootId = posts[0].Id
+			p.CreateAt = posts[0].CreateAt + int64(i)*1000
+		}
+	}
+	f.SetPosts(posts, false)
+	if len(f.items) == 0 || len(f.items) >= 30 {
+		t.Errorf("thread drew %d of 30 posts at once, want only the newest few", len(f.items))
+		return
+	}
+	drained(f)
+	if len(f.items) != 30 || f.items[0].post.Id != posts[0].Id {
+		t.Errorf("thread: %d posts, first %s", len(f.items), f.items[0].post.Id)
+		return
+	}
+	if !strings.Contains(f.items[0].html, pluralReplies(29)) {
+		t.Errorf("root has no «%s» separator", pluralReplies(29))
+	}
+	if !f.startsGroup(1) || f.startsGroup(2) {
+		t.Error("first reply after the root must start a group, the next one must not")
+	}
+	for i, it := range f.items {
+		if it.html != f.postHTML(i) {
+			t.Errorf("thread post %d drawn differently than in place", i)
+		}
+	}
+
+	lo, hi, ok := f.visibleRange()
+	if !ok || hi != len(f.items)-1 || lo == 0 {
+		t.Errorf("visible range %d..%d (ok %v) at the bottom of %d posts", lo, hi, ok, len(f.items))
+	}
+	f.invalidateAll()
+	if n := len(f.stale); n == 0 || n > len(f.items)-(hi-lo+1) {
+		t.Errorf("invalidateAll left %d stale of %d, visible %d..%d: want only the invisible ones queued", n, len(f.items), lo, hi)
+	}
+	drained(f)
+	if len(f.stale) != 0 {
+		t.Errorf("%d posts left stale after drawing", len(f.stale))
+	}
+}

@@ -399,6 +399,20 @@ func (f *Feed) markerFor(posts []*model.Post) string {
 	return ""
 }
 
+// isRoot — p — корень в ленте треда: самый первый пост (отрисованный или в очереди).
+func (f *Feed) isRoot(p *model.Post) bool {
+	if !f.d.Thread || p == nil {
+		return false
+	}
+	switch {
+	case len(f.pending) > 0:
+		return f.pending[0].Id == p.Id
+	case len(f.items) > 0:
+		return f.items[0].post.Id == p.Id
+	}
+	return false
+}
+
 // posts — отрисованные посты по порядку.
 func (f *Feed) posts() []*model.Post {
 	out := make([]*model.Post, len(f.items))
@@ -412,8 +426,8 @@ func (f *Feed) SetPosts(posts []*model.Post, hasMore bool) {
 	f.Reset("")
 	f.hasMore = hasMore
 	f.newMarker = f.markerFor(posts)
-	if f.d.Thread || f.d.Search {
-		// Тред держит корень первым, поиск — новые сверху: рисуем целиком.
+	if f.d.Search {
+		// Поиск — новые сверху: рисуем целиком.
 		for _, p := range posts {
 			f.insert(len(f.items), p)
 		}
@@ -509,24 +523,49 @@ func (f *Feed) invalidate(match func(p *model.Post) bool) {
 	if len(f.stale) == 0 {
 		return
 	}
-	if f.shown && len(f.items) > 0 {
-		lo, hi := 0, len(f.items)-1
-		if it := f.postAtY(0); it != nil {
-			lo = f.index(it.post.Id)
-		}
-		if it := f.postAtY(f.view.Viewport().Height() - 1); it != nil {
-			hi = f.index(it.post.Id)
-		}
+	if lo, hi, ok := f.visibleRange(); ok {
+		// Видимые — сразу, снизу вверх, но не дольше нескольких порций:
+		// длинные посты, которых на экране много, — тоже порциями.
+		start := time.Now()
 		f.edit(func() {
-			for i := lo; i <= hi && i < len(f.items); i++ {
+			for i := hi; i >= lo; i-- {
 				if id := f.items[i].post.Id; f.stale[id] {
 					delete(f.stale, id)
 					f.render(i)
+					if time.Since(start) >= 4*drainSlice {
+						return
+					}
 				}
 			}
 		})
 	}
 	f.drainSoon()
+}
+
+// visibleRange — индексы первого и последнего поста, видимых в окне (по
+// раскладке документа). ok=false — лента не на экране или видимых нет.
+func (f *Feed) visibleRange() (lo, hi int, ok bool) {
+	if !f.shown || len(f.items) == 0 {
+		return 0, 0, false
+	}
+	h := float64(f.view.Viewport().Height())
+	f.doc.Size()
+	lay, y := f.doc.DocumentLayout(), float64(f.bar.Value())
+	lo, hi = -1, -1
+	for i, it := range f.items {
+		r := lay.FrameBoundingRect(it.frame)
+		if r.Bottom() <= y {
+			continue
+		}
+		if r.Top() >= y+h {
+			break
+		}
+		if lo < 0 {
+			lo = i
+		}
+		hi = i
+	}
+	return lo, hi, lo >= 0
 }
 
 // SetShown — лента на экране или убрана (на экране другой канал). Скрытая
@@ -1094,8 +1133,8 @@ func (f *Feed) insert(i int, p *model.Post) {
 
 // renderThreadRoot — в ленте треда под корнем разделитель «N ответов»: число меняется.
 func (f *Feed) renderThreadRoot() {
-	if f.d.Thread && len(f.items) > 0 {
-		f.render(0)
+	if f.d.Thread && len(f.items) > 0 && len(f.pending) == 0 {
+		f.render(0) // корень отрисован (а не ждёт в очереди)
 	}
 }
 
@@ -1179,7 +1218,7 @@ func frameFormat() *qt.QTextFrameFormat {
 // новый день, системный пост, отметка «Новые сообщения», первый ответ в треде.
 func (f *Feed) startsGroup(i int) bool {
 	p, prev := f.items[i].post, f.prevPost(i)
-	if prev == nil || f.d.Search || p.Id == f.newMarker || (f.d.Thread && i == 1) {
+	if prev == nil || f.d.Search || p.Id == f.newMarker || f.isRoot(prev) {
 		return true
 	}
 	return !continues(prev, p)
@@ -1229,8 +1268,8 @@ func (f *Feed) postHTML(i int) string {
 	b.WriteString(f.reactionsHTML(p))
 	b.WriteString(f.threadHTML(p))
 	b.WriteString("</td></tr></table>")
-	if f.d.Thread && i == 0 && len(f.items) > 1 {
-		b.WriteString(f.separatorHTML(pluralReplies(int64(len(f.items)-1)), pal.Tx2, pal.Line, false))
+	if n := len(f.items) + len(f.pending); f.isRoot(p) && n > 1 {
+		b.WriteString(f.separatorHTML(pluralReplies(int64(n-1)), pal.Tx2, pal.Line, false))
 	}
 	return b.String()
 }

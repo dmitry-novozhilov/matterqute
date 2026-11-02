@@ -53,7 +53,7 @@ func (f *Feed) playInline(fi *model.FileInfo) {
 		}
 		v.load(path)
 		if _, ok := f.d.Assets.Video(fi.Id); !ok {
-			f.d.Assets.WantVideo(fi, f.refreshSoon) // большой ролик: кадр-превью и длительность — сейчас
+			f.d.Assets.WantVideo(fi, f.refreshLater()) // большой ролик: кадр-превью и длительность — сейчас
 		}
 	})
 }

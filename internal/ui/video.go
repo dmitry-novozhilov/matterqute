@@ -208,7 +208,7 @@ func (f *Feed) videoHTML(fi *model.FileInfo) string {
 		}
 		f.addResource(src, videoPixmap(thumb, w, h, label), w, h)
 		if !probed && f.d.Assets != nil && fi.Size <= autoProbeVideo {
-			f.d.Assets.WantVideo(fi, f.refreshSoon)
+			f.d.Assets.WantVideo(fi, f.refreshLater())
 		}
 	}
 	return fmt.Sprintf(`<p style="margin-top:6px;margin-bottom:0"><a href="%s%s"><img src="%s" width="%d" height="%d" title="%s"></a></p>`+

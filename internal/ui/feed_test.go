@@ -48,6 +48,14 @@ func settle() {
 	}
 }
 
+// drained ждёт, пока лента дорисует посты, отложенные на потом (drain).
+func drained(f *Feed) {
+	for deadline := time.Now().Add(10 * time.Second); len(f.pending) > 0 && time.Now().Before(deadline); {
+		settle()
+	}
+	settle()
+}
+
 func makePosts(from, n int) []*model.Post {
 	out := make([]*model.Post, n)
 	for i := range n {
@@ -70,7 +78,7 @@ func testFeedScrolling(t *testing.T) {
 	f.OnNeedOlder = func() { older++ }
 
 	f.SetPosts(makePosts(100, 60), true)
-	settle()
+	drained(f)
 	if f.bar.Maximum() == 0 {
 		t.Error("60 posts fit into 300px: scroll range is empty, test is meaningless")
 		return
@@ -99,7 +107,7 @@ func testFeedScrolling(t *testing.T) {
 	// Подгруженные сверху посты не сдвигают то, что было видно.
 	fromBottom := f.bar.Maximum() - f.bar.Value()
 	f.PrependOlder(makePosts(40, 60), true)
-	settle()
+	drained(f)
 	if got := f.bar.Maximum() - f.bar.Value(); got != fromBottom {
 		t.Errorf("after PrependOlder: %dpx from bottom, want %d (view jumped)", got, fromBottom)
 	}
@@ -201,6 +209,7 @@ func testFeedFramesAndAnchors(t *testing.T) {
 	edited.Message = "исправлено"
 	f.Upsert(edited)
 	f.Remove("p0012")
+	drained(f)
 
 	// Порядок текста в документе совпадает с порядком постов.
 	text := f.doc.ToPlainText()
@@ -252,7 +261,7 @@ func testFeedClearWithImagesAfterResize(t *testing.T) {
 		settle()
 	}
 	f.SetPosts(withImages(100), true)
-	settle()
+	drained(f)
 	if !f.bar.IsVisible() {
 		t.Error("30 image posts fit into 300px: no scroll bar, test is meaningless")
 		return
@@ -263,7 +272,7 @@ func testFeedClearWithImagesAfterResize(t *testing.T) {
 
 	f.Widget().Resize(600, 300)
 	f.SetPosts(withImages(200), true)
-	settle()
+	drained(f)
 	widen()
 	for len(f.items) > 1 {
 		f.Remove(f.items[len(f.items)-1].post.Id)
@@ -321,8 +330,8 @@ func testFeedRerenderKeepsScroll(t *testing.T) {
 		posts[i].Message = strings.Repeat("длинное сообщение в несколько строк ", 12)
 	}
 	f.SetPosts(posts, false)
-	settle()
-	f.RefreshNames()
+	drained(f)
+	f.renderAll()
 	settle()
 	if f.bar.Value() != f.bar.Maximum() || !f.stick {
 		t.Errorf("feed at the bottom left it after re-render: value %d of %d, stick %v", f.bar.Value(), f.bar.Maximum(), f.stick)
@@ -334,7 +343,7 @@ func testFeedRerenderKeepsScroll(t *testing.T) {
 		t.Fatal("scrolled up but feed still sticks to the bottom")
 	}
 	id, top := f.topPost()
-	f.RefreshNames()
+	f.renderAll()
 	settle()
 	if f.stick || f.bar.Value() == f.bar.Maximum() {
 		t.Errorf("re-render glued the feed to the bottom: value %d of %d, stick %v", f.bar.Value(), f.bar.Maximum(), f.stick)
@@ -379,5 +388,85 @@ func TestLinkAddress(t *testing.T) {
 		if got != want || ok != (want != "") {
 			t.Errorf("linkAddress(%q) = %q, %v; want %q", in, got, ok, want)
 		}
+	}
+}
+
+// Длинные посты (HTML каждого Qt разбирает десятки миллисекунд): SetPosts
+// рисует сразу только то, что видно, остальное — порциями, не сдвигая
+// видимое; в итоге лента та же, что при отрисовке целиком.
+func TestFeedDrawsInParts(t *testing.T) { onMain(func() { testFeedDrawsInParts(t) }) }
+
+func testFeedDrawsInParts(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	f.Widget().Resize(700, 400)
+	f.Widget().Show()
+	defer f.Widget().Close()
+	posts := makePosts(100, 60)
+	for i, p := range posts {
+		var b strings.Builder
+		for k := range 40 {
+			fmt.Fprintf(&b, "- пункт %d: **важно** `код` и [ссылка](https://example.com/%d)\n", k, k)
+		}
+		p.Message = b.String()
+		if i%2 == 1 { // продолжение предыдущего: без заголовка
+			p.UserId, p.CreateAt = posts[i-1].UserId, posts[i-1].CreateAt+60*1000
+		}
+	}
+	f.SetPosts(posts, true)
+	if len(f.items) == 0 || len(f.items) >= 30 || f.items[len(f.items)-1].post.Id != posts[59].Id {
+		t.Errorf("SetPosts drew %d posts at once (last %v), want only the newest few", len(f.items), f.items)
+		return
+	}
+	if !f.Has(posts[0].Id) || f.index(posts[0].Id) >= 0 {
+		t.Error("not yet drawn post: Has must see it, index must not")
+	}
+	settle()
+	if f.bar.Value() != f.bar.Maximum() {
+		t.Errorf("not at the bottom while drawing: %d of %d", f.bar.Value(), f.bar.Maximum())
+	}
+
+	// Пока дорисовывается: правка и удаление неотрисованного, новый пост снизу.
+	edited := posts[3].Clone()
+	edited.Message = "исправлено"
+	f.Upsert(edited)
+	f.Remove(posts[5].Id)
+	f.Upsert(makePosts(500, 1)[0])
+	drained(f)
+	if len(f.items) != 60 || f.items[0].post.Id != posts[0].Id || f.items[59].post.Id != "p0500" {
+		t.Errorf("after drawing: %d posts, first %s, last %s", len(f.items), f.items[0].post.Id, f.items[len(f.items)-1].post.Id)
+		return
+	}
+	if f.items[3].post.Message != "исправлено" || f.Has(posts[5].Id) {
+		t.Error("edit or removal of a not yet drawn post lost")
+	}
+	if f.bar.Value() != f.bar.Maximum() {
+		t.Errorf("drawing above moved the feed off the bottom: %d of %d", f.bar.Value(), f.bar.Maximum())
+	}
+	// Отрисованное по частям — то же, что нарисовалось бы сразу (заголовки, разделители дней).
+	for i, it := range f.items {
+		if it.html != f.postHTML(i) {
+			t.Errorf("post %d (%s) drawn differently than in place", i, it.post.Id)
+		}
+	}
+
+	// Подгрузка старых — тоже по частям; пользователь выше низа — видимое не сдвигается.
+	f.bar.SetValue(f.bar.Maximum() / 2)
+	settle()
+	id, top := f.topPost()
+	f.PrependOlder(makePosts(10, 60), true)
+	drained(f)
+	if i := f.index(id); i < 0 || abs(f.postTop(i)-top) > 1 {
+		t.Errorf("post %s at the top moved from %d px while older posts were drawn", id, top)
+	}
+	if len(f.items) != 120 || f.items[0].post.Id != "p0010" {
+		t.Errorf("after older: %d posts, first %s", len(f.items), f.items[0].post.Id)
+	}
+
+	// Переход к ещё не отрисованному посту дорисовывает всё сразу.
+	f.SetPosts(posts, true)
+	f.Highlight(posts[1].Id)
+	f.ScrollToPost(posts[1].Id)
+	if len(f.pending) != 0 || f.index(posts[1].Id) < 0 {
+		t.Errorf("ScrollToPost to a not yet drawn post: %d pending", len(f.pending))
 	}
 }

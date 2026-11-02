@@ -132,7 +132,7 @@ func (f *Feed) linkImageSrc(rawURL string, w, h int) string {
 				return name
 			}
 		} else {
-			f.d.Assets.WantLinkImage(rawURL, f.refreshSoon)
+			f.d.Assets.WantLinkImage(rawURL, f.refreshLater())
 		}
 	}
 	return f.placeholderSrc(w, h)

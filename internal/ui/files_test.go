@@ -34,7 +34,7 @@ func testFilesAndMarkdown(t *testing.T, fake *mmfake.Server, s *mm.Session, uplo
 	}
 	backend := channelByName(m, "dev", "backend")
 	m.selectChannel(backend.Id)
-	if !waitFor(t, "backend posts", func() bool { return len(m.feed.items) >= 5 }) {
+	if !waitFor(t, "backend posts", func() bool { return len(m.feed.items) >= 5 && len(m.feed.pending) == 0 }) {
 		return
 	}
 
@@ -114,7 +114,7 @@ func testFilesAndMarkdown(t *testing.T, fake *mmfake.Server, s *mm.Session, uplo
 		t.Errorf("backend draft = %q after coming back", got)
 	}
 	m.composer.edit.Clear()
-	waitFor(t, "backend posts again", func() bool { return len(m.feed.items) >= 5 })
+	waitFor(t, "backend posts again", func() bool { return len(m.feed.items) >= 5 && len(m.feed.pending) == 0 })
 	shot(t, m, "markdown-files")
 
 	// Загрузка и отправка файла.

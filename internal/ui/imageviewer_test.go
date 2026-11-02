@@ -23,7 +23,7 @@ func TestImageViewer(t *testing.T) {
 		}
 		backend := channelByName(m, "dev", "backend")
 		m.selectChannel(backend.Id)
-		if !waitFor(t, "backend posts", func() bool { return len(m.feed.items) >= 5 }) {
+		if !waitFor(t, "backend posts", func() bool { return len(m.feed.items) >= 5 && len(m.feed.pending) == 0 }) {
 			return
 		}
 		var img *model.FileInfo

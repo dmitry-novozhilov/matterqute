@@ -24,6 +24,12 @@ import (
 // Посты одного автора с перерывом меньше этого идут без заголовка.
 const groupMillis = 5 * 60 * 1000
 
+// Ленту канала рисуем по частям: HTML поста Qt разбирает долго (длинный пост
+// с разметкой — десятки миллисекунд), а 60 таких подряд вешали окно на
+// секунды. Сразу — то, что видно, остальное — порциями не дольше drainSlice
+// над ним; между порциями окно отвечает.
+const drainSlice = 25 * time.Millisecond
+
 // Раскладка ленты (feed-html.md): колонка аватара 58 = 16 поля + 32 аватар + 10
 // зазор, справа поле 16. Картинки не выше 400 и не шире текстовой колонки.
 const (
@@ -51,6 +57,7 @@ type postItem struct {
 	post  *model.Post
 	frame *qt.QTextFrame
 	html  string // последняя отрисовка — для тестов и отладки
+	prev  string // id поста перед ним, с которым он отрисован (заголовок, разделитель дня)
 }
 
 // FeedDeps — что ленте нужно от окна.
@@ -121,6 +128,14 @@ type Feed struct {
 	hasMore        bool
 	loadingOlder   bool
 	refreshPending bool
+	dirty          map[string]bool // посты, у которых догрузились картинки или эмодзи
+	dirtyAll       bool            // перерисовать всё (догрузилось то, что не у поста)
+	rendering      string          // id поста, который сейчас рисуется
+
+	// Ещё не отрисованные старые посты над отрисованными, по времени (лента
+	// канала рисуется по частям); drainTimer дорисовывает их порциями.
+	pending    []*model.Post
+	drainTimer *qt.QTimer
 
 	OnNeedOlder      func()                            // докрутили до верха, а на сервере есть ещё
 	OnOpenThread     func(rootID string)               // открыть тред поста
@@ -147,7 +162,7 @@ func NewFeed(d FeedDeps) *Feed {
 		d.Users = func(string) *model.User { return nil }
 	}
 	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{},
-		animSubs: map[string]func(){}}
+		animSubs: map[string]func(){}, dirty: map[string]bool{}}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.doc.SetDefaultFont(feedFont())
@@ -189,6 +204,9 @@ func NewFeed(d FeedDeps) *Feed {
 		}
 		f.highlight = ""
 	})
+	f.drainTimer = qt.NewQTimer2(f.view.QObject)
+	f.drainTimer.SetSingleShot(true)
+	f.drainTimer.OnTimeout(f.drain)
 	f.placeTimer = qt.NewQTimer2(f.view.QObject)
 	f.placeTimer.SetSingleShot(true)
 	f.placeTimer.OnTimeout(func() {
@@ -312,6 +330,8 @@ func (f *Feed) clearDoc() {
 	f.stopEmojiAnimations()
 	f.spin.stop()
 	f.items = nil
+	f.pending = nil
+	f.drainTimer.Stop()
 	f.history = nil
 	f.placeholder = false
 	f.resources = map[string][2]int{}
@@ -346,9 +366,84 @@ func (f *Feed) SetPosts(posts []*model.Post, hasMore bool) {
 			}
 		}
 	}
-	for _, p := range posts {
-		f.insert(len(f.items), p)
+	if f.d.Thread || f.d.Search {
+		// Тред держит корень первым, поиск — новые сверху: рисуем целиком.
+		for _, p := range posts {
+			f.insert(len(f.items), p)
+		}
+		return
 	}
+	// Снизу вверх, пока посты не займут окно с запасом; остальное — drain.
+	f.pending = slices.Clone(posts)
+	want := float64(f.view.Viewport().Height()) * 1.5
+	for len(f.pending) > 0 && (len(f.items) == 0 || f.contentHeight() < want) {
+		f.insertPending()
+	}
+	f.drainSoon()
+}
+
+// contentHeight — высота постов в документе (без поля, которым короткая
+// лента прижата к низу).
+func (f *Feed) contentHeight() float64 {
+	return f.doc.Size().Height() - f.doc.RootFrame().FrameFormat().TopMargin()
+}
+
+// insertPending — самый новый из неотрисованных — над лентой. Его сосед снизу
+// уже отрисован с ним как предыдущим (prevPost), перерисовка не нужна.
+func (f *Feed) insertPending() {
+	n := len(f.pending)
+	p := f.pending[n-1]
+	f.pending = f.pending[:n-1]
+	f.insert(0, p)
+}
+
+func (f *Feed) drainSoon() {
+	if len(f.pending) > 0 {
+		f.drainTimer.Start(0)
+	}
+}
+
+// drain — порция неотрисованных постов: не дольше drainSlice, но хотя бы
+// один. Видимое не сдвигается (edit), лента у низа остаётся у низа.
+func (f *Feed) drain() {
+	start := time.Now()
+	f.edit(func() {
+		for len(f.pending) > 0 {
+			f.insertPending()
+			if time.Since(start) >= drainSlice {
+				break
+			}
+		}
+	})
+	f.drainSoon()
+}
+
+// flushPending дорисовывает всё сразу: нужен пост, который ещё не отрисован.
+func (f *Feed) flushPending() {
+	if len(f.pending) == 0 {
+		return
+	}
+	f.drainTimer.Stop()
+	f.edit(func() {
+		for len(f.pending) > 0 {
+			f.insertPending()
+		}
+	})
+}
+
+func (f *Feed) pendingIndex(id string) int {
+	return slices.IndexFunc(f.pending, func(p *model.Post) bool { return p.Id == id })
+}
+
+// prevPost — пост перед i-м: в ленте или самый новый из неотрисованных над ней.
+func (f *Feed) prevPost(i int) *model.Post {
+	if i > 0 {
+		return f.items[i-1].post
+	}
+	if n := len(f.pending); n > 0 {
+		return f.pending[n-1]
+	}
+	return nil
 }
 
 // PrependOlder добавляет подгруженные старые посты, не сдвигая видимое.
@@ -364,9 +459,12 @@ func (f *Feed) PrependOlder(posts []*model.Post, hasMore bool) {
 	if len(posts) == 0 {
 		return
 	}
-	for i, p := range posts {
-		f.insert(i, p)
+	f.pending = append(slices.Clone(posts), f.pending...)
+	// Верхний пост был первым — теперь над ним есть предыдущий.
+	if len(f.items) > 0 && f.items[0].prev != f.pending[len(f.pending)-1].Id {
+		f.edit(func() { f.render(0) })
 	}
+	f.drainSoon()
 }
 
 // OlderFailed — подгрузка старых не удалась; следующая прокрутка вверх повторит.
@@ -407,7 +505,7 @@ func (f *Feed) hideHistoryLoading() {
 }
 
 // Has — показан ли пост.
-func (f *Feed) Has(id string) bool { return f.index(id) >= 0 }
+func (f *Feed) Has(id string) bool { return f.index(id) >= 0 || f.pendingIndex(id) >= 0 }
 
 // Upsert вставляет новый пост по времени или перерисовывает изменённый.
 func (f *Feed) Upsert(p *model.Post) {
@@ -417,9 +515,21 @@ func (f *Feed) Upsert(p *model.Post) {
 			f.render(i)
 			return
 		}
+		if j := f.pendingIndex(p.Id); j >= 0 {
+			f.pending[j] = p // отрисуется, когда до него дойдёт очередь
+			return
+		}
 		i := len(f.items)
 		for i > 0 && f.items[i-1].post.CreateAt > p.CreateAt {
 			i--
+		}
+		if n := len(f.pending); i == 0 && n > 0 && f.pending[n-1].CreateAt > p.CreateAt {
+			j := n
+			for j > 0 && f.pending[j-1].CreateAt > p.CreateAt {
+				j--
+			}
+			f.pending = slices.Insert(f.pending, j, p) // среди неотрисованных
+			return
 		}
 		f.keepFromBottom = -1
 		f.insert(i, p)
@@ -431,6 +541,13 @@ func (f *Feed) Remove(id string) {
 }
 
 func (f *Feed) remove(id string) {
+	if j := f.pendingIndex(id); j >= 0 {
+		f.pending = slices.Delete(f.pending, j, j+1)
+		if j == len(f.pending) && len(f.items) > 0 {
+			f.render(0) // у верхнего поста сменился предыдущий
+		}
+		return
+	}
 	i := f.index(id)
 	if i < 0 {
 		return
@@ -447,8 +564,16 @@ func (f *Feed) remove(id string) {
 	f.renderThreadRoot()
 }
 
-// RefreshNames перерисовывает ленту, когда догрузились профили.
-func (f *Feed) RefreshNames() { f.renderAll() }
+// RefreshUser перерисовывает посты пользователя: изменился профиль (имя, свой статус у имени).
+func (f *Feed) RefreshUser(id string) {
+	f.edit(func() {
+		for i, it := range f.items {
+			if it.post.UserId == id {
+				f.render(i)
+			}
+		}
+	})
+}
 
 // renderAll перерисовывает все посты: догрузились картинки или имена, сменилась тема.
 func (f *Feed) renderAll() {
@@ -479,6 +604,10 @@ func (f *Feed) edit(do func()) {
 	switch {
 	case stick:
 		f.bar.SetValue(f.bar.Maximum())
+	case f.keepFromBottom >= 0:
+		// Подгружены старые (PrependOlder): как onRange, держим расстояние до
+		// низа — верхний пост уже сдвинут, убрали «Загружаем историю…».
+		f.bar.SetValue(f.bar.Maximum() - f.keepFromBottom)
 	case anchor != "":
 		if i := f.index(anchor); i >= 0 {
 			f.bar.SetValue(f.bar.Value() + f.postTop(i) - top)
@@ -524,6 +653,9 @@ func (f *Feed) cursorRect(c *qt.QTextCursor) *qt.QRect {
 // ScrollToPost прокручивает к посту — его верх на трети высоты ленты — и
 // ставит курсор в его начало.
 func (f *Feed) ScrollToPost(id string) {
+	if f.pendingIndex(id) >= 0 {
+		f.flushPending()
+	}
 	i := f.index(id)
 	if i < 0 {
 		return
@@ -547,6 +679,9 @@ func (f *Feed) ScrollToTop() {
 
 // Highlight подсвечивает пост на несколько секунд: к нему перешли по ссылке.
 func (f *Feed) Highlight(id string) {
+	if f.pendingIndex(id) >= 0 {
+		f.flushPending()
+	}
 	prev := f.highlight
 	f.highlight = id
 	f.edit(func() {
@@ -559,16 +694,40 @@ func (f *Feed) Highlight(id string) {
 	f.unhighlight.Start(highlightFor)
 }
 
-// refreshSoon перерисует ленту один раз после текущих событий: догрузились
-// картинки или эмодзи (их может прийти пачка подряд).
-func (f *Feed) refreshSoon() {
+// refreshLater — что звать, когда догрузится картинка или эмодзи: перерисовать
+// пост, который сейчас рисуется (вне отрисовки поста — всю ленту).
+func (f *Feed) refreshLater() func() {
+	id := f.rendering
+	return func() { f.refreshSoon(id) }
+}
+
+// refreshSoon перерисует пост id ("" — всю ленту) один раз после текущих
+// событий: картинок и эмодзи может прийти пачка подряд.
+func (f *Feed) refreshSoon(id string) {
+	if id == "" {
+		f.dirtyAll = true
+	} else {
+		f.dirty[id] = true
+	}
 	if f.refreshPending || f.d.Assets == nil {
 		return
 	}
 	f.refreshPending = true
 	f.d.Assets.Later(func() {
 		f.refreshPending = false
-		f.renderAll()
+		all, dirty := f.dirtyAll, f.dirty
+		f.dirtyAll, f.dirty = false, map[string]bool{}
+		if all {
+			f.renderAll()
+			return
+		}
+		f.edit(func() {
+			for i, it := range f.items {
+				if dirty[it.post.Id] {
+					f.render(i)
+				}
+			}
+		})
 	})
 }
 
@@ -594,7 +753,7 @@ func (f *Feed) customEmojiPath(name string) string {
 	}
 	p := f.d.Assets.Emoji(name)
 	if p == "" {
-		f.d.Assets.WantEmoji(name, f.refreshSoon)
+		f.d.Assets.WantEmoji(name, f.refreshLater())
 	}
 	return p
 }
@@ -715,7 +874,7 @@ func (f *Feed) insert(i int, p *model.Post) {
 	// пустой абзац — без этого он давал бы пустую строку между сообщениями.
 	f.squash(it.frame.FirstPosition() - 1)
 	f.squash(it.frame.LastPosition() + 1)
-	if i+1 < len(f.items) {
+	if i+1 < len(f.items) && f.items[i+1].prev != p.Id {
 		f.render(i + 1) // следующий пост мог стать продолжением этого
 	}
 	if i > 0 {
@@ -744,7 +903,13 @@ func (f *Feed) render(i int) {
 // write пишет пост в его фрейм; c стоит в начале пустого фрейма.
 func (f *Feed) write(i int, c *qt.QTextCursor) {
 	it := f.items[i]
+	it.prev = ""
+	if prev := f.prevPost(i); prev != nil {
+		it.prev = prev.Id
+	}
+	f.rendering = it.post.Id
 	it.html = f.postHTML(i)
+	f.rendering = ""
 	c.InsertHtml(scaleFonts(it.html))
 	f.applyMarkers(it.frame)
 	// После таблицы Qt оставляет пустой абзац — он даёт лишнюю строку под сообщением.
@@ -803,21 +968,21 @@ func frameFormat() *qt.QTextFrameFormat {
 // startsGroup — пост начинает группу (со строкой автора): другой автор, перерыв,
 // новый день, системный пост, отметка «Новые сообщения», первый ответ в треде.
 func (f *Feed) startsGroup(i int) bool {
-	p := f.items[i].post
-	if i == 0 || f.d.Search || p.Id == f.newMarker || (f.d.Thread && i == 1) {
+	p, prev := f.items[i].post, f.prevPost(i)
+	if prev == nil || f.d.Search || p.Id == f.newMarker || (f.d.Thread && i == 1) {
 		return true
 	}
-	return !continues(f.items[i-1].post, p)
+	return !continues(prev, p)
 }
 
 func (f *Feed) postHTML(i int) string {
 	pal := Pal()
-	p := f.items[i].post
+	p, prev := f.items[i].post, f.prevPost(i)
 	var b strings.Builder
 	switch {
 	case f.d.Search:
 		b.WriteString(f.whereHTML(p))
-	case (i == 0 && !f.d.Thread) || (i > 0 && !sameDay(f.items[i-1].post.CreateAt, p.CreateAt)):
+	case (prev == nil && !f.d.Thread) || (prev != nil && !sameDay(prev.CreateAt, p.CreateAt)):
 		b.WriteString(f.separatorHTML(dayLabel(p.CreateAt, time.Now()), pal.Tx2, pal.Line, false))
 	}
 	if p.Id == f.newMarker {
@@ -1114,7 +1279,7 @@ func (f *Feed) previewSrc(fi *model.FileInfo, w, h int) string {
 				return name
 			}
 		} else {
-			f.d.Assets.WantPreview(fi.Id, f.refreshSoon)
+			f.d.Assets.WantPreview(fi.Id, f.refreshLater())
 		}
 	}
 	ph := fmt.Sprintf("placeholder:%dx%d", w, h)
@@ -1708,7 +1873,7 @@ func (f *Feed) onScroll(v int) {
 	}
 	f.keepFromBottom = -1
 	f.stick = v >= f.bar.Maximum()-4
-	if v <= f.bar.Minimum() && f.hasMore && !f.loadingOlder && len(f.items) > 0 && f.OnNeedOlder != nil {
+	if v <= f.bar.Minimum() && f.hasMore && !f.loadingOlder && len(f.items) > 0 && len(f.pending) == 0 && f.OnNeedOlder != nil {
 		f.loadingOlder = true
 		f.showHistoryLoading()
 		f.OnNeedOlder()

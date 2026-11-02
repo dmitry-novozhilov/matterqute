@@ -145,3 +145,21 @@ func (s *Server) channelMember(w http.ResponseWriter, r *http.Request, me *model
 	}
 	s.json(w, m)
 }
+
+// channelsAutocomplete — GET /teams/{tid}/channels/autocomplete?name=: открытые
+// каналы команды (и где нас нет), подходящие по имени или названию, как сервер.
+func (s *Server) channelsAutocomplete(w http.ResponseWriter, r *http.Request, me *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	q := strings.ToLower(r.URL.Query().Get("name"))
+	out := []*model.Channel{}
+	for _, c := range s.channels {
+		if c.TeamId != r.PathValue("tid") || (c.Type != model.ChannelTypeOpen && s.members[me.Id][c.Id] == nil) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(c.Name), q) || strings.Contains(strings.ToLower(c.DisplayName), q) {
+			out = append(out, c)
+		}
+	}
+	s.json(w, out)
+}

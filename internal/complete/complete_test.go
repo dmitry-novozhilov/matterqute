@@ -126,3 +126,23 @@ func TestCommandAt(t *testing.T) {
 		}
 	}
 }
+
+func TestScore(t *testing.T) {
+	for _, c := range []struct {
+		q      string
+		fields []string
+		want   int
+	}{
+		{"back", []string{"Backend", "backend"}, 4},
+		{"api", []string{"Сервисы и API", "services"}, 3},
+		{"serv", []string{"Сервисы и API", "services-api"}, 2},
+		{"kend", []string{"Backend", "backend"}, 1},
+		{"zzz", []string{"Backend", "backend"}, 0},
+		{"", []string{"Backend"}, 0},
+		{"Боб", []string{"bob", "Боб Иванов"}, 2},
+	} {
+		if got := Score(c.q, c.fields...); got != c.want {
+			t.Errorf("Score(%q, %q) = %d, want %d", c.q, c.fields, got, c.want)
+		}
+	}
+}

@@ -97,6 +97,7 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("POST /api/v4/users/logout", s.auth(s.logout))
 	s.mux.HandleFunc("GET /api/v4/users/me", s.auth(s.me))
 	s.mux.HandleFunc("GET /api/v4/users/autocomplete", s.auth(s.usersAutocomplete))
+	s.mux.HandleFunc("GET /api/v4/teams/{tid}/channels/autocomplete", s.auth(s.channelsAutocomplete))
 	s.mux.HandleFunc("GET /api/v4/emoji/autocomplete", s.auth(s.emojiAutocomplete))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams", s.auth(s.userTeams))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/channels", s.auth(s.teamChannels))

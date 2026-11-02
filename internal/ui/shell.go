@@ -36,6 +36,7 @@ type Shell struct {
 	themeActs  map[ThemeMode]*qt.QAction
 	trayAct    *qt.QAction // «Вид → Значок в трее…»
 	browseAct  *qt.QAction // «Обзор каналов…» и «Создать канал…»: есть, когда вошли
+	switchAct  *qt.QAction // «Перейти к каналу…»
 	createAct  *qt.QAction
 	typingActs [2]*qt.QAction // «Вид → «Печатает…»»: показывать, сообщать
 	help       *helpWindow    // окно справки; nil — не открывали
@@ -56,6 +57,7 @@ type Shell struct {
 	OnRemoveServer   func() // «Удалить сервер…» — текущий
 	OnTrayColors     func() // «Вид → Значок в трее…»
 	OnBrowseChannels func() // «Файл → Обзор каналов…» — на текущем сервере
+	OnSwitcher       func() // «Файл → Перейти к каналу…» — на текущем сервере
 	OnCreateChannel  func() // «Файл → Создать канал…»
 }
 
@@ -80,6 +82,14 @@ func NewShell() *Shell {
 	s.logout.OnTriggered(func() {
 		if s.OnLogout != nil {
 			s.OnLogout()
+		}
+	})
+	// Сочетание — только подписью: Ctrl+K ловит окно сервера (два владельца —
+	// и Qt не сработает ни один).
+	s.switchAct = file.QWidget.AddActionWithText("Перейти к каналу…\tCtrl+K")
+	s.switchAct.OnTriggered(func() {
+		if s.OnSwitcher != nil {
+			s.OnSwitcher()
 		}
 	})
 	s.browseAct = file.QWidget.AddActionWithText("Обзор каналов…")

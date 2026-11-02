@@ -128,6 +128,31 @@ func matchWords(q string, fields ...string) bool {
 	return false
 }
 
+// Score — насколько запрос подходит к строкам fields (первая — главная,
+// например название канала): 0 — не подходит; 4 — главная начинается с
+// запроса; 3 — с него начинается слово главной; 2 — другая строка или её
+// слово; 1 — запрос где-то внутри. Регистр не важен.
+func Score(query string, fields ...string) int {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" || len(fields) == 0 {
+		return 0
+	}
+	switch {
+	case strings.HasPrefix(strings.ToLower(fields[0]), q):
+		return 4
+	case matchWords(q, fields[0]):
+		return 3
+	case matchWords(q, fields[1:]...):
+		return 2
+	}
+	for _, f := range fields {
+		if strings.Contains(strings.ToLower(f), q) {
+			return 1
+		}
+	}
+	return 0
+}
+
 // Users — кто подходит под @query: по имени пользователя, имени, фамилии,
 // нику. Сначала те, у кого с запроса начинается имя пользователя, дальше по алфавиту.
 func Users(users []*model.User, query string, limit int) []*model.User {

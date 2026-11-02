@@ -56,7 +56,7 @@ func (c *Composer) buildFormatBar() {
 	a.italic = act("italic", "Курсив", "Ctrl+I", inline(func(s markdown.Span) bool { return s.Italic }, func(s *markdown.Span, on bool) { s.Italic = on }))
 	a.strike = act("strikethrough", "Зачёркнутый", "Ctrl+Shift+X", inline(func(s markdown.Span) bool { return s.Strike }, func(s *markdown.Span, on bool) { s.Strike = on }))
 	a.code = act("code", "Код", "Ctrl+Shift+C", inline(func(s markdown.Span) bool { return s.Code }, func(s *markdown.Span, on bool) { s.Code = on }))
-	a.link = act("link", "Ссылка", "Ctrl+K", c.editLink)
+	a.link = act("link", "Ссылка", "Ctrl+Alt+K", c.editLink) // Ctrl+K — быстрый переход, как в веб-клиенте
 	a.bullet = act("list", "Список", "Ctrl+Shift+8", func() { c.toggleBlock(markdown.Bullet) })
 	a.ordered = act("list-ordered", "Нумерованный список", "Ctrl+Shift+7", func() { c.toggleBlock(markdown.Ordered) })
 	a.quote = act("text-quote", "Цитата", "Ctrl+Shift+9", func() { c.toggleBlock(markdown.Quote) })
@@ -141,7 +141,7 @@ func (c *Composer) syncFormat() {
 	}
 }
 
-// editLink — «Ссылка» (Ctrl+K): текст и адрес; внутри ссылки — она целиком,
+// editLink — «Ссылка» (Ctrl+Alt+K): текст и адрес; внутри ссылки — она целиком,
 // с кнопкой «Убрать ссылку».
 func (c *Composer) editLink() {
 	cur := c.edit.TextCursor()

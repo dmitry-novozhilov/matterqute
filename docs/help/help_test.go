@@ -1,13 +1,16 @@
 package help
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
 
 func TestArticles(t *testing.T) {
 	as := Articles()
-	if len(as) < 2 || as[0].Name != "channels.md" || as[1].Name != "links.md" || !strings.HasPrefix(as[1].Title, "Ссылки на сообщения") {
+	i := slices.IndexFunc(as, func(a Article) bool { return a.Name == "links.md" })
+	if len(as) < 2 || i < 0 || !strings.HasPrefix(as[i].Title, "Ссылки на сообщения") ||
+		!slices.IsSortedFunc(as, func(a, b Article) int { return strings.Compare(a.Name, b.Name) }) {
 		t.Fatalf("articles %+v", as)
 	}
 	for _, a := range as {

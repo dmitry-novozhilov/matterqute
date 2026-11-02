@@ -65,6 +65,8 @@ type MainWindow struct {
 	typing         *typingState    // кто где печатает
 	searchBtn      *qt.QToolButton // лупа в шапке канала
 	members        *membersPanel   // участники канала — в правой колонке (members.go)
+	files          *filesPanel     // файлы канала — в правой колонке (channelfiles.go)
+	filesBtn       *qt.QToolButton // файлы канала — в шапке
 	membersBtn     *qt.QToolButton // участники и их число — в шапке канала
 	memberCounts   map[string]int64
 	catLoading     map[string]int  // команда → 1 — категории грузятся, 2 — и после этого ещё раз
@@ -298,6 +300,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	})
 	m.panel.follow.SetVisible(false)
 	m.members = m.newMembersPanel()
+	m.files = m.newFilesPanel()
 	m.membersBtn = m.head.addTool("Участники канала", m.toggleMembers)
 	setName(m.membersBtn.QObject, "membersButton")
 	m.membersBtn.SetToolButtonStyle(qt.ToolButtonTextBesideIcon)
@@ -305,6 +308,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.membersBtn.SetMaximumSize2(120, 28)
 	m.membersBtn.SetVisible(false)
 	m.pinsBtn = m.head.addTool("Закреплённые в канале", func() { m.toggleList(listPinned) })
+	m.filesBtn = m.head.addTool("Файлы канала", m.toggleFiles)
 	m.savedBtn = m.head.addTool("Сохранённые сообщения", func() { m.toggleList(listSaved) })
 	m.mentionsBtn = m.head.addTool("Упоминания вас (Ctrl+Shift+M)", func() { m.toggleList(listMentions) })
 	m.searchBtn = m.head.addTool("Поиск по сообщениям (Ctrl+F)", m.openSearch)
@@ -380,6 +384,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.split.AddWidget(m.panel.w)
 	m.split.AddWidget(m.search.w)
 	m.split.AddWidget(m.members.w)
+	m.split.AddWidget(m.files.w)
 	m.split.SetStretchFactor(1, 1)
 	m.sidebar.SetMinimumWidth(sidebarMin)
 	m.sidebar.SetMaximumWidth(sidebarMax)
@@ -468,6 +473,7 @@ func (m *MainWindow) Close() {
 	m.panel.dispose()
 	m.search.dispose()
 	m.members.unsubscribe()
+	m.files.unsubscribe()
 	m.eachFeed((*Feed).dispose)
 	m.composer.dispose()
 	for _, pl := range m.players {
@@ -492,6 +498,7 @@ func (m *MainWindow) restyle() {
 	m.pinsBtn.SetIcon(icon("pin", Pal().Tx2, 18))
 	m.savedBtn.SetIcon(icon("bookmark", Pal().Tx2, 18))
 	m.mentionsBtn.SetIcon(icon("at-sign", Pal().Tx2, 18))
+	m.filesBtn.SetIcon(icon("file-text", Pal().Tx2, 18))
 	m.panel.back.SetIcon(icon("arrow-left", Pal().Tx2, 18))
 	m.head.chev.SetPixmap(iconPixmap("chevron-down", Pal().Tx2, 14))
 	m.updateFollowButton()
@@ -773,6 +780,9 @@ func (m *MainWindow) openChannel(id string) {
 	}
 	if m.membersShown() && m.members.channel != id {
 		m.showMembers(id) // участники — открытого канала
+	}
+	if m.filesShown() && m.files.channel != id {
+		m.showFiles(id) // файлы — открытого канала
 	}
 	if m.OnChannelOpened != nil {
 		m.OnChannelOpened(id)
@@ -1068,6 +1078,9 @@ func (m *MainWindow) applyPosted(e store.NewPost) {
 	r := m.st.ApplyPosted(p, e.Mentioned)
 	m.applyToThread(p)
 	m.maybeNotify(e)
+	if len(p.FileIds) > 0 {
+		m.filesChanged(p.ChannelId)
+	}
 	if e.Mentioned && m.listShown(listMentions) {
 		m.showList(listMentions) // новое упоминание — в открытый список
 	}

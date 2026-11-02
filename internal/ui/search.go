@@ -172,7 +172,7 @@ func (m *MainWindow) closeSearch() {
 // rightPanels — что бывает в правой колонке, в порядке в разделителе после
 // сайдбара и центра.
 func (m *MainWindow) rightPanels() []*qt.QWidget {
-	return []*qt.QWidget{m.panel.w, m.search.w, m.members.w}
+	return []*qt.QWidget{m.panel.w, m.search.w, m.members.w, m.files.w}
 }
 
 // showRight — правая колонка: тред, поиск, участники или ничего; ширина — общая.

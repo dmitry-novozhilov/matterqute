@@ -160,6 +160,8 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("POST /api/v4/channels/members/{uid}/mark_read", s.auth(s.markRead))
 	s.mux.HandleFunc("POST /api/v4/users/{uid}/posts/{pid}/reminder", s.auth(s.setReminder))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/patch", s.auth(s.patchUser))
+	s.mux.HandleFunc("POST /api/v4/files/search", s.auth(s.searchFiles))
+	s.mux.HandleFunc("POST /api/v4/teams/{tid}/files/search", s.auth(s.searchFiles))
 	s.mux.HandleFunc("POST /api/v4/users/{uid}/image", s.auth(s.setAvatar))
 	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/image", s.auth(s.setAvatar))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/threads/read", s.auth(s.threadsRead))

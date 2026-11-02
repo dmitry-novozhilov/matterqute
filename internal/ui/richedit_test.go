@@ -99,6 +99,26 @@ func TestComposerFormatting(t *testing.T) {
 		typeText("после")
 		check("bullets", send(), "- раз\n- два\n  - вложенный\n- три\n\nпосле")
 
+		// Пустой пункт списка — без подсказки поверх «1.»; пустая строка — с ней.
+		c.SetPlaceholder("Ответить в треде")
+		typeText("1. ")
+		if ph := c.edit.PlaceholderText(); ph != "" || !c.acts.ordered.IsChecked() {
+			t.Errorf("empty list item: placeholder %q, list %v", ph, c.acts.ordered.IsChecked())
+		}
+		press(qt.Key_Backspace, qt.NoModifier, "")
+		if ph := c.edit.PlaceholderText(); ph != "Ответить в треде" {
+			t.Errorf("empty line after leaving the list: placeholder %q", ph)
+		}
+		for _, kind := range []markdown.BlockKind{markdown.Quote, markdown.Code, markdown.Bullet} {
+			c.toggleBlock(kind)
+			if ph := c.edit.PlaceholderText(); ph != "" {
+				t.Errorf("empty %v line: placeholder %q", kind, ph)
+			}
+			c.toggleBlock(kind)
+		}
+		if ph := c.edit.PlaceholderText(); ph != "Ответить в треде" {
+			t.Errorf("placeholder %q after toggling blocks back", ph)
+		}
 		typeText("1. первый")
 		shiftEnter()
 		typeText("второй")

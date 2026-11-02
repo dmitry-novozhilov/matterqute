@@ -96,7 +96,10 @@ func NewComposer() *Composer {
 	})
 	c.edit.Document().SetDocumentMargin(4)
 	c.edit.Document().SetIndentWidth(22) // уровень списка; у Qt по умолчанию 40
-	c.edit.Document().OnContentsChanged(c.fitHeight)
+	c.edit.Document().OnContentsChanged(func() {
+		c.fitHeight()
+		c.updatePlaceholder()
+	})
 	c.edit.OnTextChanged(c.updateSuggest)
 	c.edit.OnCursorPositionChanged(c.updateSuggest)
 	c.edit.OnKeyPressEvent(func(super func(*qt.QKeyEvent), e *qt.QKeyEvent) {
@@ -260,7 +263,21 @@ func (c *Composer) fitHeight() {
 // SetPlaceholder — «Сообщение в # Town Square», «Ответить в треде».
 func (c *Composer) SetPlaceholder(text string) {
 	c.placeholder = text
-	if !c.offline {
+	c.updatePlaceholder()
+}
+
+// updatePlaceholder — подсказка в пустом поле. Qt рисует её, пока в документе
+// нет текста, — и поверх пустого пункта списка («1.»), цитаты или блока кода;
+// тогда её убираем.
+func (c *Composer) updatePlaceholder() {
+	text := c.placeholder
+	if c.offline {
+		text = "Нет соединения — отправка недоступна"
+	}
+	if doc := c.edit.Document(); doc.BlockCount() == 1 && blockKind(doc.FirstBlock()) != markdown.Para {
+		text = ""
+	}
+	if c.edit.PlaceholderText() != text {
 		c.edit.SetPlaceholderText(text)
 	}
 }
@@ -271,11 +288,7 @@ func (c *Composer) SetEnabled(on bool) { c.w.SetEnabled(on) }
 func (c *Composer) SetOffline(offline bool) {
 	c.offline = offline
 	c.frame.SetEnabled(!offline)
-	if offline {
-		c.edit.SetPlaceholderText("Нет соединения — отправка недоступна")
-	} else {
-		c.edit.SetPlaceholderText(c.placeholder)
-	}
+	c.updatePlaceholder()
 }
 
 func (c *Composer) Focus() { c.edit.SetFocus() }

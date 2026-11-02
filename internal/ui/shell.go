@@ -35,6 +35,8 @@ type Shell struct {
 	logout     *qt.QAction
 	themeActs  map[ThemeMode]*qt.QAction
 	trayAct    *qt.QAction // «Вид → Значок в трее…»
+	help       *helpWindow // окно справки; nil — не открывали
+	about      *dialog     // «О программе»
 	serverMenu *qt.QMenu
 
 	// HideOnClose — крестик прячет окно в трей, а не завершает приложение:
@@ -130,6 +132,7 @@ func NewShell() *Shell {
 
 	s.serverMenu = s.w.MenuBar().AddMenuWithTitle("&Сервер")
 	s.SetServers(nil)
+	s.buildHelpMenu()
 
 	s.user = qt.NewQLabel2()
 	s.mood = qt.NewQLabel2()

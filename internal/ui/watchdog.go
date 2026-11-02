@@ -13,14 +13,14 @@ import (
 )
 
 // Сторож главного потока (MATTERQUTE_DEBUG=1): главный поток не берёт задачи
-// дольше stuckAfter — окно висит. Тогда пишем, чем он занят: стек его
-// горутины (вызовы Go до ухода в Qt и обратно), и снова раз в stuckEvery,
-// пока не освободится.
+// дольше stuckAfter — окно заметно не отвечает. Тогда пишем, чем он занят:
+// стек его горутины (вызовы Go до ухода в Qt и обратно), и снова раз в
+// stuckEvery, пока не освободится.
 
 const (
-	stuckAfter = time.Second
-	stuckEvery = 2 * time.Second
-	pingEvery  = 250 * time.Millisecond
+	stuckAfter = 300 * time.Millisecond // заметная пауза: окно не отвечает
+	stuckEvery = time.Second
+	pingEvery  = 100 * time.Millisecond
 )
 
 // WatchMainThread запускает сторожа (после создания QApplication). Строки — в

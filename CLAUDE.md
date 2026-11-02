@@ -24,7 +24,7 @@ go test ./...
 
 Разработка без настоящего сервера: `go run ./cmd/mmfake` (слушает `127.0.0.1:8065`; учётки `alice`/`secret` и `bob`/`secret` с MFA-кодом `123456`; `-crt disabled|default_off|default_on|always_on` — режим свёрнутых тредов, `-chatter 2s` — bob пишет в town-square).
 
-Без дисплея: `QT_QPA_PLATFORM=offscreen MATTERQUTE_SCREENSHOT=/tmp/shot.png ./matterqute` — через 3 с (`MATTERQUTE_SCREENSHOT_DELAY`) сохраняет видимые окна в `/tmp/shot-N.png` и выходит. Конфиг подменяется через `XDG_CONFIG_HOME`. `MATTERQUTE_DEBUG=1` — debug-логи (в т.ч. все события WebSocket и задачи из горутин, державшие главный поток дольше 100 мс: `main thread busy` с местом вызова `MainWindow.ui`); главный поток не отвечает дольше секунды — `main thread stuck` и стек его горутины в stderr, раз в 2 с, пока не освободится (`WatchMainThread`, `watchdog.go`).
+Без дисплея: `QT_QPA_PLATFORM=offscreen MATTERQUTE_SCREENSHOT=/tmp/shot.png ./matterqute` — через 3 с (`MATTERQUTE_SCREENSHOT_DELAY`) сохраняет видимые окна в `/tmp/shot-N.png` и выходит. Конфиг подменяется через `XDG_CONFIG_HOME`. `MATTERQUTE_DEBUG=1` — debug-логи (в т.ч. все события WebSocket и задачи из горутин, державшие главный поток дольше 100 мс: `main thread busy` с местом вызова `MainWindow.ui`); главный поток не отвечает дольше 300 мс — `main thread stuck` и стек его горутины в stderr, раз в секунду, пока не освободится (`WatchMainThread`, `watchdog.go`); пост рисовался дольше 50 мс — `slow post` с размерами (HTML, текст, строки, таблицы, вложения, поля, файлы), без текста (`Feed.logSlow`).
 
 ## Архитектура
 
@@ -69,7 +69,7 @@ go test ./...
 ### Потоки
 
 - Окна создаются с `WA_DeleteOnClose`: после закрытия Go-обёртка указывает на удалённый C++-объект. Коллбеки из горутин перед обращением к виджетам проверяют, что окно живо (`MainWindow.closed`, `App.login != l`, флаг по сигналу `destroyed` у карточки пользователя).
-- Qt-объекты трогаем только из главного потока Qt — того, где создан `QApplication` (MIQT сам делает `runtime.LockOSThread`).
+- Qt-объекты трогаем только из главного потока Qt — того, где создан `QApplication`. MIQT закрепляет горутину за потоком ОС только в `NewQApplication`; до неё (DBus в `instance.Claim`) Go мог перенести `main` на другой поток — Qt писал «QApplication was not created in the main() thread». Поэтому `runtime.LockOSThread` — в `init` (`cmd/matterqute`, `TestMain` тестов `ui`).
 - `mm` работает в своих горутинах и Qt не импортирует. `store` тоже без Qt, но однопоточный: им владеет главный поток. Сетевой запрос — в горутине, результат — в главный поток через `MainWindow.ui` (`mainthread.Start` + проверка, что окно живо), и только там меняем `store` и виджеты. Поэтому мьютексов нет.
 - События WebSocket разбираются (JSON) в горутине `RunRealtime`, в главный поток уходит готовое действие (`decodeEvent` в `internal/ui/events.go`).
 - После каждого (пере)подключения WebSocket (`RealtimeHandler.OnConnected`) состояние досинхронизируется по REST: события за время обрыва потеряны.

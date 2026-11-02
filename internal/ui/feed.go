@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	"log/slog"
 	"math"
 	"net/url"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
@@ -105,7 +107,12 @@ type FeedDeps struct {
 	QuickReactions func() []string
 	// EmojiImage — эмодзи картинкой (кастомное догружается, потом done).
 	EmojiImage func(name string, size int, done func()) *qt.QPixmap
+	// Log — посты, которые рисуются долго (debug); nil — не писать.
+	Log *slog.Logger
 }
+
+// slowPost — дольше рисуется пост: в debug-лог, с размерами, без текста.
+const slowPost = 50 * time.Millisecond
 
 // savedScroll — где была лента, когда её убрали с экрана.
 type savedScroll struct {
@@ -1262,6 +1269,12 @@ func (f *Feed) render(i int) {
 // write пишет пост в его фрейм; c стоит в начале пустого фрейма.
 func (f *Feed) write(i int, c *qt.QTextCursor) {
 	it := f.items[i]
+	start := time.Now()
+	defer func() {
+		if d := time.Since(start); d > slowPost && f.d.Log != nil {
+			f.logSlow(it, d)
+		}
+	}()
 	it.prev = ""
 	if prev := f.prevPost(i); prev != nil {
 		it.prev = prev.Id
@@ -1305,6 +1318,25 @@ func (f *Feed) write(i int, c *qt.QTextCursor) {
 	if pp.tail == "" {
 		f.squashTo(it.content.LastPosition()+1, 0)
 	}
+}
+
+// logSlow — что в посте, который рисовался d: размеры и состав, не текст
+// (чтобы понять, что дорого, по логу с настоящего сервера).
+func (f *Feed) logSlow(it *postItem, d time.Duration) {
+	p := it.post
+	fields, attText := 0, 0
+	for _, a := range p.Attachments() {
+		fields += len(a.Fields)
+		attText += utf8.RuneCountInString(a.Text) + utf8.RuneCountInString(a.Pretext)
+	}
+	files, embeds := 0, 0
+	if p.Metadata != nil {
+		files, embeds = len(p.Metadata.Files), len(p.Metadata.Embeds)
+	}
+	f.d.Log.Debug("slow post", "took", d.Round(time.Millisecond), "post", p.Id, "channel", p.ChannelId,
+		"html", len(it.html), "message", utf8.RuneCountInString(p.Message), "lines", strings.Count(p.Message, "\n")+1,
+		"tables", strings.Count(it.html, "<table"), "attachments", len(p.Attachments()), "attachment_text", attText,
+		"fields", fields, "files", files, "embeds", embeds, "collapsed", isLong(p) && !f.expanded[p.Id], "width", f.view.Viewport().Width())
 }
 
 // contentFormat — фрейм текста поста: слева колонка аватара, справа поле;

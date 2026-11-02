@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -18,6 +19,12 @@ import (
 	"matterqute/internal/notify"
 	"matterqute/internal/ui"
 )
+
+// Qt — в главном потоке процесса. MIQT закрепляет горутину за потоком ОС
+// только в NewQApplication, а до неё (DBus в instance.Claim) Go волен
+// перенести main на другой поток — и Qt: «QApplication was not created in the
+// main() thread». LockOSThread в init держит main в главном потоке с начала.
+func init() { runtime.LockOSThread() }
 
 func main() {
 	level := slog.LevelInfo

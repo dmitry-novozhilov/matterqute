@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,9 @@ import (
 
 	"matterqute/internal/markdown"
 )
+
+// Как в main: QApplication — в главном потоке процесса (см. cmd/matterqute).
+func init() { runtime.LockOSThread() }
 
 // Qt привязан к потоку, где создан QApplication, а go test гоняет тесты в своих
 // горутинах. Поэтому главный поток крутит цикл событий, а тела тестов идут в

@@ -306,6 +306,18 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	sw.SetShortcutContext(qt.WidgetWithChildrenShortcut)
 	sw.OnTriggered(m.showSwitcher)
 	m.w.AddAction(sw)
+	// Alt+↑/↓ — соседний канал, Alt+Shift+↑/↓ — непрочитанный, как в веб-клиенте.
+	for _, k := range []struct {
+		keys   string
+		delta  int
+		unread bool
+	}{{"Alt+Up", -1, false}, {"Alt+Down", 1, false}, {"Alt+Shift+Up", -1, true}, {"Alt+Shift+Down", 1, true}} {
+		a := qt.NewQAction5(k.keys, m.w.QObject)
+		a.SetShortcut(qt.NewQKeySequence2(k.keys))
+		a.SetShortcutContext(qt.WidgetWithChildrenShortcut)
+		a.OnTriggered(func() { m.stepChannel(k.delta, k.unread) })
+		m.w.AddAction(a)
+	}
 	dm := qt.NewQAction5("Новое личное сообщение", m.w.QObject)
 	dm.SetShortcut(qt.NewQKeySequence2("Ctrl+Shift+K"))
 	dm.SetShortcutContext(qt.WidgetWithChildrenShortcut)

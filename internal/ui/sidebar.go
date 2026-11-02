@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -400,4 +401,55 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 			p.DrawPixmap9(tx+used+6, cy-8, m.emojiImage(cs.Emoji, 16, m.sidebar.Viewport().Update))
 		}
 	}
+}
+
+// sidebarOrder — что можно открыть в сайдбаре, сверху вниз, как видно:
+// «Треды», «Отложенные», каналы и лички (без скрытых в свёрнутых категориях).
+func (m *MainWindow) sidebarOrder() []string {
+	var out []string
+	add := func(it *qt.QTreeWidgetItem) {
+		if id := it.Data(0, channelIDRole).ToString(); id != "" && !it.IsHidden() {
+			out = append(out, id)
+		}
+	}
+	for i := range m.sidebar.TopLevelItemCount() {
+		g := m.sidebar.TopLevelItem(i)
+		add(g)
+		for j := range g.ChildCount() {
+			add(g.Child(j))
+		}
+	}
+	return out
+}
+
+// stepChannel — Alt+↑/↓ (delta −1/+1): соседний канал в сайдбаре; unread —
+// ближайший с непрочитанным (Alt+Shift+↑/↓). По кругу, как в веб-клиенте.
+func (m *MainWindow) stepChannel(delta int, unread bool) {
+	order := m.sidebarOrder()
+	n := len(order)
+	if n == 0 {
+		return
+	}
+	i := slices.Index(order, m.current)
+	if i < 0 && delta < 0 {
+		i = n // ничего не открыто: вверх — с последнего
+	}
+	for step := 1; step <= n; step++ {
+		id := order[((i+delta*step)%n+n)%n]
+		if id == m.current || unread && !m.rowUnread(id) {
+			continue
+		}
+		m.selectChannel(id)
+		return
+	}
+}
+
+// rowUnread — у строки сайдбара есть непрочитанное или упоминания.
+func (m *MainWindow) rowUnread(id string) bool {
+	if id == threadsID {
+		unread, mentions := m.st.ThreadsUnread()
+		return unread || mentions > 0
+	}
+	unread, mentions := m.st.Unread(id)
+	return unread || mentions > 0
 }

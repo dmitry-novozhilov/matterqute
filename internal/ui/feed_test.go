@@ -662,3 +662,49 @@ func testFeedWaitsForTyping(t *testing.T) {
 		t.Errorf("%d posts still pending after typing stopped", len(f.pending))
 	}
 }
+
+// squashedText — абзацы поста с текстом, но высотой строки 0–1 px (как у
+// ужатых пустых абзацев между фреймами): такого текста на экране не видно.
+func squashedText(f *Feed, it *postItem) []string {
+	var out []string
+	for b := f.doc.FindBlock(it.frame.FirstPosition()); b.IsValid() && b.Position() <= it.frame.LastPosition(); b = b.Next() {
+		bf := b.BlockFormat()
+		if strings.TrimSpace(strings.ReplaceAll(b.Text(), "￼", "")) != "" &&
+			bf.LineHeightType() == int(qt.QTextBlockFormat__FixedHeight) && bf.LineHeight2() <= 1 {
+			out = append(out, b.Text())
+		}
+	}
+	return out
+}
+
+// Перерисовка поста, у которого был разделитель над текстом (черта «Новые
+// сообщения», день), не оставляет текст в ужатом абзаце. Было: черта
+// переезжала с поста на пост (заходили в канал после каждого нового) — и
+// у постов, где она побывала, текст пропадал, оставался аватар.
+func TestFeedRerenderKeepsText(t *testing.T) {
+	onMain(func() {
+		f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+		f.Widget().Resize(600, 400)
+		f.Widget().Show()
+		defer f.Widget().Close()
+		posts := makePosts(100, 8)
+		f.SetPosts(posts, false)
+		drained(f)
+		check := func(when string) {
+			for _, it := range f.items {
+				if s := squashedText(f, it); len(s) > 0 {
+					t.Errorf("%s: post %s: squashed text %q", when, it.post.Id, s)
+				}
+			}
+		}
+		for _, p := range posts {
+			f.SetNewSince(p.CreateAt - 1)
+		}
+		f.SetNewSince(0)
+		check("marker moved over every post")
+		// Верхний пост пропал — следующий получает разделитель дня, вернулся — теряет.
+		f.Remove(posts[0].Id)
+		f.Upsert(posts[0])
+		check("day separator came and went")
+	})
+}

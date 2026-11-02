@@ -1302,6 +1302,12 @@ func (f *Feed) write(i int, c *qt.QTextCursor) {
 	f.rendering = ""
 	it.html = pp.head + pp.body + pp.tail
 	it.avatar, it.link, it.bg = pp.avatar, pp.link, pp.bg
+	// Пустой абзац, в который пишем, мог остаться от прежней отрисовки поста
+	// (render стирает текст фрейма, а последний абзац остаётся со своим
+	// форматом) — ужатый до 0–1 px пустой абзац вокруг фрейма текста. Первый
+	// абзац HTML встаёт в него и берёт его высоту строки: пост «пропадал»,
+	// когда с него уходила черта «Новые сообщения». Пишем с чистого формата.
+	c.SetBlockFormat(qt.NewQTextBlockFormat())
 	// Обычный пост — один фрейм с полями; с разделителем над текстом или
 	// «N ответов» под ним — фрейм на всю ширину и в нём фрейм текста.
 	nested := pp.head != "" || pp.tail != ""
@@ -1311,6 +1317,7 @@ func (f *Feed) write(i int, c *qt.QTextCursor) {
 			c.InsertHtml(scaleFonts(pp.head))
 		}
 		it.content = c.InsertFrame(contentFormat(pp.top))
+		c.SetBlockFormat(qt.NewQTextBlockFormat())
 	} else {
 		it.frame.SetFrameFormat(contentFormat(pp.top))
 		it.content = it.frame

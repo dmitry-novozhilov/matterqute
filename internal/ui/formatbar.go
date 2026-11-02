@@ -244,3 +244,27 @@ func selectLink(cur *qt.QTextCursor, href string) {
 	cur.SetPosition(from)
 	cur.SetPosition2(to, qt.QTextCursor__KeepAnchor)
 }
+
+// Скан-коды клавиш верхнего ряда «7», «8», «9» (X11 и Wayland: evdev + 8).
+const scan7, scan8, scan9 = 16, 17, 18
+
+// blockShortcut — Ctrl+Shift+7/8/9 (списки, цитата) по скан-коду. Qt
+// сочетание «Ctrl+Shift+8» с нажатием не сопоставлял: с Shift клавиша даёт
+// другой символ («*», на русской раскладке у «7» — «?»), и действие не
+// срабатывало. Скан-код от раскладки не зависит. false — не наше сочетание.
+func (c *Composer) blockShortcut(e *qt.QKeyEvent) bool {
+	var a *qt.QAction
+	switch e.NativeScanCode() {
+	case scan7:
+		a = c.acts.ordered
+	case scan8:
+		a = c.acts.bullet
+	case scan9:
+		a = c.acts.quote
+	}
+	if a == nil {
+		return false
+	}
+	a.Trigger()
+	return true
+}

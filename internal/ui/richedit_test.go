@@ -261,3 +261,32 @@ func TestComposerSendsMarkdown(t *testing.T) {
 		shot(t, m, "composer-sent")
 	})
 }
+
+// Ctrl+Shift+8/7/9 — по скан-коду: Qt сочетание с нажатием не сопоставлял
+// (с Shift клавиша даёт «*», на русской раскладке у «7» — «?»).
+func TestBlockShortcutsByScanCode(t *testing.T) {
+	onMain(func() {
+		c := NewComposer()
+		defer c.dispose()
+		press := func(key qt.Key, scan uint) {
+			e := qt.NewQKeyEvent2(qt.QEvent__KeyPress, int(key), qt.ControlModifier|qt.ShiftModifier, scan, 0, 0)
+			qt.QCoreApplication_SendEvent(c.edit.QObject, e.QEvent)
+		}
+		c.edit.SetPlainText("пункт")
+		press(qt.Key_Asterisk, scan8) // английская раскладка: Shift+8 = «*»
+		if k := blockKind(c.edit.TextCursor().Block()); k != markdown.Bullet {
+			t.Errorf("Ctrl+Shift+8: block %v, want bullet", k)
+		}
+		press(qt.Key_Question, scan7) // русская: Shift+7 = «?»
+		if k := blockKind(c.edit.TextCursor().Block()); k != markdown.Ordered {
+			t.Errorf("Ctrl+Shift+7: block %v, want ordered", k)
+		}
+		press(qt.Key_ParenLeft, scan9)
+		if k := blockKind(c.edit.TextCursor().Block()); k != markdown.Quote {
+			t.Errorf("Ctrl+Shift+9: block %v, want quote", k)
+		}
+		if got := c.edit.ToPlainText(); got != "пункт" {
+			t.Errorf("text changed: %q", got)
+		}
+	})
+}

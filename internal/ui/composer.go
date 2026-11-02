@@ -179,6 +179,8 @@ func NewComposer() *Composer {
 			return
 		case k == qt.Key_Backspace && mods == qt.NoModifier && c.backspaceAtStart():
 			return
+		case mods&(qt.ControlModifier|qt.ShiftModifier|qt.AltModifier) == qt.ControlModifier|qt.ShiftModifier && c.blockShortcut(e):
+			return
 		}
 		c.typing = e.Text() != ""
 		super(e)

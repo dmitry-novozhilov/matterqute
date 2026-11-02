@@ -35,7 +35,7 @@ func DataDir() (string, error) {
 func Entry(exe string) string {
 	return "[Desktop Entry]\n" +
 		"Type=Application\n" +
-		"Name=matterqute\n" +
+		"Name=Matterqute\n" +
 		"GenericName=Mattermost\n" +
 		"Comment=Клиент Mattermost\n" +
 		"Exec=" + quoteExec(exe) + "\n" +

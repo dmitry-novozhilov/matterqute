@@ -35,8 +35,10 @@ func main() {
 		os.Setenv("QT_QPA_PLATFORM", "offscreen") // иконки рисуем без окон и дисплея
 	}
 	app := qt.NewQApplication(os.Args)
+	// Имя приложения — служебное (WM_CLASS для дока, как StartupWMClass ярлыка),
+	// показываемое — с большой буквы.
 	qt.QCoreApplication_SetApplicationName("matterqute")
-	qt.QGuiApplication_SetApplicationDisplayName("matterqute")
+	qt.QGuiApplication_SetApplicationDisplayName(ui.AppTitle)
 	qt.QGuiApplication_SetDesktopFileName("matterqute")
 
 	if install {
@@ -87,7 +89,7 @@ func startNotifier(log *slog.Logger) *notify.Notifier {
 			icon = path
 		}
 	}
-	n, err := notify.New("matterqute", icon)
+	n, err := notify.New(ui.AppTitle, icon)
 	if err != nil {
 		log.Warn("desktop notifications off", "err", err)
 		return nil

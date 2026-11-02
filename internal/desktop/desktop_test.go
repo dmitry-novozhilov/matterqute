@@ -21,7 +21,7 @@ func TestInstallUninstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Exec=\"/home/u/dev/matter qute/matterqute\"\n", "Icon=matterqute\n", "StartupWMClass=matterqute\n"} {
+	for _, want := range []string{"Name=Matterqute\n", "Exec=\"/home/u/dev/matter qute/matterqute\"\n", "Icon=matterqute\n", "StartupWMClass=matterqute\n"} {
 		if !strings.Contains(string(entry), want) {
 			t.Errorf("entry lacks %q:\n%s", want, entry)
 		}

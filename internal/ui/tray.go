@@ -43,7 +43,7 @@ func NewTray(colors config.Tray) *Tray {
 	}
 	t := &Tray{icon: qt.NewQSystemTrayIcon(), colors: colors}
 	menu := qt.NewQMenu2()
-	open := menu.QWidget.AddActionWithText("Открыть matterqute")
+	open := menu.QWidget.AddActionWithText("Открыть " + AppTitle)
 	open.OnTriggered(func() { t.open() })
 	t.count = menu.QWidget.AddActionWithText("")
 	t.count.SetEnabled(false)
@@ -88,7 +88,7 @@ func (t *Tray) refresh() {
 	color, text, what := trayLook(t.counts, trayColors(t.colors, trayPanelDark()))
 	t.icon.SetIcon(trayIcon(color, text))
 	t.count.SetVisible(what != "")
-	tip := "matterqute"
+	tip := AppTitle
 	if what != "" {
 		t.count.SetText(what)
 		tip += " — " + what

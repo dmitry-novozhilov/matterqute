@@ -163,6 +163,10 @@ func dotPixmap(color string, size int) *qt.QPixmap {
 	return pm
 }
 
+// AppTitle — название приложения для людей: заголовок окна, меню, трей,
+// уведомления. Служебное имя (бинарник, ярлык, настройки) — matterqute.
+const AppTitle = "Matterqute"
+
 // appGreen — плитка значка приложения; им же трей говорит о новых сообщениях.
 const appGreen = "#008a67"
 

@@ -63,7 +63,7 @@ func NewLoginView(server, loginID string) *LoginView {
 	l.form.SetFixedWidth(360)
 
 	l.logo = qt.NewQLabel2()
-	title := qt.NewQLabel3("matterqute")
+	title := qt.NewQLabel3(AppTitle)
 	title.SetFont(pixelFont(20, qt.QFont__DemiBold))
 	sub := qt.NewQLabel3("Вход в Mattermost")
 	sub.SetProperty("role", qt.NewQVariant11("hint"))

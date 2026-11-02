@@ -62,7 +62,7 @@ type ServerItem struct {
 func NewShell() *Shell {
 	s := &Shell{w: qt.NewQMainWindow2(), stack: qt.NewQStackedWidget2(), themeActs: map[ThemeMode]*qt.QAction{},
 		quitApp: qt.QCoreApplication_Quit}
-	s.w.SetWindowTitle("matterqute")
+	s.w.SetWindowTitle(AppTitle)
 	s.w.SetWindowIcon(appIcon())
 	s.w.Resize(1280, 800)
 	s.w.SetMinimumSize2(900, 600)

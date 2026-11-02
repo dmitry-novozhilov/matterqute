@@ -69,6 +69,11 @@ QListView#threads { background: #fcfbf9; border: none; }
 QListView#threads::item { border-bottom: 1px solid #d9d5cf; padding: 10px 16px 12px; }
 QListView#threads::item:selected { background: #d4f2e5; }
 
+/* tabs in the search panel: «Сообщения» / «Файлы» */
+QPushButton[role="tab"] { border: none; border-radius: 4px; background: transparent; padding: 4px 10px; min-height: 0; }
+QPushButton[role="tab"]:hover { background: #e9e5e0; }
+QPushButton[role="tab"]:checked { background: #d4f2e5; color: #003927; font-weight: 600; }
+
 /* channel members: QListView, a delegate paints rows; header button with the count */
 QListView#members { background: #fcfbf9; border: none; }
 QListView#members::item:hover { background: #e9e5e0; }

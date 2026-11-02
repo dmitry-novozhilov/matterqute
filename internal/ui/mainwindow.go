@@ -284,6 +284,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	sdeps := deps
 	sdeps.Where = m.postWhere
 	m.search = newSearchPanel(sdeps, m.closeSearch, m.runSearch)
+	m.search.attachFiles(m.newFileList(true))
 	m.drafts = newDrafts(m, filepath.Join(cacheDir, "drafts.json"))
 	m.composer.OnDraft = func(key string) { m.drafts.changed(m.composer, key) }
 	m.panel.composer.OnDraft = func(key string) { m.drafts.changed(m.panel.composer, key) }

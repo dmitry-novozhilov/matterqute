@@ -33,6 +33,12 @@ type searchPanel struct {
 	// Вместо поиска — список (postactions.go): listPinned (закреплённые в
 	// listChannel) или listSaved; "" — поиск.
 	list, listChannel string
+	// Что ищем: сообщения (feed) или файлы (files) — вкладки над результатами.
+	filesMode          bool
+	modes              *qt.QWidget
+	postsTab, filesTab *qt.QPushButton
+	stack              *qt.QStackedWidget
+	files              *fileList
 
 	unsubscribe func()
 }
@@ -60,18 +66,45 @@ func newSearchPanel(deps FeedDeps, onClose func(), onSearch func(q string)) *sea
 	deps.Search, deps.Thread = true, false
 	sp.feed = NewFeed(deps)
 	sp.feed.Reset("Введите запрос и нажмите Enter")
+	sp.stack = qt.NewQStackedWidget2()
+	sp.stack.AddWidget(sp.feed.Widget())
+
+	// Вкладки «Сообщения» и «Файлы»: смена — тот же запрос заново.
+	sp.modes = qt.NewQWidget2()
+	ml := qt.NewQHBoxLayout(sp.modes)
+	ml.SetContentsMargins(0, 0, 0, 0)
+	ml.SetSpacing(4)
+	tab := func(title string, files bool) *qt.QPushButton {
+		b := qt.NewQPushButton3(title)
+		b.SetCheckable(true)
+		b.SetProperty("role", qt.NewQVariant11("tab"))
+		b.SetFocusPolicy(qt.NoFocus)
+		b.OnClicked(func() {
+			sp.setFilesMode(files)
+			if q := strings.TrimSpace(sp.field.Text()); q != "" {
+				onSearch(q)
+			}
+		})
+		ml.AddWidget(b.QWidget)
+		return b
+	}
+	sp.postsTab = tab("Сообщения", false)
+	sp.filesTab = tab("Файлы", true)
+	ml.AddStretch()
+	sp.setFilesMode(false)
 
 	top := qt.NewQVBoxLayout2()
 	top.SetContentsMargins(16, 8, 16, 6)
 	top.SetSpacing(4)
 	top.AddWidget(sp.field.QWidget)
+	top.AddWidget(sp.modes)
 	top.AddWidget(sp.info.QWidget)
 	lay := qt.NewQVBoxLayout(sp.w)
 	lay.SetContentsMargins(0, 0, 0, 0)
 	lay.SetSpacing(0)
 	lay.AddWidget(sp.head.f.QWidget)
 	lay.AddLayout(top.QLayout)
-	lay.AddWidget2(sp.feed.Widget(), 1)
+	lay.AddWidget2(sp.stack.QWidget, 1)
 	sp.w.SetVisible(false)
 	sp.unsubscribe = OnThemeChanged(sp.restyle)
 	sp.restyle()
@@ -85,10 +118,35 @@ func (sp *searchPanel) restyle() {
 }
 
 // setList — панель показывает список kind ("" — снова поиск: строка запроса).
+// setFilesMode — ищем файлы или сообщения: вкладка и что под ней.
+func (sp *searchPanel) setFilesMode(on bool) {
+	sp.filesMode = on
+	sp.postsTab.SetChecked(!on)
+	sp.filesTab.SetChecked(on)
+	if on && sp.files != nil {
+		sp.stack.SetCurrentWidget(sp.files.list.QWidget)
+	} else {
+		sp.stack.SetCurrentWidget(sp.feed.Widget())
+	}
+}
+
+// attachFiles — список для вкладки «Файлы» (его делает окно: щелчки по файлам — его).
+func (sp *searchPanel) attachFiles(fl *fileList) {
+	sp.files = fl
+	sp.stack.AddWidget(fl.list.QWidget)
+	sp.setFilesMode(sp.filesMode)
+}
+
 func (sp *searchPanel) setList(kind string) {
 	sp.list = kind
 	sp.query = ""
 	sp.field.SetVisible(kind == "")
+	sp.modes.SetVisible(kind == "")
+	if kind != "" {
+		sp.stack.SetCurrentWidget(sp.feed.Widget()) // списки — сообщения
+	} else {
+		sp.setFilesMode(sp.filesMode)
+	}
 	if kind == "" {
 		sp.head.set(nil, sp.title(), "")
 		sp.restyle()
@@ -165,6 +223,7 @@ func (m *MainWindow) closeSearch() {
 	m.search.setList("")
 	m.search.gen++
 	m.search.feed.Reset("Введите запрос и нажмите Enter")
+	m.search.files.fill(nil)
 	m.search.info.SetText("")
 	m.showRight(nil)
 }
@@ -212,22 +271,33 @@ func (m *MainWindow) runSearch(q string) {
 	if q == "" {
 		return
 	}
+	if sp.filesMode {
+		m.runFileSearch(q)
+		return
+	}
 	sp.gen++
 	gen := sp.gen
 	sp.info.SetText("Ищем…")
-	offset := 0
-	if _, off := time.Now().Zone(); off != 0 {
-		offset = off
-	}
+	_, offset := time.Now().Zone()
 	params := &model.SearchParameter{Terms: &q, IsOrSearch: new(false), TimeZoneOffset: &offset, Page: new(0), PerPage: new(searchLimit)}
-	team := m.teamOf(m.current)
+	teams, fallback := m.searchTeams(q), m.teamOf(m.current)
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
-		list, _, err := m.s.Client.SearchPostsWithParams(ctx, "", params) // по всем командам
-		if err != nil && team != "" {
-			list, _, err = m.s.Client.SearchPostsWithParams(ctx, team, params) // сервер постарше — по команде
-		}
+		var posts []*model.Post
+		seen := map[string]bool{}
+		err := searchEach(teams, fallback, func(team string) error {
+			list, _, err := m.s.Client.SearchPostsWithParams(ctx, team, params)
+			if err == nil {
+				for _, p := range store.PostsOf(list) {
+					if !seen[p.Id] {
+						seen[p.Id] = true
+						posts = append(posts, p)
+					}
+				}
+			}
+			return err
+		})
 		m.ui(func() {
 			if sp.gen != gen {
 				return
@@ -237,8 +307,10 @@ func (m *MainWindow) runSearch(q string) {
 				sp.info.SetText("Поиск не удался: " + commandError(err))
 				return
 			}
-			posts := store.PostsOf(list)
 			slices.SortFunc(posts, func(a, b *model.Post) int { return int(b.CreateAt - a.CreateAt) })
+			if len(posts) > searchLimit {
+				posts = posts[:searchLimit]
+			}
 			m.withUsers(postAuthors(posts), func() {
 				if sp.gen != gen {
 					return
@@ -260,6 +332,104 @@ func (m *MainWindow) runSearch(q string) {
 			})
 		})
 	}()
+}
+
+// runFileSearch — вкладка «Файлы»: файлы по запросу во всех каналах,
+// новые сверху (имя, ext:, from:, in:, даты).
+func (m *MainWindow) runFileSearch(q string) {
+	sp := m.search
+	sp.gen++
+	gen := sp.gen
+	sp.info.SetText("Ищем…")
+	_, offset := time.Now().Zone()
+	params := &model.SearchParameter{Terms: &q, IsOrSearch: new(false), TimeZoneOffset: &offset, Page: new(0), PerPage: new(searchLimit)}
+	teams, fallback := m.searchTeams(q), m.teamOf(m.current)
+	go func() {
+		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
+		defer cancel()
+		var files []*model.FileInfo
+		var authors []string
+		seen := map[string]bool{}
+		err := searchEach(teams, fallback, func(team string) error {
+			list, _, err := m.s.Client.SearchFilesWithParams(ctx, team, params)
+			if err == nil {
+				for _, id := range list.Order {
+					if fi := list.FileInfos[id]; fi != nil && fi.DeleteAt == 0 && !seen[id] {
+						seen[id] = true
+						files = append(files, fi)
+						authors = append(authors, fi.CreatorId)
+					}
+				}
+			}
+			return err
+		})
+		m.ui(func() {
+			if sp.gen != gen {
+				return
+			}
+			if err != nil {
+				m.log.Warn("search files", "query", truncate(q, 200), "err", err)
+				sp.info.SetText("Поиск не удался: " + commandError(err))
+				return
+			}
+			m.withUsers(authors, func() {
+				if sp.gen != gen {
+					return
+				}
+				slices.SortStableFunc(files, func(a, b *model.FileInfo) int { return int(b.CreateAt - a.CreateAt) })
+				if len(files) > searchLimit {
+					files = files[:searchLimit]
+				}
+				sp.query = q
+				sp.files.fill(files)
+				switch {
+				case len(files) == 0:
+					sp.info.SetText(html.EscapeString("По запросу «" + truncate(q, 80) + "» файлов нет"))
+				case len(files) >= searchLimit:
+					sp.info.SetText(fmt.Sprintf("Показаны последние %d — уточните запрос, чтобы увидеть остальное", len(files)))
+				default:
+					sp.info.SetText("Найдено: " + plural(int64(len(files)), "файл", "файла", "файлов"))
+				}
+			})
+		})
+	}()
+}
+
+// searchTeams — где искать запрос q: по всем командам сразу (""), а с in:
+// — по каждой команде отдельно: имя канала сервер ищет в команде поиска, и
+// в поиске по всем командам его не найти (convertChannelNamesToChannelIds).
+func (m *MainWindow) searchTeams(q string) []string {
+	for _, tok := range strings.Fields(strings.ToLower(q)) {
+		if t := strings.TrimPrefix(tok, "-"); strings.HasPrefix(t, "in:") || strings.HasPrefix(t, "channel:") {
+			var out []string
+			for _, team := range m.st.Teams() {
+				out = append(out, team.Id)
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+	}
+	return []string{""}
+}
+
+// searchEach — поиск в каждой из teams; по всем командам ("") не вышло —
+// по команде fallback (сервер постарше). Ошибка — только если не вышло нигде.
+func searchEach(teams []string, fallback string, search func(team string) error) error {
+	var errs []error
+	for _, team := range teams {
+		err := search(team)
+		if err != nil && team == "" && fallback != "" {
+			err = search(fallback)
+		}
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) == len(teams) && len(errs) > 0 {
+		return errs[0]
+	}
+	return nil
 }
 
 // postWhere — где сообщение: «# backend», «# backend · в треде», «@bob».

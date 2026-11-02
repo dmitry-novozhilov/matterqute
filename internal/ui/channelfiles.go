@@ -26,33 +26,30 @@ type filesPanel struct {
 	head  *header
 	field *qt.QLineEdit
 	info  *qt.QLabel
-	list  *qt.QListWidget
-	timer *qt.QTimer // поиск — после паузы в наборе
+	fl    *fileList
+	list  *qt.QListWidget            // = fl.list
+	files map[string]*model.FileInfo // = fl.files
+	timer *qt.QTimer                 // поиск — после паузы в наборе
 
 	channel string
-	files   map[string]*model.FileInfo
-	thumbs  map[string]*qt.QPixmap // превью картинок 32×32, по id файла
 	gen     int
 
 	unsubscribe func()
 }
 
-func (m *MainWindow) newFilesPanel() *filesPanel {
-	fp := &filesPanel{w: qt.NewQWidget2(), field: qt.NewQLineEdit2(), info: qt.NewQLabel2(), list: qt.NewQListWidget2(),
-		files: map[string]*model.FileInfo{}, thumbs: map[string]*qt.QPixmap{}}
-	fp.head = newHeader("threadHeader", true, nil)
-	fp.head.close.OnClicked(func() { m.showRight(nil) })
-	fp.field.SetPlaceholderText("Имя файла, ext:pdf, from:имя")
-	fp.field.SetClearButtonEnabled(true)
-	fp.timer = qt.NewQTimer2(fp.w.QObject)
-	fp.timer.SetSingleShot(true)
-	fp.timer.SetInterval(300)
-	fp.timer.OnTimeout(func() { m.loadFiles() })
-	fp.field.OnTextChanged(func(string) { fp.timer.Start2() })
-	fp.info.SetProperty("role", qt.NewQVariant11("hint"))
-	fp.info.SetWordWrap(true)
+// fileList — список файлов (файлы канала, поиск файлов): превью картинки
+// или значок, имя, кто, где (в поиске), когда, размер; щелчок — открыть,
+// правый — «Сохранить…», «Перейти к сообщению».
+type fileList struct {
+	list   *qt.QListWidget
+	files  map[string]*model.FileInfo
+	thumbs map[string]*qt.QPixmap // превью картинок 32×32, по id файла
+	where  bool                   // показывать канал файла
+}
 
-	l := fp.list
+func (m *MainWindow) newFileList(where bool) *fileList {
+	fl := &fileList{list: qt.NewQListWidget2(), files: map[string]*model.FileInfo{}, thumbs: map[string]*qt.QPixmap{}, where: where}
+	l := fl.list
 	setName(l.QObject, "members") // тот же вид, что у списка участников
 	l.SetFrameShape(qt.QFrame__NoFrame)
 	l.SetUniformItemSizes(true)
@@ -62,8 +59,8 @@ func (m *MainWindow) newFilesPanel() *filesPanel {
 		noFocusFrame(opt)
 		super(p, opt, idx)
 		if it := l.ItemFromIndex(idx); it != nil {
-			if fi := fp.files[it.Data(fileIDRole).ToString()]; fi != nil {
-				m.paintFileRow(p, opt, fi)
+			if fi := fl.files[it.Data(fileIDRole).ToString()]; fi != nil {
+				m.paintFileRow(p, opt, fl, fi)
 			}
 		}
 	})
@@ -72,7 +69,7 @@ func (m *MainWindow) newFilesPanel() *filesPanel {
 	})
 	l.SetItemDelegate(d.QAbstractItemDelegate)
 	l.OnItemClicked(func(it *qt.QListWidgetItem) {
-		if fi := fp.files[it.Data(fileIDRole).ToString()]; fi != nil {
+		if fi := fl.files[it.Data(fileIDRole).ToString()]; fi != nil {
 			m.openChannelFile(fi)
 		}
 	})
@@ -82,7 +79,7 @@ func (m *MainWindow) newFilesPanel() *filesPanel {
 		if it == nil {
 			return
 		}
-		fi := fp.files[it.Data(fileIDRole).ToString()]
+		fi := fl.files[it.Data(fileIDRole).ToString()]
 		if fi == nil {
 			return
 		}
@@ -96,6 +93,35 @@ func (m *MainWindow) newFilesPanel() *filesPanel {
 		})
 		menu.ExecWithPos(l.Viewport().MapToGlobalWithQPoint(pos))
 	})
+	return fl
+}
+
+// fill — файлы в список (по порядку files).
+func (fl *fileList) fill(files []*model.FileInfo) {
+	fl.list.Clear()
+	clear(fl.files)
+	for _, fi := range files {
+		fl.files[fi.Id] = fi
+		it := qt.NewQListWidgetItem5(fl.list)
+		it.SetData(fileIDRole, qt.NewQVariant11(fi.Id))
+	}
+}
+
+func (m *MainWindow) newFilesPanel() *filesPanel {
+	fp := &filesPanel{w: qt.NewQWidget2(), field: qt.NewQLineEdit2(), info: qt.NewQLabel2(), fl: m.newFileList(false)}
+	fp.list, fp.files = fp.fl.list, fp.fl.files
+	fp.head = newHeader("threadHeader", true, nil)
+	fp.head.close.OnClicked(func() { m.showRight(nil) })
+	fp.field.SetPlaceholderText("Имя файла, ext:pdf, from:имя")
+	fp.field.SetClearButtonEnabled(true)
+	fp.timer = qt.NewQTimer2(fp.w.QObject)
+	fp.timer.SetSingleShot(true)
+	fp.timer.SetInterval(300)
+	fp.timer.OnTimeout(func() { m.loadFiles() })
+	fp.field.OnTextChanged(func(string) { fp.timer.Start2() })
+	fp.info.SetProperty("role", qt.NewQVariant11("hint"))
+	fp.info.SetWordWrap(true)
+	l := fp.list
 
 	top := qt.NewQVBoxLayout2()
 	top.SetContentsMargins(16, 8, 16, 6)
@@ -120,21 +146,22 @@ func (fp *filesPanel) restyle() {
 	fp.list.Viewport().Update()
 }
 
-// paintFileRow — превью картинки или значок файла, имя, ниже — кто, когда, размер.
-func (m *MainWindow) paintFileRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, fi *model.FileInfo) {
+// paintFileRow — превью картинки или значок файла, имя, ниже — кто, (где,)
+// когда, размер.
+func (m *MainWindow) paintFileRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, fl *fileList, fi *model.FileInfo) {
 	pal := Pal()
 	r := opt.Rect()
 	x, y, h := r.X()+16, r.Y(), r.Height()
 	cy := y + h/2
-	pm := m.files.thumbs[fi.Id]
+	pm := fl.thumbs[fi.Id]
 	if pm == nil && isImage(fi) && !isVideo(fi) && fi.HasPreviewImage {
 		if path := m.assets.Preview(fi.Id); path != "" {
 			if img := qt.NewQPixmap4(path); !img.IsNull() {
 				pm = img.Scaled3(32, 32, qt.KeepAspectRatioByExpanding, qt.SmoothTransformation).Copy(0, 0, 32, 32)
-				m.files.thumbs[fi.Id] = pm
+				fl.thumbs[fi.Id] = pm
 			}
 		} else {
-			m.assets.WantPreview(fi.Id, m.files.list.Viewport().Update)
+			m.assets.WantPreview(fi.Id, fl.list.Viewport().Update)
 		}
 	}
 	if pm == nil {
@@ -153,7 +180,11 @@ func (m *MainWindow) paintFileRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, 
 	p.SetFont(f)
 	p.SetPen(qt.NewQColor6(pal.Tx))
 	p.DrawText7(tx, cy-20, w, 20, int(qt.AlignVCenter|qt.AlignLeft), qt.NewQFontMetrics(f).ElidedText(fi.Name, qt.ElideMiddle, w))
-	sub := m.st.Username(fi.CreatorId) + " · " + dayLabel(fi.CreateAt, time.Now()) + " · " + formatSize(fi.Size)
+	sub := m.st.Username(fi.CreatorId)
+	if ch := m.st.Channel(fi.ChannelId); fl.where && ch != nil {
+		sub += " · " + channelPrefix(ch) + m.st.Title(ch)
+	}
+	sub += " · " + dayLabel(fi.CreateAt, time.Now()) + " · " + formatSize(fi.Size)
 	f = sidebarFont(-2, qt.QFont__Normal)
 	p.SetFont(f)
 	p.SetPen(qt.NewQColor6(pal.Tx2))
@@ -244,13 +275,7 @@ func (m *MainWindow) loadFiles() {
 }
 
 func (fp *filesPanel) fill(files []*model.FileInfo) {
-	fp.list.Clear()
-	clear(fp.files)
-	for _, fi := range files {
-		fp.files[fi.Id] = fi
-		it := qt.NewQListWidgetItem5(fp.list)
-		it.SetData(fileIDRole, qt.NewQVariant11(fi.Id))
-	}
+	fp.fl.fill(files)
 	switch q := strings.TrimSpace(fp.field.Text()); {
 	case len(files) == 0 && q != "":
 		fp.info.SetText("Ничего не нашлось")

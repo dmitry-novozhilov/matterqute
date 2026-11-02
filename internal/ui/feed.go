@@ -20,6 +20,7 @@ import (
 
 	"matterqute/internal/emoji"
 	"matterqute/internal/markdown"
+	"matterqute/internal/sched"
 	"matterqute/internal/store"
 )
 
@@ -206,6 +207,8 @@ type Feed struct {
 	OnEditPost       func(p *model.Post)                         // «Изменить» своё сообщение
 	OnDeletePost     func(p *model.Post)                         // «Удалить…» своё сообщение
 	OnCopyLink       func(p *model.Post)                         // «Копировать ссылку на сообщение»
+	OnRemind         func(p *model.Post, at time.Time)           // «Напомнить»; at нулевое — спросить время
+	OnForward        func(p *model.Post)                         // «Переслать…»
 	OnPin            func(p *model.Post, pin bool)               // «Закрепить в канале» / «Открепить»
 	OnSave           func(p *model.Post, save bool)              // «Сохранить» / «Убрать из сохранённых»
 	OnMarkUnread     func(p *model.Post)                         // «Пометить непрочитанным»
@@ -1615,6 +1618,9 @@ func (f *Feed) bodyHTML(p *model.Post) string {
 		return fmt.Sprintf(`<p style="margin:0"><span style="font-size:13px;font-style:italic;color:%s">%s</span></p>`, pal.Tx2, html.EscapeString(msg))
 	}
 	msg, atts := p.Message, p.Attachments()
+	if r, ok := reminderMarkdown(p); ok {
+		msg = r // текст сервера — на языке его настроек, а ссылка в нём на сайт
+	}
 	long := isLong(p)
 	collapsed := long && !f.expanded[p.Id]
 	if collapsed {
@@ -2213,9 +2219,22 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 					f.OnPickReaction(p)
 				}
 			})
+			if f.OnForward != nil {
+				fw := menu.QWidget.AddActionWithText("Переслать…")
+				fw.OnTriggered(func() { f.OnForward(p) })
+			}
 			if f.OnMarkUnread != nil {
 				un := menu.QWidget.AddActionWithText("Пометить непрочитанным")
 				un.OnTriggered(func() { f.OnMarkUnread(p) })
+			}
+			if f.OnRemind != nil {
+				items := []menuItem{}
+				for _, pr := range sched.RemindPresets(time.Now()) {
+					at := pr.At
+					items = append(items, menuItem{title: pr.Title, do: func() { f.OnRemind(p, at) }})
+				}
+				items = append(items, menuItem{}, menuItem{title: "Своё время…", do: func() { f.OnRemind(p, time.Time{}) }})
+				fillMenu(menu.AddMenuWithTitle("Напомнить"), items)
 			}
 			if f.OnSave != nil {
 				saved := f.d.Saved != nil && f.d.Saved(p.Id)

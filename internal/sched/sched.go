@@ -82,6 +82,19 @@ func Presets(now time.Time) []Preset {
 	return out
 }
 
+// RemindPresets — «Напомнить» в меню сообщения, как в веб-клиенте: через
+// 30 минут, час, два часа, завтра в 9:00.
+func RemindPresets(now time.Time) []Preset {
+	y, m, d := now.Date()
+	at := func(dur time.Duration) time.Time { return now.Add(dur).Truncate(time.Minute) }
+	return []Preset{
+		{"Через 30 минут", at(30 * time.Minute)},
+		{"Через час", at(time.Hour)},
+		{"Через 2 часа", at(2 * time.Hour)},
+		{"Завтра в 9:00", time.Date(y, m, d+1, 9, 0, 0, 0, now.Location())},
+	}
+}
+
 var (
 	weekdays = []string{"вс", "пн", "вт", "ср", "чт", "пт", "сб"}
 	months   = []string{"янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"}

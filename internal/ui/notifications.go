@@ -107,7 +107,11 @@ func (m *MainWindow) notification(p *model.Post) notify.Notification {
 // notificationBody — текст поста без разметки; у пустого — текст вложения
 // интеграции или имена файлов.
 func notificationBody(p *model.Post) string {
-	text := markdown.PlainText(p.Message)
+	msg := p.Message
+	if r, ok := reminderMarkdown(p); ok {
+		msg = r
+	}
+	text := markdown.PlainText(msg)
 	if text == "" {
 		for _, a := range p.Attachments() {
 			for _, s := range []string{a.Fallback, a.Pretext, a.Title, a.Text} {

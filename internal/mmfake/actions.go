@@ -158,3 +158,38 @@ func (s *Server) threadSetUnread(w http.ResponseWriter, r *http.Request, me *mod
 	s.sendTo(me.Id, ev)
 	s.json(w, s.threadFor(id, me.Id))
 }
+
+// setReminder — POST /users/{uid}/posts/{pid}/reminder: напомнить о посте
+// (время — секунды; срабатывание не изображаем, только запоминаем).
+func (s *Server) setReminder(w http.ResponseWriter, r *http.Request, me *model.User) {
+	var rem model.PostReminder
+	if err := json.NewDecoder(r.Body).Decode(&rem); err != nil || r.PathValue("uid") != me.Id || rem.TargetTime <= 0 {
+		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.post(r.PathValue("pid")) == nil {
+		s.fail(w, http.StatusNotFound, "app.post.get.app_error")
+		return
+	}
+	s.reminders[r.PathValue("pid")] = rem.TargetTime
+	s.json(w, map[string]string{"status": "OK"})
+}
+
+// Reminder — когда напомнить о посте (секунды), 0 — не просили; для тестов.
+func (s *Server) Reminder(postID string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reminders[postID]
+}
+
+// Last — последний пост канала; для тестов.
+func (s *Server) Last(channelID string) *model.Post {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ps := s.posts[channelID]; len(ps) > 0 {
+		return ps[len(ps)-1]
+	}
+	return nil
+}

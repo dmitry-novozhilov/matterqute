@@ -2,6 +2,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -140,6 +142,16 @@ func (c *Config) Remove(url string) {
 			c.Active = c.Servers[0].URL
 		}
 	}
+}
+
+// ScheduledPath — файл отложенных сообщений сервера serverURL, которые
+// отправляет приложение (рядом с config.json); пусто — настройки без файла.
+func (c *Config) ScheduledPath(serverURL string) string {
+	if c.path == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(serverURL))
+	return filepath.Join(filepath.Dir(c.path), "scheduled", hex.EncodeToString(sum[:8])+".json")
 }
 
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {

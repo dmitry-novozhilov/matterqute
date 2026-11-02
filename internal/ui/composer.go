@@ -88,7 +88,15 @@ type Composer struct {
 	// OnCommand — сообщение — слэш-команда («/away»): выполнить на сервере.
 	// Не вышло — Restore; команды нет — OfferAsText.
 	OnCommand func(text string)
-	asText    string // это сообщение — уже не команда: сервер такой не знает, отправить текстом
+	// OnLater — «Отправить позже»: выбрать время (потом — ScheduleAt).
+	OnLater func()
+	// OnSchedule — отложить отправку того, что было в поле, на at.
+	OnSchedule func(text string, fileIDs []string, at time.Time)
+	// OnShowScheduled — «показать» в подсказке об отложенных.
+	OnShowScheduled func()
+	later           *qt.QToolButton // «Отправить позже»
+	schedNote       *qt.QLabel      // «2 отложенных сообщения здесь · показать»
+	asText          string          // это сообщение — уже не команда: сервер такой не знает, отправить текстом
 	// OnUpload — загрузить файл (path с диска или data — вставленная картинка);
 	// progress(0…100) по ходу, результат — Uploaded или UploadFailed.
 	OnUpload func(id int, name, path string, data []byte, progress func(percent int))
@@ -139,6 +147,11 @@ func NewComposer() *Composer {
 			return
 		case k == qt.Key_Up && mods == qt.NoModifier && c.editID == "" && c.empty() && len(c.files) == 0 && c.OnEditLast != nil:
 			c.OnEditLast()
+			return
+		case (k == qt.Key_Return || k == qt.Key_Enter) && mods&qt.ControlModifier != 0 && mods&qt.ShiftModifier != 0:
+			if c.editID == "" && c.OnLater != nil {
+				c.OnLater()
+			}
 			return
 		case k == qt.Key_Return || k == qt.Key_Enter:
 			switch {
@@ -215,6 +228,18 @@ func NewComposer() *Composer {
 	row.SetSpacing(2)
 	row.AddWidget3(c.attach.QWidget, 0, qt.AlignBottom)
 	row.AddWidget(c.edit.QWidget)
+	c.later = qt.NewQToolButton2()
+	setName(c.later.QObject, "later")
+	c.later.SetFixedSize2(32, 32)
+	c.later.SetIconSize(qt.NewQSize2(18, 18))
+	c.later.SetFocusPolicy(qt.NoFocus)
+	c.later.SetToolTip("Отправить позже (Ctrl+Shift+Enter)")
+	c.later.OnClicked(func() {
+		if c.editID == "" && c.OnLater != nil {
+			c.OnLater()
+		}
+	})
+	row.AddWidget3(c.later.QWidget, 0, qt.AlignBottom)
 	row.AddWidget3(c.fmtShow.QWidget, 0, qt.AlignBottom)
 	fl := qt.NewQVBoxLayout(c.frame.QWidget)
 	fl.SetContentsMargins(4, 3, 4, 3)
@@ -232,6 +257,16 @@ func NewComposer() *Composer {
 	lay := qt.NewQVBoxLayout(c.w)
 	lay.SetContentsMargins(16, 12, 16, 12)
 	lay.SetSpacing(4)
+	c.schedNote = qt.NewQLabel2()
+	c.schedNote.SetTextFormat(qt.RichText)
+	c.schedNote.SetProperty("role", qt.NewQVariant11("hint"))
+	c.schedNote.OnLinkActivated(func(string) {
+		if c.OnShowScheduled != nil {
+			c.OnShowScheduled()
+		}
+	})
+	c.schedNote.SetVisible(false)
+	lay.AddWidget(c.schedNote.QWidget)
 	lay.AddWidget(c.editBar.QWidget)
 	lay.AddWidget(c.frame.QWidget)
 	lay.AddWidget(c.hint.QWidget)
@@ -248,6 +283,7 @@ func (c *Composer) dispose() { c.unsubscribe() }
 
 func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
+	c.later.SetIcon(icon("clock", Pal().Tx2, 18))
 	c.restyleEditBar()
 	c.edit.SetFont(feedFont())
 	c.edit.Viewport().SetFont(feedFont()) // плейсхолдер Qt рисует шрифтом viewport
@@ -544,21 +580,8 @@ func (c *Composer) send() {
 	if c.OnSend == nil {
 		return
 	}
-	if c.uploading() {
-		c.ShowHint("Дождитесь загрузки файлов. Сообщение осталось в поле ввода.")
-		return
-	}
-	blocks := readBlocks(c.edit.Document())
-	text := strings.TrimSpace(markdown.FromBlocks(blocks))
-	var ids []string
-	var sent []*attachment
-	for _, a := range c.files {
-		if a.fileID != "" {
-			ids = append(ids, a.fileID)
-			sent = append(sent, a)
-		}
-	}
-	if text == "" && len(ids) == 0 {
+	text, ids, blocks, files, ok := c.pending()
+	if !ok {
 		return
 	}
 	if strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "//") && len(ids) == 0 && c.OnCommand != nil && text != c.asText {
@@ -569,12 +592,59 @@ func (c *Composer) send() {
 		return
 	}
 	c.asText = ""
-	c.sent = &draft{key: c.key, blocks: blocks, files: sent}
+	c.commit(blocks, files)
+	c.OnSend(text, ids)
+}
+
+// pending — что отправить: текст (markdown Mattermost) и загруженные файлы.
+// ok=false — нечего или файлы ещё грузятся (тогда подсказка под полем).
+func (c *Composer) pending() (text string, ids []string, blocks []markdown.Block, files []*attachment, ok bool) {
+	if c.uploading() {
+		c.ShowHint("Дождитесь загрузки файлов. Сообщение осталось в поле ввода.")
+		return "", nil, nil, nil, false
+	}
+	blocks = readBlocks(c.edit.Document())
+	text = strings.TrimSpace(markdown.FromBlocks(blocks))
+	for _, a := range c.files {
+		if a.fileID != "" {
+			ids = append(ids, a.fileID)
+			files = append(files, a)
+		}
+	}
+	return text, ids, blocks, files, text != "" || len(ids) > 0
+}
+
+// commit — отправляемое ушло из поля: запомнить его для Restore, поле очистить.
+func (c *Composer) commit(blocks []markdown.Block, files []*attachment) {
+	c.sent = &draft{key: c.key, blocks: blocks, files: files}
 	c.setBlocks(nil)
 	c.files = slices.DeleteFunc(c.files, func(a *attachment) bool { return a.fileID != "" })
 	c.renderChips()
 	c.hint.SetVisible(false)
-	c.OnSend(text, ids)
+}
+
+// ScheduleAt — «Отправить позже» на время at: то, что в поле, уходит в
+// OnSchedule (не вышло — Restore). false — нечего откладывать.
+func (c *Composer) ScheduleAt(at time.Time) bool {
+	if c.editID != "" || c.OnSchedule == nil {
+		return false
+	}
+	text, ids, blocks, files, ok := c.pending()
+	if !ok {
+		return false
+	}
+	c.commit(blocks, files)
+	c.OnSchedule(text, ids, at)
+	return true
+}
+
+// SetScheduledNote — «N отложенных» над полем (n=0 — прячется).
+func (c *Composer) SetScheduledNote(n int) {
+	c.schedNote.SetVisible(n > 0)
+	if n > 0 {
+		c.schedNote.SetText(fmt.Sprintf(`%s здесь · <a href="show" style="color:%s">показать</a>`,
+			plural(int64(n), "отложенное сообщение", "отложенных сообщения", "отложенных сообщений"), Pal().Acc))
+	}
 }
 
 // Restore возвращает неотправленное в черновик того канала (треда), откуда
@@ -763,6 +833,11 @@ QToolButton:hover { background: %[4]s; }`, pal.Surf2, pal.Acc, pal.Tx2, pal.Hove
 // плашки): черновик откладывается до конца правки, Enter сохраняет, Esc и
 // крестик отменяют.
 func (c *Composer) StartEdit(id, preview string, blocks []markdown.Block) {
+	c.StartEditWith(id, "Редактирование: "+preview, blocks)
+}
+
+// StartEditWith — правка с подписью label на плашке (отложенное — со временем).
+func (c *Composer) StartEditWith(id, label string, blocks []markdown.Block) {
 	if c.editID == "" {
 		c.stash = &draft{key: c.key, blocks: readBlocks(c.edit.Document()), files: c.files}
 		c.files = nil
@@ -770,7 +845,7 @@ func (c *Composer) StartEdit(id, preview string, blocks []markdown.Block) {
 	}
 	c.editID = id
 	c.setBlocks(blocks)
-	c.editText.SetText("Редактирование: " + preview)
+	c.editText.SetText(label)
 	c.editBar.Show()
 	c.attach.SetEnabled(false)
 	c.hint.SetVisible(false)

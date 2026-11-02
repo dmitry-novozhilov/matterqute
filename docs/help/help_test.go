@@ -7,7 +7,7 @@ import (
 
 func TestArticles(t *testing.T) {
 	as := Articles()
-	if len(as) == 0 || as[0].Name != "links.md" || !strings.HasPrefix(as[0].Title, "Ссылки на сообщения") {
+	if len(as) < 2 || as[0].Name != "links.md" || !strings.HasPrefix(as[0].Title, "Ссылки на сообщения") {
 		t.Fatalf("articles %+v", as)
 	}
 	for _, a := range as {

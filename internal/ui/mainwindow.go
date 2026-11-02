@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -46,6 +47,11 @@ type MainWindow struct {
 	feed         *Feed
 	composer     *Composer
 	threadsPage  *qt.QWidget
+	schedPage    *qt.QWidget // «Отложенные»
+	schedHead    *header
+	schedRows    *qt.QVBoxLayout
+	schedDialog  *dialog // «Отправить позже» / «Перенести»
+	sched        *scheduler
 	threadsHead  *header
 	threadsList  *qt.QListWidget
 	panel        *ThreadPanel
@@ -177,6 +183,13 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.composer.OnEdit = m.saveEdit(m.feed)
 	m.composer.OnEditLast = func() { m.editLast(m.feed) }
 	m.composer.OnCommand = func(text string) { m.runCommand(m.composer, m.current, "", text) }
+	m.sched = newScheduler(m, filepath.Join(cacheDir, "scheduled.json"))
+	m.laterFor(m.composer, func() (string, string) {
+		if m.st.Channel(m.current) == nil {
+			return "", ""
+		}
+		return m.current, ""
+	})
 	m.composer.OnUpload = func(id int, name, path string, data []byte, progress func(int)) {
 		m.upload(m.composer, m.current, id, name, path, data, progress)
 	}
@@ -201,9 +214,26 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	tl.AddWidget(m.threadsHead.f.QWidget)
 	tl.AddWidget2(m.threadsList.QWidget, 1)
 
+	m.schedPage = qt.NewQWidget2()
+	sl := qt.NewQVBoxLayout(m.schedPage)
+	sl.SetContentsMargins(0, 0, 0, 0)
+	sl.SetSpacing(0)
+	m.schedHead = newHeader("channelHeader", false, nil)
+	sl.AddWidget(m.schedHead.f.QWidget)
+	schedScroll := qt.NewQScrollArea2()
+	schedScroll.SetFrameShape(qt.QFrame__NoFrame)
+	schedScroll.SetWidgetResizable(true)
+	schedBody := qt.NewQWidget2()
+	m.schedRows = qt.NewQVBoxLayout(schedBody)
+	m.schedRows.SetContentsMargins(0, 0, 0, 0)
+	m.schedRows.SetSpacing(0)
+	schedScroll.SetWidget(schedBody)
+	sl.AddWidget2(schedScroll.QWidget, 1)
+
 	m.center = qt.NewQStackedWidget2()
 	m.center.AddWidget(m.channelPage)
 	m.center.AddWidget(m.threadsPage)
+	m.center.AddWidget(m.schedPage)
 	m.center.SetMinimumWidth(360)
 
 	deps.Thread = true
@@ -212,6 +242,12 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.panel.composer.OnSend = m.sendReply
 	m.panel.composer.OnEdit = m.saveEdit(m.panel.feed)
 	m.panel.composer.OnEditLast = func() { m.editLast(m.panel.feed) }
+	m.laterFor(m.panel.composer, func() (string, string) {
+		if t := m.thread; t != nil && t.channelID != "" {
+			return t.channelID, t.rootID
+		}
+		return "", ""
+	})
 	m.panel.composer.OnCommand = func(text string) {
 		if t := m.thread; t != nil {
 			m.runCommand(m.panel.composer, t.channelID, t.rootID, text)
@@ -419,6 +455,9 @@ func (m *MainWindow) reloadSidebar() {
 				}
 				m.fillSidebar() // открытый канал начинает грузиться первым
 				m.preload()
+				if !m.sched.probed {
+					m.sched.start() // команды известны: отложенные с сервера и свои
+				}
 			}
 			if m.sidebarDirty {
 				m.sidebarDirty = false
@@ -517,6 +556,10 @@ func (m *MainWindow) openChannel(id string) {
 		m.showThreads()
 		return
 	}
+	if id == schedID {
+		m.showScheduled()
+		return
+	}
 	ch := m.st.Channel(id)
 	if ch == nil {
 		return
@@ -529,6 +572,7 @@ func (m *MainWindow) openChannel(id string) {
 	m.center.SetCurrentWidget(m.channelPage)
 	m.composer.SwitchTo(id)
 	m.composer.SetPlaceholder("Сообщение в " + channelPrefix(ch) + m.st.Title(ch))
+	m.updateScheduledNotes()
 	m.refreshHeader()
 	m.composer.SetEnabled(true)
 	m.composer.Focus()
@@ -854,6 +898,7 @@ func (m *MainWindow) OnConnected() {
 		m.st.DropTimelines()
 		m.reloadSidebar()
 		m.assets.Retry()
+		m.sched.reload()
 		if t := m.thread; t != nil {
 			m.openThread(t.rootID)
 		}

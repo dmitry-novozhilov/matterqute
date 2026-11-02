@@ -116,6 +116,7 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 				m.panel.feed.SetPosts(t.tl.Posts, false)
 				m.panel.composer.SetEnabled(t.channelID != "")
 				m.panel.composer.Focus()
+				m.updateScheduledNotes()
 				if focus != "" && m.panel.feed.Has(focus) {
 					m.panel.feed.Highlight(focus) // перерисовка поста — до прокрутки: она ставит курсор
 					m.panel.feed.ScrollToPost(focus)
@@ -140,6 +141,7 @@ func (m *MainWindow) threadTitleHTML(t *threadView) string {
 func (m *MainWindow) closeThread() {
 	m.thread = nil
 	m.panel.w.SetVisible(false)
+	m.updateScheduledNotes()
 }
 
 func (m *MainWindow) sendReply(text string, fileIDs []string) {

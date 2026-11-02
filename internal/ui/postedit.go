@@ -8,6 +8,7 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/markdown"
+	"matterqute/internal/sched"
 )
 
 // Правка и удаление своих сообщений. Правка — в поле ввода той же колонки
@@ -45,6 +46,14 @@ func (m *MainWindow) editLast(f *Feed) {
 // Стёртый текст — значит, удалить (с подтверждением).
 func (m *MainWindow) saveEdit(f *Feed) func(id, text string, blocks []markdown.Block) {
 	return func(id, text string, blocks []markdown.Block) {
+		if sp := m.sched.find(id); sp != nil { // текст отложенного
+			if text == "" {
+				m.sched.remove(id, nil)
+			} else {
+				m.sched.update(id, func(p *sched.Post) { p.Message = text })
+			}
+			return
+		}
 		p := f.post(id)
 		switch {
 		case text == "":

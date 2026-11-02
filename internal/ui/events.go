@@ -42,6 +42,14 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		}
 		return func() { m.applyEdited(p) }, nil
 
+	case model.WebsocketScheduledPostCreated, model.WebsocketScheduledPostUpdated, model.WebsocketScheduledPostDeleted:
+		sp, err := eventScheduledPost(data)
+		if err != nil {
+			return nil, err
+		}
+		kind := ev.EventType()
+		return func() { m.sched.applyEvent(kind, sp) }, nil
+
 	case model.WebsocketEventEphemeralMessage:
 		p, err := eventPost(data)
 		if err != nil {

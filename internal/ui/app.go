@@ -474,6 +474,9 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool) {
 		cacheDir = filepath.Join(os.TempDir(), "matterqute-cache")
 	}
 	m := NewMainWindow(s, a.log, lastChannel, cacheDir)
+	if path := a.cfg.ScheduledPath(s.ServerURL); path != "" {
+		m.sched.path = path // отложенные, которые отправляет приложение, — с настройками, не в кэше
+	}
 	m.SetColumns(a.cfg.Window.Sidebar, a.cfg.Window.Thread)
 	m.OnColumnsChanged = func(sidebar, thread int) {
 		a.cfg.Window.Sidebar, a.cfg.Window.Thread = sidebar, thread

@@ -31,6 +31,10 @@ type Server struct {
 
 	// CollapsedThreads — режим CRT в конфиге сервера; менять до первых запросов.
 	CollapsedThreads string
+	// NoScheduledPosts — сервер без отложенных сообщений (как без лицензии):
+	// их API отвечает ошибкой лицензии.
+	NoScheduledPosts bool
+	scheduled        map[string]*model.ScheduledPost
 
 	mu        sync.Mutex
 	users     map[string]*model.User // по id
@@ -64,15 +68,16 @@ func (c *wsConn) write(v []byte) error {
 
 func New(log *slog.Logger) *Server {
 	s := &Server{
-		log:      log,
-		mux:      http.NewServeMux(),
-		users:    map[string]*model.User{},
-		mfa:      map[string]bool{"bob": true},
-		sessions: map[string]string{},
-		channels: map[string]*model.Channel{},
-		members:  map[string]map[string]*model.ChannelMember{},
-		posts:    map[string][]*model.Post{},
-		conns:    map[*wsConn]bool{},
+		log:       log,
+		mux:       http.NewServeMux(),
+		users:     map[string]*model.User{},
+		mfa:       map[string]bool{"bob": true},
+		sessions:  map[string]string{},
+		channels:  map[string]*model.Channel{},
+		members:   map[string]map[string]*model.ChannelMember{},
+		posts:     map[string][]*model.Post{},
+		conns:     map[*wsConn]bool{},
+		scheduled: map[string]*model.ScheduledPost{},
 
 		CollapsedThreads: model.CollapsedThreadsAlwaysOn,
 		followers:        map[string]map[string]*threadMember{},
@@ -134,9 +139,25 @@ func New(log *slog.Logger) *Server {
 		w.Header().Set("Content-Type", "image/png")
 		w.Write(data)
 	})
-	s.mux.HandleFunc("PUT /api/v4/posts/{pid}/patch", s.auth(s.patchPost))
+	// PUT /posts/{pid}/patch и /posts/schedule/{id} — один шаблон: иначе
+	// маршрутизатор не решит, чей «/posts/schedule/patch».
+	s.mux.HandleFunc("PUT /api/v4/posts/{a}/{b}", s.auth(func(w http.ResponseWriter, r *http.Request, me *model.User) {
+		switch a, b := r.PathValue("a"), r.PathValue("b"); {
+		case a == "schedule":
+			r.SetPathValue("id", b)
+			s.updateScheduled(w, r, me)
+		case b == "patch":
+			r.SetPathValue("pid", a)
+			s.patchPost(w, r, me)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
 	s.mux.HandleFunc("DELETE /api/v4/posts/{pid}", s.auth(s.deletePost))
 	s.mux.HandleFunc("POST /api/v4/commands/execute", s.auth(s.executeCommand))
+	s.mux.HandleFunc("POST /api/v4/posts/schedule", s.auth(s.createScheduled))
+	s.mux.HandleFunc("GET /api/v4/posts/scheduled/team/{tid}", s.auth(s.listScheduled))
+	s.mux.HandleFunc("DELETE /api/v4/posts/schedule/{id}", s.auth(s.deleteScheduled))
 	s.mux.HandleFunc("GET /api/v4/teams/{tid}/commands/autocomplete_suggestions", s.auth(s.commandSuggestions))
 	s.mux.HandleFunc("GET /api/v4/teams/name/{team}/channels/name/{channel}", s.auth(s.channelByName))
 	s.mux.HandleFunc("GET /api/v4/posts/{pid}", s.auth(s.getPost))

@@ -82,6 +82,9 @@ func (m *MainWindow) fillSidebar() {
 	if m.st.CRT() {
 		row(nil, threadsID)
 	}
+	if len(m.sched.posts) > 0 {
+		row(nil, schedID)
+	}
 	addGroup := func(title string, chs []*model.Channel) {
 		if len(chs) == 0 {
 			return
@@ -201,10 +204,14 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 		avatar   *model.User
 		presence string
 	)
-	if id == threadsID {
+	switch id {
+	case threadsID:
 		label, iconName = "Треды", "messages-square"
 		unread, mentions = m.st.ThreadsUnread()
-	} else {
+	case schedID:
+		label, iconName = "Отложенные", "clock"
+		suffix = fmt.Sprintf("  %d", len(m.sched.posts))
+	default:
 		ch := m.st.Channel(id)
 		if ch == nil {
 			return

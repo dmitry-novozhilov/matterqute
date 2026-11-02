@@ -43,6 +43,7 @@ type Shell struct {
 	createAct  *qt.QAction
 	typingActs [2]*qt.QAction // «Вид → «Печатает…»»: показывать, сообщать
 	alertAct   *qt.QAction    // «Вид → Мигать на панели задач»
+	spellAct   *qt.QAction    // «Вид → Проверка орфографии»
 	help       *helpWindow    // окно справки; nil — не открывали
 	about      *dialog        // «О программе»
 	serverMenu *qt.QMenu
@@ -169,6 +170,23 @@ func NewShell() *Shell {
 	showTyping.OnTriggered(chosen)
 	sendTyping.OnTriggered(chosen)
 	s.typingActs = [2]*qt.QAction{showTyping, sendTyping}
+	s.spellAct = view.QWidget.AddActionWithText("Проверка орфографии")
+	s.spellAct.SetCheckable(true)
+	s.spellAct.OnTriggered(func() {
+		SetSpellcheck(s.spellAct.IsChecked())
+		if OnSpellcheckChosen != nil {
+			OnSpellcheckChosen(spellState.on)
+		}
+	})
+	syncSpell := func() {
+		s.spellAct.SetChecked(spellState.on && spellState.failed == "")
+		s.spellAct.SetEnabled(spellState.failed == "")
+		if spellState.failed != "" {
+			s.spellAct.SetText("Проверка орфографии (" + spellState.failed + ")")
+		}
+	}
+	syncSpell()
+	s.w.OnDestroyed(onSpell(syncSpell)) // окно удалено — пункта меню больше нет
 	s.alertAct = view.QWidget.AddActionWithText("Мигать на панели задач при уведомлении")
 	s.alertAct.SetCheckable(true)
 	s.alertAct.SetChecked(style.alert)

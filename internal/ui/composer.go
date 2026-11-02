@@ -44,15 +44,17 @@ const composerMaxLines = 7
 // перетаскиванием или вставкой картинки. Черновики хранятся по ключу (канал,
 // тред): SwitchTo переключает.
 type Composer struct {
-	w        *qt.QWidget // обёртка с полями вокруг рамки
-	frame    *qt.QFrame
-	edit     *qt.QTextEdit
-	attach   *qt.QToolButton
-	fmtBar   *qt.QWidget     // панель оформления над полем
-	fmtShow  *qt.QToolButton // «Aa» — показать или спрятать панель
-	acts     formatActions
-	styleKey string // тема и шрифты, которыми нарисован документ поля
-	typing   bool   // идёт набор с клавиатуры: курсор сдвинул ввод, а не переход
+	w                *qt.QWidget // обёртка с полями вокруг рамки
+	frame            *qt.QFrame
+	edit             *qt.QTextEdit
+	spell            *qt.QSyntaxHighlighter // проверка орфографии (spellcheck.go)
+	unsubscribeSpell func()
+	attach           *qt.QToolButton
+	fmtBar           *qt.QWidget     // панель оформления над полем
+	fmtShow          *qt.QToolButton // «Aa» — показать или спрятать панель
+	acts             formatActions
+	styleKey         string // тема и шрифты, которыми нарисован документ поля
+	typing           bool   // идёт набор с клавиатуры: курсор сдвинул ввод, а не переход
 
 	editID   string     // правится своё сообщение с этим id; пусто — пишется новое
 	stash    *draft     // черновик, отложенный на время правки
@@ -296,6 +298,7 @@ func NewComposer() *Composer {
 	lay.AddLayout(below.QLayout)
 
 	c.unsubscribe = OnThemeChanged(c.restyle)
+	c.setupSpelling()
 	c.restyle()
 	c.fitHeight()
 	return c
@@ -303,7 +306,10 @@ func NewComposer() *Composer {
 
 func (c *Composer) Widget() *qt.QWidget { return c.w }
 
-func (c *Composer) dispose() { c.unsubscribe() }
+func (c *Composer) dispose() {
+	c.unsubscribe()
+	c.unsubscribeSpell()
+}
 
 func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))

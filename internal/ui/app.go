@@ -125,6 +125,10 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		a.cfg.Typing = config.Typing{Hide: !show, NoSend: !send}
 		a.saveConfig()
 	}
+	OnSpellcheckChosen = func(on bool) {
+		a.cfg.NoSpellcheck = !on
+		a.saveConfig()
+	}
 	OnTaskbarAlertChosen = func(on bool) {
 		a.cfg.NoTaskbarAlert = !on
 		a.saveConfig()

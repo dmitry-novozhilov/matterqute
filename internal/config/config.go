@@ -36,6 +36,8 @@ type Config struct {
 	Typing    Typing   `json:"typing,omitzero"`      // «печатает…»: показывать ли и сообщать ли
 	// NoTaskbarAlert — не мигать значком окна на панели задач при уведомлении.
 	NoTaskbarAlert bool `json:"no_taskbar_alert,omitempty"`
+	// NoSpellcheck — не проверять орфографию в поле ввода.
+	NoSpellcheck bool `json:"no_spellcheck,omitempty"`
 
 	path string
 }

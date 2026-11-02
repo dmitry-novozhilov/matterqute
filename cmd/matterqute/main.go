@@ -95,6 +95,8 @@ func main() {
 	ui.SetFormatBar(cfg.FormatBar)
 	ui.SetTyping(!cfg.Typing.Hide, !cfg.Typing.NoSend)
 	ui.SetTaskbarAlert(!cfg.NoTaskbarAlert)
+	ui.SetSpellcheck(!cfg.NoSpellcheck)
+	ui.StartSpell(filepath.Join(dir, "dictionary.txt"), log) // словари — фоном
 	a := ui.NewApp(cfg, tokens, log)
 	if n := startNotifier(log); n != nil {
 		a.SetNotifier(n)

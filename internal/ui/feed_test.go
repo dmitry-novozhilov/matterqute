@@ -636,3 +636,29 @@ func testFeedLongPosts(t *testing.T) {
 		t.Error("«Свернуть» did not collapse the post back")
 	}
 }
+
+// Пока печатают, лента на экране не дорисовывает старое: нажатие не ждёт
+// порцию. Утихло — дорисовывает.
+func TestFeedWaitsForTyping(t *testing.T) { onMain(func() { testFeedWaitsForTyping(t) }) }
+
+func testFeedWaitsForTyping(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	f.Widget().Resize(500, 300)
+	f.Widget().Show()
+	defer f.Widget().Close()
+	f.SetPosts(makePosts(1, 60), false)
+	if len(f.pending) == 0 {
+		t.Error("60 posts fit into the first screen: test is meaningless")
+		return
+	}
+	lastKey = time.Now()
+	n := len(f.items)
+	f.drain()
+	if len(f.items) != n || !f.drainTimer.IsActive() {
+		t.Errorf("drew %d posts while typing (timer active %v)", len(f.items)-n, f.drainTimer.IsActive())
+	}
+	drained(f)
+	if len(f.pending) != 0 {
+		t.Errorf("%d posts still pending after typing stopped", len(f.pending))
+	}
+}

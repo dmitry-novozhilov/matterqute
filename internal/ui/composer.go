@@ -96,6 +96,7 @@ type Composer struct {
 	OnShowScheduled func()
 	later           *qt.QToolButton // «Отправить позже»
 	typingNote      *qt.QLabel      // «bob печатает…» под полем; место под неё есть всегда, если показ включён
+	keysHint        *qt.QLabel      // справа от неё: «Shift+Enter — новая строка», как у веб-клиента
 	// OnTyping — набирают текст (не правка своего): сообщить серверу.
 	OnTyping  func()
 	schedNote *qt.QLabel // «2 отложенных сообщения здесь · показать»
@@ -279,7 +280,14 @@ func NewComposer() *Composer {
 	c.typingNote = qt.NewQLabel2()
 	setName(c.typingNote.QObject, "typingNote")
 	c.typingNote.SetTextFormat(qt.PlainText)
-	lay.AddWidget(c.typingNote.QWidget)
+	// Строка под полем не пустая: справа — подсказка, слева — кто печатает.
+	c.keysHint = qt.NewQLabel3("Shift+Enter — новая строка")
+	c.keysHint.SetTextFormat(qt.PlainText)
+	below := qt.NewQHBoxLayout2()
+	below.SetContentsMargins(0, 0, 0, 0)
+	below.AddWidget2(c.typingNote.QWidget, 1)
+	below.AddWidget(c.keysHint.QWidget)
+	lay.AddLayout(below.QLayout)
 
 	c.unsubscribe = OnThemeChanged(c.restyle)
 	c.restyle()
@@ -302,6 +310,10 @@ func (c *Composer) restyle() {
 	c.typingNote.SetFixedHeight(qt.NewQFontMetrics(tf).Height())
 	c.typingNote.SetStyleSheet("color: " + Pal().Tx2)
 	c.typingNote.SetVisible(style.typingShow)
+	kf := pixelFont(12, qt.QFont__Normal)
+	c.keysHint.SetFont(kf)
+	c.keysHint.SetFixedHeight(qt.NewQFontMetrics(tf).Height())
+	c.keysHint.SetStyleSheet("color: " + Pal().Tx3)
 	c.restyleEditBar()
 	c.edit.SetFont(feedFont())
 	c.edit.Viewport().SetFont(feedFont()) // плейсхолдер Qt рисует шрифтом viewport

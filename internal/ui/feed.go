@@ -187,6 +187,7 @@ type Feed struct {
 	// (OnWork), место прокрутки — запомнено при уходе.
 	shown       bool
 	ready       bool // в ленте посты канала (или «пока нет сообщений»), а не загрузка
+	needFit     bool // скрытой — размер ленты на экране (MainWindow.buildStep)
 	saved       savedScroll
 	pausedAnims []string
 	OnWork      func() // у скрытой ленты есть порции для отрисовки
@@ -526,6 +527,10 @@ func (f *Feed) drainSoon() {
 // неотрисованные над лентой; не дольше drainSlice, но хотя бы один пост.
 // Видимое не сдвигается (edit), лента у низа остаётся у низа.
 func (f *Feed) drain() {
+	if wait := waitInput(lastKey, idleDrain); f.shown && wait > 0 {
+		f.drainTimer.Start(int(wait.Milliseconds()) + 1) // печатают: потом
+		return
+	}
 	start := time.Now()
 	f.edit(func() {
 		// На экране — снизу вверх (там обычно смотрят); скрытую — сверху:
@@ -738,6 +743,7 @@ func (f *Feed) SetShown(on bool) {
 	}
 	f.programmatic = false
 	f.stick, f.keepFromBottom = f.saved.stick, -1
+	f.fitImages() // ширина могла смениться, пока лента была скрыта: видимое — сразу
 	f.drainSoon()
 }
 
@@ -2342,6 +2348,9 @@ func (f *Feed) onResize() {
 }
 
 func (f *Feed) fitImages() {
+	if !f.shown {
+		return // скрытой — при показе (SetShown): незачем перерисовывать фоном
+	}
 	w := f.view.Viewport().Width()
 	if abs(w-f.lastWidth) < 24 {
 		return

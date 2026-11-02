@@ -11,11 +11,12 @@ import (
 // QTextBrowser со своим документом) в стеке, на экране — одна. Переключение
 // канала — смена виджета в стеке (миллисекунды), без разбора HTML и раскладки:
 // на длинной ленте это секунды. События WebSocket правят ленту своего канала,
-// даже скрытую. Скрытые рисуются фоном, по порции за такт (buildStep), и
-// держат размер видимой (fitTo): иначе Qt раскладывал бы документ заново при
-// показе.
+// даже скрытую. Скрытые рисуются фоном, по порции за такт, когда пользователь
+// не печатает и не крутит (buildStep), и держат размер видимой (fitTo): иначе
+// Qt раскладывал бы документ заново при показе.
 
 func (m *MainWindow) initFeeds(deps FeedDeps) {
+	watchInput()
 	m.feedDeps = deps
 	m.feeds = map[string]*Feed{}
 	m.feedStack = qt.NewQStackedWidget2()
@@ -25,7 +26,10 @@ func (m *MainWindow) initFeeds(deps FeedDeps) {
 	m.fitTimer = qt.NewQTimer2(m.w.QObject)
 	m.fitTimer.SetSingleShot(true)
 	m.fitTimer.SetInterval(300) // размер устоялся (окно тянут мышью)
-	m.fitTimer.OnTimeout(m.fitHidden)
+	m.fitTimer.OnTimeout(func() {
+		m.eachFeed(func(f *Feed) { f.needFit = f != m.feed })
+		m.buildSoon()
+	})
 	m.feedStack.OnResizeEvent(func(super func(*qt.QResizeEvent), e *qt.QResizeEvent) {
 		super(e)
 		m.fitTimer.Start2()
@@ -71,6 +75,7 @@ func (m *MainWindow) showFeed(f *Feed) {
 	}
 	m.feed.SetShown(false)
 	m.feed = f
+	f.needFit = false
 	f.fitTo(m.feedStack.Size())
 	m.feedStack.SetCurrentWidget(f.Widget())
 	f.SetShown(true)
@@ -123,10 +128,29 @@ func (m *MainWindow) buildSoon() {
 	}
 }
 
-// buildStep — порция фоновой работы одной скрытой ленты (в порядке, в каком
-// ленты появлялись: сначала непрочитанное, лички, потом остальное); следующая —
-// после событий окна.
+// buildStep — порция фоновой работы одной скрытой ленты, когда ввод утих
+// (input.go): сначала размер (сменился у ленты на экране) — с раскладкой
+// документа сразу, чтобы Qt не доделывал её своим таймером посреди набора;
+// потом отрисовка (в порядке, в каком ленты появлялись: непрочитанное,
+// лички, остальное). Следующая порция — после событий окна.
 func (m *MainWindow) buildStep() {
+	if wait := waitInput(lastInput, idleBuild); wait > 0 {
+		m.buildTimer.Start(int(wait.Milliseconds()) + 1)
+		return
+	}
+	var next *Feed
+	m.eachFeed(func(f *Feed) {
+		if next == nil && f != m.feed && f.needFit {
+			next = f
+		}
+	})
+	if f := next; f != nil {
+		f.needFit = false
+		f.fitTo(m.feedStack.Size())
+		f.doc.Size()
+		m.buildSoon()
+		return
+	}
 	for _, id := range m.feedOrder {
 		if f := m.feeds[id]; f != m.feed && f.hasWork() {
 			f.drain()
@@ -134,17 +158,6 @@ func (m *MainWindow) buildStep() {
 			return
 		}
 	}
-}
-
-// fitHidden — у ленты на экране новый размер: скрытым — тот же. Раскладку на
-// новую ширину Qt у них делает лениво, а картинки перерисуются порциями.
-func (m *MainWindow) fitHidden() {
-	size := m.feedStack.Size()
-	m.eachFeed(func(f *Feed) {
-		if f != m.feed {
-			f.fitTo(size)
-		}
-	})
 }
 
 // mergeFeed — лента канала сверена с сервером после обрыва (Timeline.Sync).

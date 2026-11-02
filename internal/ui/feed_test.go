@@ -585,3 +585,50 @@ func testFeedAvatarOverlay(t *testing.T) {
 		t.Errorf("mention row not highlighted under the avatar column: pixel %s, want %s", c, Pal().MenRow)
 	}
 }
+
+// Длинное сообщение свёрнуто: начало и «Показать полностью»; развернуть и
+// свернуть — пост у верха окна на месте. Длинный текст вложения — тоже.
+func TestFeedLongPosts(t *testing.T) { onMain(func() { testFeedLongPosts(t) }) }
+
+func testFeedLongPosts(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	f.Widget().Resize(600, 400)
+	f.Widget().Show()
+	defer f.Widget().Close()
+	var b strings.Builder
+	for i := range 60 {
+		fmt.Fprintf(&b, "строка отчёта %d\n", i)
+	}
+	posts := makePosts(1, 6)
+	posts[3].Message = b.String()
+	posts[4].AddProp("attachments", []any{map[string]any{"title": "Алерт", "text": b.String()}})
+	f.SetPosts(posts, false)
+	drained(f)
+	long := f.items[3]
+	if strings.Contains(long.html, "строка отчёта 59") || !strings.Contains(long.html, "строка отчёта 0") || !strings.Contains(long.html, moreLink+long.post.Id) {
+		t.Errorf("long post is not collapsed:\n%s", long.html)
+		return
+	}
+	if att := f.items[4]; strings.Contains(att.html, "строка отчёта 59") || !strings.Contains(att.html, moreLink+att.post.Id) {
+		t.Errorf("long attachment text is not collapsed:\n%s", att.html)
+	}
+
+	f.ScrollToPost(long.post.Id)
+	settle()
+	shotWidget(t, f.Widget(), "long-post")
+	id, top := f.topPost()
+	f.onAnchor(moreLink + long.post.Id)
+	settle()
+	shotWidget(t, f.Widget(), "long-post-expanded")
+	if !strings.Contains(long.html, "строка отчёта 59") || !strings.Contains(long.html, lessLink+long.post.Id) {
+		t.Errorf("«Показать полностью» did not expand the post:\n%s", long.html)
+	}
+	if got, gotTop := f.topPost(); got != id || abs(gotTop-top) > 1 {
+		t.Errorf("expanding moved the view: top post %s at %d, was %s at %d", got, gotTop, id, top)
+	}
+	f.onAnchor(lessLink + long.post.Id)
+	settle()
+	if strings.Contains(long.html, "строка отчёта 59") || !strings.Contains(long.html, moreLink+long.post.Id) {
+		t.Error("«Свернуть» did not collapse the post back")
+	}
+}

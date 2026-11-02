@@ -30,6 +30,14 @@ const groupMillis = 5 * 60 * 1000
 // над ним; между порциями окно отвечает.
 const drainSlice = 25 * time.Millisecond
 
+// Длинное сообщение (и длинный текст вложения) — свёрнуто, как в веб-клиенте
+// («Show more»): видно начало и «Показать полностью». Свёрнутое и рисуется в
+// разы быстрее — длинный пост стоил десятки миллисекунд разбора и раскладки.
+const (
+	longLines, longChars = 20, 2000 // длиннее — сворачиваем
+	clipLines, clipChars = 12, 1200 // столько видно свёрнутым
+)
+
 // Раскладка ленты (feed-html.md): колонка аватара 58 = 16 поля + 32 аватар + 10
 // зазор, справа поле 16. Картинки не выше 400 и не шире текстовой колонки.
 const (
@@ -50,6 +58,8 @@ const (
 	retryLink     = "mm-retry:"      // повторить загрузку ленты
 	hookLink      = "mm-hook:"       // mm-hook:<post> — карточка интеграции, написавшей пост
 	videoLink     = "mm-video:"      // mm-video:<файл> — играть ролик в ленте (повторно — пауза)
+	moreLink      = "mm-more:"       // mm-more:<пост> — развернуть длинное сообщение
+	lessLink      = "mm-less:"       // mm-less:<пост> — свернуть его обратно
 	spinnerSrc    = "spinner:24"     // ресурс с текущим кадром крутилки
 )
 
@@ -129,6 +139,7 @@ type Feed struct {
 	pills       map[string]pill        // имя ресурса реакции → обычная и при наведении
 	avatars     map[string]*qt.QPixmap // аватары у строк автора (рисует paintUnder)
 	onAvatar    bool                   // курсор над аватаром (рука)
+	expanded    map[string]bool        // длинные посты, развёрнутые пользователем
 	hovered     string                 // ресурс реакции под курсором
 	movies      map[string]*qt.QMovie
 	placeholder bool                    // в документе заглушка вместо постов
@@ -198,7 +209,7 @@ func NewFeed(d FeedDeps) *Feed {
 		d.Users = func(string) *model.User { return nil }
 	}
 	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{},
-		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, shown: true}
+		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, shown: true, expanded: map[string]bool{}}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.doc.SetDefaultFont(feedFont())
@@ -1532,11 +1543,17 @@ func (f *Feed) bodyHTML(p *model.Post) string {
 		}
 		return fmt.Sprintf(`<p style="margin:0"><span style="font-size:13px;font-style:italic;color:%s">%s</span></p>`, pal.Tx2, html.EscapeString(msg))
 	}
+	msg, atts := p.Message, p.Attachments()
+	long := isLong(p)
+	collapsed := long && !f.expanded[p.Id]
+	if collapsed {
+		msg, atts = clipText(msg), clipAttachments(atts)
+	}
 	var body string
-	if jumbo, ok := jumboEmoji(p.Message); ok {
+	if jumbo, ok := jumboEmoji(msg); ok {
 		body = `<p style="margin:0;font-size:32px">` + html.EscapeString(jumbo) + `</p>`
 	} else {
-		body = f.md.Render(p.Message)
+		body = f.md.Render(msg)
 	}
 	if p.EditAt > 0 {
 		edited := fmt.Sprintf(`<span style="font-size:12px;color:%s"> (изменено)</span>`, pal.Tx2)
@@ -1546,7 +1563,70 @@ func (f *Feed) bodyHTML(p *model.Post) string {
 			body += `<p style="margin:0">` + edited + `</p>`
 		}
 	}
-	return body + f.md.Attachments(p.Attachments(), min(f.columnWidth(), attachmentMax))
+	body += f.md.Attachments(atts, min(f.columnWidth(), attachmentMax))
+	if long {
+		body += f.moreHTML(p.Id, collapsed)
+	}
+	return body
+}
+
+// isLong — в посте длинный текст: сообщение или текст вложения интеграции.
+func isLong(p *model.Post) bool {
+	if markdown.Long(p.Message, longLines, longChars) {
+		return true
+	}
+	for _, a := range p.Attachments() {
+		if markdown.Long(a.Text, longLines, longChars) || markdown.Long(a.Pretext, longLines, longChars) {
+			return true
+		}
+	}
+	return false
+}
+
+// clipText — длинный текст свёрнутого поста — его начало, короткий — как есть.
+func clipText(s string) string {
+	if !markdown.Long(s, longLines, longChars) {
+		return s
+	}
+	return markdown.Clip(s, clipLines, clipChars)
+}
+
+// clipAttachments — вложения свёрнутого поста: длинный текст — началом.
+func clipAttachments(atts []*model.MessageAttachment) []*model.MessageAttachment {
+	out := make([]*model.MessageAttachment, len(atts))
+	for i, a := range atts {
+		c := *a
+		c.Text, c.Pretext = clipText(c.Text), clipText(c.Pretext)
+		out[i] = &c
+	}
+	return out
+}
+
+// moreHTML — «Показать полностью» под свёрнутым, «Свернуть» под развёрнутым.
+func (f *Feed) moreHTML(id string, collapsed bool) string {
+	link, label := moreLink+id, "Показать полностью"
+	if !collapsed {
+		link, label = lessLink+id, "Свернуть"
+	}
+	return fmt.Sprintf(`<p style="margin-top:4px;margin-bottom:0"><a href="%s" style="font-size:13px;color:%s;font-weight:600;text-decoration:none">%s</a></p>`,
+		link, Pal().Acc, label)
+}
+
+// setExpanded — длинный пост развернуть или свернуть. Он растёт или
+// сжимается вниз: пост у верха окна остаётся на месте, даже если лента была
+// у низа.
+func (f *Feed) setExpanded(id string, on bool) {
+	i := f.index(id)
+	if i < 0 {
+		return
+	}
+	if on {
+		f.expanded[id] = true
+	} else {
+		delete(f.expanded, id)
+	}
+	f.stick = false
+	f.edit(func() { f.render(i) })
 }
 
 // jumboEmoji — сообщение из одних эмодзи (до восьми) показываем крупно.
@@ -1950,6 +2030,10 @@ func (f *Feed) onAnchor(link string) {
 		}
 	case strings.HasPrefix(link, threadLink):
 		f.openThread(strings.TrimPrefix(link, threadLink))
+	case strings.HasPrefix(link, moreLink):
+		f.setExpanded(strings.TrimPrefix(link, moreLink), true)
+	case strings.HasPrefix(link, lessLink):
+		f.setExpanded(strings.TrimPrefix(link, lessLink), false)
 	case strings.HasPrefix(link, openLink):
 		if fi := f.file(strings.TrimPrefix(link, openLink)); fi != nil && f.OnOpenFile != nil {
 			f.OnOpenFile(fi)

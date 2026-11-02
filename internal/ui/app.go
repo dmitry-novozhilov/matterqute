@@ -112,6 +112,10 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		a.cfg.Typing = config.Typing{Hide: !show, NoSend: !send}
 		a.saveConfig()
 	}
+	OnTaskbarAlertChosen = func(on bool) {
+		a.cfg.NoTaskbarAlert = !on
+		a.saveConfig()
+	}
 	if a.tray = NewTray(a.cfg.Tray); a.tray != nil {
 		a.shell.HideOnClose = true
 		a.tray.OnOpen = a.shell.Raise

@@ -39,6 +39,7 @@ type Shell struct {
 	switchAct  *qt.QAction // «Перейти к каналу…»
 	createAct  *qt.QAction
 	typingActs [2]*qt.QAction // «Вид → «Печатает…»»: показывать, сообщать
+	alertAct   *qt.QAction    // «Вид → Мигать на панели задач»
 	help       *helpWindow    // окно справки; nil — не открывали
 	about      *dialog        // «О программе»
 	serverMenu *qt.QMenu
@@ -149,6 +150,15 @@ func NewShell() *Shell {
 	showTyping.OnTriggered(chosen)
 	sendTyping.OnTriggered(chosen)
 	s.typingActs = [2]*qt.QAction{showTyping, sendTyping}
+	s.alertAct = view.QWidget.AddActionWithText("Мигать на панели задач при уведомлении")
+	s.alertAct.SetCheckable(true)
+	s.alertAct.SetChecked(style.alert)
+	s.alertAct.OnTriggered(func() {
+		SetTaskbarAlert(s.alertAct.IsChecked())
+		if OnTaskbarAlertChosen != nil {
+			OnTaskbarAlertChosen(style.alert)
+		}
+	})
 	s.trayAct = view.QWidget.AddActionWithText("Значок в трее…")
 	s.trayAct.SetVisible(false) // только если трей есть
 	s.trayAct.OnTriggered(func() {

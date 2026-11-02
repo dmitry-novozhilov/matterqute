@@ -115,3 +115,21 @@ func TestTypingMenu(t *testing.T) {
 		}
 	})
 }
+
+func TestTaskbarAlertMenu(t *testing.T) {
+	onMain(func() {
+		defer SetTaskbarAlert(true)
+		var got []bool
+		OnTaskbarAlertChosen = func(on bool) { got = append(got, on) }
+		defer func() { OnTaskbarAlertChosen = nil }()
+		s := NewShell()
+		defer s.w.Close()
+		if !s.alertAct.IsChecked() {
+			t.Error("alert unchecked by default")
+		}
+		s.alertAct.Trigger()
+		if len(got) != 1 || got[0] || style.alert {
+			t.Errorf("chosen %v, style %v", got, style.alert)
+		}
+	})
+}

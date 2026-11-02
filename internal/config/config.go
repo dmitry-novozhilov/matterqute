@@ -34,6 +34,8 @@ type Config struct {
 	Tray      Tray     `json:"tray,omitzero"`        // цвета значка в трее; пусто — по панели
 	FormatBar bool     `json:"format_bar,omitempty"` // панель оформления над полем ввода
 	Typing    Typing   `json:"typing,omitzero"`      // «печатает…»: показывать ли и сообщать ли
+	// NoTaskbarAlert — не мигать значком окна на панели задач при уведомлении.
+	NoTaskbarAlert bool `json:"no_taskbar_alert,omitempty"`
 
 	path string
 }

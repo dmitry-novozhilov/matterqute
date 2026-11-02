@@ -21,6 +21,13 @@ type Notifier interface {
 // maybeNotify — уведомление о новом посте, если правила (store.ShouldNotify)
 // велят и пользователь не смотрит прямо на него: окно активно, а открыт этот
 // канал или, для ответа при CRT, этот тред.
+// SetTaskbarAlert — мигать ли значком окна на панели задач при новом
+// уведомлении (QApplication::alert), все окна.
+func SetTaskbarAlert(on bool) { style.alert = on }
+
+// OnTaskbarAlertChosen — настройку поменяли в меню (сохранить).
+var OnTaskbarAlertChosen func(on bool)
+
 func (m *MainWindow) maybeNotify(e store.NewPost) {
 	if m.notifier == nil || !m.st.ShouldNotify(e) {
 		return
@@ -54,7 +61,9 @@ func (m *MainWindow) maybeNotify(e store.NewPost) {
 			return
 		}
 		m.notes[key] = id
-		qt.QApplication_Alert(m.w) // значок окна на панели задач просит внимания
+		if style.alert {
+			qt.QApplication_Alert(m.w) // значок окна на панели задач просит внимания
+		}
 	})
 }
 

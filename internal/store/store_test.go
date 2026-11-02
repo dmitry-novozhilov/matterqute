@@ -145,6 +145,30 @@ func TestAddRemoveChannel(t *testing.T) {
 	}
 }
 
+func TestSavedAndMember(t *testing.T) {
+	s, _, _ := newStore()
+	s.SetSidebar(&Sidebar{Channels: []*model.Channel{{Id: "ch", TeamId: "t", TotalMsgCount: 10}},
+		Members: []*model.ChannelMember{{ChannelId: "ch", UserId: "me", MsgCount: 10}}, Saved: []string{"p1"}})
+	if !s.Saved("p1") || s.Saved("p2") {
+		t.Error("saved posts from the sidebar not applied")
+	}
+	s.SetSaved("p2", true)
+	s.SetSaved("p1", false)
+	s.SetSidebar(&Sidebar{Channels: []*model.Channel{{Id: "ch", TeamId: "t", TotalMsgCount: 10}},
+		Members: []*model.ChannelMember{{ChannelId: "ch", UserId: "me", MsgCount: 10}}}) // сохранённые не загрузились
+	if s.Saved("p1") || !s.Saved("p2") {
+		t.Error("saved posts lost or not updated")
+	}
+	s.SetMember(&model.ChannelMember{ChannelId: "ch", UserId: "me", MsgCount: 7, LastViewedAt: 5})
+	if unread, _ := s.Unread("ch"); !unread || s.LastViewed("ch") != 5 {
+		t.Error("membership from the server not applied")
+	}
+	s.SetMember(&model.ChannelMember{ChannelId: "gone", UserId: "me"})
+	if s.LastViewed("gone") != 0 {
+		t.Error("membership of an unknown channel kept")
+	}
+}
+
 func TestOwnPostKeepsChannelRead(t *testing.T) {
 	s, ch, _ := newStore()
 	s.SetTimeline("ch", &Timeline{})

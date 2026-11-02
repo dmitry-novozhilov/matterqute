@@ -114,11 +114,34 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 	case model.WebsocketEventThreadFollowChanged:
 		return m.reloadSidebar, nil
 
-	case model.WebsocketEventPreferencesChanged:
-		// Пользователь мог включить или выключить свёрнутые треды или предпросмотр ссылок.
-		if raw, _ := data["preferences"].(string); strings.Contains(raw, model.PreferenceNameCollapsedThreadsEnabled) || strings.Contains(raw, `"link_previews"`) {
-			return m.reloadSidebar, nil
+	case model.WebsocketEventPreferencesChanged, model.WebsocketEventPreferencesDeleted:
+		saved, err := savedPrefs(data)
+		if err != nil {
+			return nil, err
 		}
+		changed := ev.EventType() == model.WebsocketEventPreferencesChanged
+		// Пользователь мог включить или выключить свёрнутые треды или предпросмотр ссылок.
+		raw, _ := data["preferences"].(string)
+		reload := changed && (strings.Contains(raw, model.PreferenceNameCollapsedThreadsEnabled) || strings.Contains(raw, `"link_previews"`))
+		if len(saved) == 0 && !reload {
+			return nil, nil
+		}
+		return func() {
+			for _, p := range saved {
+				m.applySaved(p.Name, changed && p.Value == "true")
+			}
+			if reload {
+				m.reloadSidebar()
+			}
+		}, nil
+
+	case model.WebsocketEventPostUnread:
+		// Пометили непрочитанным (здесь или в другом клиенте): счётчики — с сервера.
+		ch := ev.GetBroadcast().ChannelId
+		if ch == "" {
+			return nil, fmt.Errorf("post_unread without channel: %v", data)
+		}
+		return func() { m.refreshMember(ch) }, nil
 
 	case model.WebsocketEventMultipleChannelsViewed:
 		// Прочитано в другом клиенте.
@@ -226,5 +249,10 @@ func (m *MainWindow) applyEdited(p *model.Post) {
 	}
 	if t := m.thread; t != nil && t.tl.Replace(p) && t.tl.Loaded {
 		m.panel.feed.Upsert(p)
+	}
+	if m.listShown(listPinned) && m.search.listChannel == p.ChannelId && (p.IsPinned || m.search.feed.Has(p.Id)) {
+		m.showList(listPinned) // закрепили или открепили
+	} else if m.search.feed.Has(p.Id) {
+		m.search.feed.Upsert(p)
 	}
 }

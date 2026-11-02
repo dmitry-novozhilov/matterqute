@@ -84,7 +84,7 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 	m.panel.head.set(nil, m.threadTitleHTML(t), "")
 	m.panel.feed.Loading()
 	m.panel.feed.OnRetry = func() { m.openThread(rootID) }
-	m.panel.back.SetVisible(m.search.query != "")
+	m.panel.back.SetVisible(m.search.query != "" || m.search.list != "")
 	m.showRight(m.panel.w)
 	m.panel.composer.SetEnabled(false)
 	m.panel.composer.SwitchTo(rootID)
@@ -125,6 +125,7 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 					m.panel.feed.ScrollToPost(focus)
 				}
 				if m.st.CRT() && t.channelID != "" {
+					delete(m.manualUnread, rootID) // открыли тред — прочитан
 					m.markThreadRead(rootID, t.channelID)
 				}
 			})
@@ -185,7 +186,7 @@ func (m *MainWindow) applyToThread(p *model.Post) {
 			m.panel.feed.Upsert(p)
 		}
 	})
-	if m.st.CRT() && p.UserId != m.s.Me.Id && m.w.IsActiveWindow() {
+	if m.st.CRT() && p.UserId != m.s.Me.Id && m.w.IsActiveWindow() && !m.manualUnread[t.rootID] {
 		m.markThreadRead(t.rootID, p.ChannelId)
 	}
 }

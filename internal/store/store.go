@@ -32,6 +32,7 @@ type Store struct {
 	// Удалённые посты: удаление применяется по ответу DeletePost и ещё раз
 	// приходит по WebSocket.
 	deleted map[string]bool
+	saved   map[string]bool // сохранённые посты (настройки flagged_post)
 }
 
 func New(me *model.User) *Store {
@@ -45,6 +46,7 @@ func New(me *model.User) *Store {
 		statuses:  map[string]string{},
 		applied:   map[string]bool{},
 		deleted:   map[string]bool{},
+		saved:     map[string]bool{},
 	}
 }
 
@@ -71,6 +73,7 @@ type Sidebar struct {
 	Users        []*model.User
 	Threads      []*model.ThreadResponse // только при CRT; DM-треды приходят в каждой команде
 	Statuses     []*model.Status         // присутствие собеседников в личках
+	Saved        []string                // сохранённые посты; nil — не загрузились (прежние остаются)
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
@@ -94,6 +97,31 @@ func (s *Store) SetSidebar(sb *Sidebar) {
 	s.AddUsers(sb.Users)
 	for _, st := range sb.Statuses {
 		s.statuses[st.UserId] = st.Status
+	}
+	if sb.Saved != nil {
+		s.saved = map[string]bool{}
+		for _, id := range sb.Saved {
+			s.saved[id] = true
+		}
+	}
+}
+
+// Saved — пост сохранён (настройка flagged_post, общая с веб-клиентом).
+func (s *Store) Saved(postID string) bool { return s.saved[postID] }
+
+// SetSaved — пост сохранили или убрали из сохранённых.
+func (s *Store) SetSaved(postID string, on bool) {
+	if on {
+		s.saved[postID] = true
+	} else {
+		delete(s.saved, postID)
+	}
+}
+
+// SetMember — участие в канале с сервера (счётчики после «пометить непрочитанным»).
+func (s *Store) SetMember(m *model.ChannelMember) {
+	if s.channels[m.ChannelId] != nil {
+		s.members[m.ChannelId] = m
 	}
 }
 

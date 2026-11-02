@@ -109,6 +109,8 @@ type FeedDeps struct {
 	EmojiImage func(name string, size int, done func()) *qt.QPixmap
 	// Log — посты, которые рисуются долго (debug); nil — не писать.
 	Log *slog.Logger
+	// Saved — пост сохранён (метка «Сохранено» и пункт меню); nil — нет.
+	Saved func(postID string) bool
 }
 
 // slowPost — дольше рисуется пост: в debug-лог, с размерами, без текста.
@@ -201,6 +203,9 @@ type Feed struct {
 	OnEditPost       func(p *model.Post)               // «Изменить» своё сообщение
 	OnDeletePost     func(p *model.Post)               // «Удалить…» своё сообщение
 	OnCopyLink       func(p *model.Post)               // «Копировать ссылку на сообщение»
+	OnPin            func(p *model.Post, pin bool)     // «Закрепить в канале» / «Открепить»
+	OnSave           func(p *model.Post, save bool)    // «Сохранить» / «Убрать из сохранённых»
+	OnMarkUnread     func(p *model.Post)               // «Пометить непрочитанным»
 	OnLink           func(url string)                  // клик по ссылке в тексте
 	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
 	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
@@ -1453,6 +1458,8 @@ func (f *Feed) parts(i int) postParts {
 	if group && !p.IsSystemMessage() {
 		pp.avatar, pp.link = f.authorAvatar(p), f.authorLink(p)
 		b.WriteString(f.authorHTML(p))
+	} else if marks := f.marksHTML(p); marks != "" {
+		b.WriteString(`<p style="margin:0">` + marks + `</p>`)
 	}
 	b.WriteString(f.replyHTML(p))
 	b.WriteString(f.bodyHTML(p))
@@ -1549,9 +1556,31 @@ func (f *Feed) authorHTML(p *model.Post) string {
 	if f.isBot(p) {
 		bot = fmt.Sprintf(`&nbsp;<span style="font-size:11px;font-weight:600;background-color:%s;color:%s">&nbsp;БОТ&nbsp;</span>`, pal.Surf2, pal.Tx2)
 	}
-	return fmt.Sprintf(`<p style="margin:0"><a href="%s" style="color:%s;font-weight:600;text-decoration:none">%s</a>%s&nbsp;&nbsp;<span style="font-family:'PT Mono';font-size:12px;color:%s" title="%s">%s</span></p>`,
+	marks := f.marksHTML(p)
+	if marks != "" {
+		marks = "&nbsp;&nbsp;" + marks
+	}
+	return fmt.Sprintf(`<p style="margin:0"><a href="%s" style="color:%s;font-weight:600;text-decoration:none">%s</a>%s&nbsp;&nbsp;<span style="font-family:'PT Mono';font-size:12px;color:%s" title="%s">%s</span>%s</p>`,
 		f.authorLink(p), pal.Tx, html.EscapeString(f.authorName(p)), bot+f.statusHTML(p),
-		pal.Tx2, formatTime(p.CreateAt), time.UnixMilli(p.CreateAt).Format("15:04"))
+		pal.Tx2, formatTime(p.CreateAt), time.UnixMilli(p.CreateAt).Format("15:04"), marks)
+}
+
+// marksHTML — «Закреплено», «Сохранено» у поста (иконка и подпись), как в
+// веб-клиенте; "" — ни того ни другого.
+func (f *Feed) marksHTML(p *model.Post) string {
+	pal := Pal()
+	mark := func(iconName, label string) string {
+		return fmt.Sprintf(`<img src="%s" width="12" height="12">&nbsp;<span style="font-size:12px;color:%s">%s</span>`,
+			f.iconSrc(iconName, pal.Tx2, 12), pal.Tx2, label)
+	}
+	var out []string
+	if p.IsPinned {
+		out = append(out, mark("pin", "Закреплено"))
+	}
+	if f.d.Saved != nil && f.d.Saved(p.Id) {
+		out = append(out, mark("bookmark", "Сохранено"))
+	}
+	return strings.Join(out, "&nbsp;&nbsp;")
 }
 
 // replyHTML — без свёрнутых тредов над ответом в ленте канала: «↳ Ответ в треде».
@@ -2180,6 +2209,28 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 					f.OnPickReaction(p)
 				}
 			})
+			if f.OnMarkUnread != nil {
+				un := menu.QWidget.AddActionWithText("Пометить непрочитанным")
+				un.OnTriggered(func() { f.OnMarkUnread(p) })
+			}
+			if f.OnSave != nil {
+				saved := f.d.Saved != nil && f.d.Saved(p.Id)
+				label := "Сохранить"
+				if saved {
+					label = "Убрать из сохранённых"
+				}
+				sv := menu.QWidget.AddActionWithText(label)
+				sv.OnTriggered(func() { f.OnSave(p, !saved) })
+			}
+			if f.OnPin != nil {
+				label := "Закрепить в канале"
+				if p.IsPinned {
+					label = "Открепить"
+				}
+				pin := menu.QWidget.AddActionWithText(label)
+				pinned := p.IsPinned
+				pin.OnTriggered(func() { f.OnPin(p, !pinned) })
+			}
 			if p.UserId == f.d.Me.Id && store.HasLinkPreview(p) && f.OnRemovePreview != nil {
 				rm := menu.QWidget.AddActionWithText("Убрать предпросмотр ссылки")
 				rm.OnTriggered(func() { f.OnRemovePreview(p) })
@@ -2381,8 +2432,11 @@ func (f *Feed) pinToBottom() {
 	cur := ff.TopMargin()
 	content := f.doc.Size().Height() - cur
 	free := float64(f.view.Viewport().Height()) - content
-	if f.placeholder {
+	switch {
+	case f.placeholder:
 		free /= 2
+	case f.d.Search:
+		free = 0 // результаты и списки — сверху, а не прижаты к низу, как чат
 	}
 	want := math.Max(0, free)
 	if math.Abs(want-cur) < 1 {

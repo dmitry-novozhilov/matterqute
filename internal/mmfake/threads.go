@@ -141,6 +141,7 @@ func (s *Server) savePreferences(w http.ResponseWriter, r *http.Request, me *mod
 		}
 		s.prefs[me.Id] = list
 	}
+	s.preferencesEvent(model.WebsocketEventPreferencesChanged, me.Id, in)
 	s.json(w, map[string]string{"status": "OK"})
 }
 

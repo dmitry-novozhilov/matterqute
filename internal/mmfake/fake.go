@@ -105,6 +105,13 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("GET /api/v4/config/client", s.auth(s.clientConfig))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/preferences/{category}", s.auth(s.preferences))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/preferences", s.auth(s.savePreferences))
+	s.mux.HandleFunc("POST /api/v4/users/{uid}/preferences/delete", s.auth(s.deletePreferences))
+	s.mux.HandleFunc("POST /api/v4/posts/{pid}/pin", s.auth(s.pin(true)))
+	s.mux.HandleFunc("POST /api/v4/posts/{pid}/unpin", s.auth(s.pin(false)))
+	s.mux.HandleFunc("GET /api/v4/channels/{cid}/pinned", s.auth(s.pinned))
+	s.mux.HandleFunc("GET /api/v4/users/{uid}/posts/flagged", s.auth(s.flagged))
+	s.mux.HandleFunc("POST /api/v4/users/{uid}/posts/{pid}/set_unread", s.auth(s.setUnread))
+	s.mux.HandleFunc("POST /api/v4/users/{uid}/teams/{tid}/threads/{thid}/set_unread/{pid}", s.auth(s.threadSetUnread))
 	s.mux.HandleFunc("GET /api/v4/emoji", s.auth(s.emojiList))
 	s.mux.HandleFunc("GET /api/v4/users/{uid}/teams/{tid}/threads", s.auth(s.userThreads))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/teams/{tid}/threads/{thid}/read/{ts}", s.auth(s.threadRead))
@@ -546,9 +553,16 @@ func (s *Server) viewChannel(w http.ResponseWriter, r *http.Request, me *model.U
 		s.fail(w, http.StatusNotFound, "app.channel.get_member.missing.app_error")
 		return
 	}
-	m.MsgCount, m.MsgCountRoot, m.MentionCount = c.TotalMsgCount, c.TotalMsgCountRoot, 0
-	m.LastViewedAt = model.GetMillis()
-	s.json(w, &model.ChannelViewResponse{Status: "OK", LastViewedAtTimes: map[string]int64{c.Id: m.LastViewedAt}})
+	times := map[string]int64{}
+	// Как сервер: прочитан и канал, из которого ушли (prev_channel_id).
+	for _, id := range []string{view.ChannelId, view.PrevChannelId} {
+		if m, c := s.members[me.Id][id], s.channels[id]; m != nil && c != nil {
+			m.MsgCount, m.MsgCountRoot, m.MentionCount = c.TotalMsgCount, c.TotalMsgCountRoot, 0
+			m.LastViewedAt = model.GetMillis()
+			times[id] = m.LastViewedAt
+		}
+	}
+	s.json(w, &model.ChannelViewResponse{Status: "OK", LastViewedAtTimes: times})
 }
 
 func (s *Server) createPost(w http.ResponseWriter, r *http.Request, me *model.User) {

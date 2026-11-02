@@ -63,6 +63,9 @@ type MainWindow struct {
 	search        *searchPanel    // поиск по сообщениям — в правой колонке
 	typing        *typingState    // кто где печатает
 	searchBtn     *qt.QToolButton // лупа в шапке канала
+	pinsBtn       *qt.QToolButton // закреплённые в канале — в шапке
+	savedBtn      *qt.QToolButton // сохранённые — в шапке
+	manualUnread  map[string]bool // каналы и треды, помеченные непрочитанными: сами не отмечаем прочитанными (postactions.go)
 	threadsHead   *header
 	threadsList   *qt.QListWidget
 	panel         *ThreadPanel
@@ -124,17 +127,19 @@ type columns struct{ sidebar, thread int }
 func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir string) *MainWindow {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &MainWindow{
-		w:        qt.NewQWidget2(),
-		s:        s,
-		st:       store.New(s.Me),
-		log:      log.With("server", s.ServerURL),
-		ctx:      ctx,
-		cancel:   cancel,
-		items:    map[string]*qt.QTreeWidgetItem{},
-		notes:    map[string]uint32{},
-		players:  map[string]*player{},
-		counts:   Counts{-1, -1},
-		retryNow: make(chan struct{}, 1),
+		w:       qt.NewQWidget2(),
+		s:       s,
+		st:      store.New(s.Me),
+		log:     log.With("server", s.ServerURL),
+		ctx:     ctx,
+		cancel:  cancel,
+		items:   map[string]*qt.QTreeWidgetItem{},
+		notes:   map[string]uint32{},
+		players: map[string]*player{},
+		counts:  Counts{-1, -1},
+
+		manualUnread: map[string]bool{},
+		retryNow:     make(chan struct{}, 1),
 
 		initialChannel: initialChannel,
 	}
@@ -143,10 +148,10 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.w.OnEvent(func(super func(*qt.QEvent) bool, ev *qt.QEvent) bool {
 		if ev.Type() == qt.QEvent__WindowActivate {
 			// Пока окно было неактивно, в открытом могло накопиться непрочитанное.
-			if unread, _ := m.st.Unread(m.current); unread {
+			if unread, _ := m.st.Unread(m.current); unread && !m.manualUnread[m.current] {
 				m.markViewed(m.current, "")
 			}
-			if t := m.thread; t != nil && t.channelID != "" {
+			if t := m.thread; t != nil && t.channelID != "" && !m.manualUnread[t.rootID] {
 				if th := m.st.Thread(t.rootID); th != nil && th.UnreadReplies > 0 {
 					m.markThreadRead(t.rootID, t.channelID)
 				}
@@ -168,7 +173,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	}
 
 	deps := FeedDeps{Names: m.st.Username, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists, Log: m.log,
-		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage}
+		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage, Saved: m.st.Saved}
 	m.initFeeds(deps)
 
 	// Свои статусы со сроком истекают сами: раз в минуту перерисовываем, где они видны.
@@ -255,11 +260,13 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.search = newSearchPanel(sdeps, m.closeSearch, m.runSearch)
 	m.wireFeed(m.search.feed)
 	m.search.feed.OnOpenThread = m.openThread
-	m.panel.back = m.panel.head.addTool("К результатам поиска", func() {
+	m.panel.back = m.panel.head.addTool("Назад к результатам", func() {
 		m.closeThread()
 		m.showRight(m.search.w)
 	})
 	m.panel.back.SetVisible(false)
+	m.pinsBtn = m.head.addTool("Закреплённые в канале", func() { m.toggleList(listPinned) })
+	m.savedBtn = m.head.addTool("Сохранённые сообщения", func() { m.toggleList(listSaved) })
 	m.searchBtn = m.head.addTool("Поиск по сообщениям (Ctrl+F)", m.openSearch)
 	find := qt.NewQAction5("Поиск", m.w.QObject)
 	find.SetShortcut(qt.NewQKeySequence2("Ctrl+F"))
@@ -405,6 +412,8 @@ func (m *MainWindow) restyle() {
 	}
 	m.updateTypingNotes()
 	m.searchBtn.SetIcon(icon("search", Pal().Tx2, 18))
+	m.pinsBtn.SetIcon(icon("pin", Pal().Tx2, 18))
+	m.savedBtn.SetIcon(icon("bookmark", Pal().Tx2, 18))
 	m.panel.back.SetIcon(icon("arrow-left", Pal().Tx2, 18))
 	m.refreshHeader()
 	m.sidebar.DoItemsLayout() // шрифт сайдбара мог поменяться — с ним высота строк
@@ -600,6 +609,8 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 	if sb.Statuses, _, err = c.GetUsersStatusesByIds(ctx, append(ids, me.Id)); err != nil {
 		m.log.Warn("load statuses", "users", len(ids)+1, "err", err)
 	}
+	sb.Saved = m.savedIDs(ctx) // для меток «Сохранено»; не вышло — прежние
+
 	return sb, nil
 }
 
@@ -661,7 +672,17 @@ func (m *MainWindow) openChannel(id string) {
 		m.scrollTo = ""
 		m.reveal(to) // перешли по ссылке на сообщение
 	}
+	// Помеченный непрочитанным остаётся таким и когда из него уходят: не
+	// передаём его серверу как прочитанный (prev). Вернулись в канал — прочитан.
+	if m.manualUnread[prev] {
+		delete(m.manualUnread, prev)
+		prev = ""
+	}
+	delete(m.manualUnread, id)
 	m.markViewed(id, prev)
+	if m.listShown(listPinned) && m.search.listChannel != id {
+		m.showList(listPinned) // закреплённые — открытого канала
+	}
 	if m.OnChannelOpened != nil {
 		m.OnChannelOpened(id)
 	}
@@ -955,7 +976,7 @@ func (m *MainWindow) applyPosted(e store.NewPost) {
 	} else {
 		m.refreshItem(p.ChannelId)
 	}
-	if unread, _ := m.st.Unread(p.ChannelId); unread && p.ChannelId == m.current && m.w.IsActiveWindow() {
+	if unread, _ := m.st.Unread(p.ChannelId); unread && p.ChannelId == m.current && m.w.IsActiveWindow() && !m.manualUnread[p.ChannelId] {
 		m.markViewed(p.ChannelId, "")
 	}
 	// В ленту своего канала — и скрытую: она готова к показу.

@@ -30,6 +30,9 @@ type searchPanel struct {
 	feed  *Feed
 	query string // показаны результаты этого запроса; пусто — результатов нет
 	gen   int    // номер поиска: ответ на прежний запрос отбрасываем
+	// Вместо поиска — список (postactions.go): listPinned (закреплённые в
+	// listChannel) или listSaved; "" — поиск.
+	list, listChannel string
 
 	unsubscribe func()
 }
@@ -77,8 +80,39 @@ func newSearchPanel(deps FeedDeps, onClose func(), onSearch func(q string)) *sea
 
 func (sp *searchPanel) restyle() {
 	sp.head.close.SetIcon(icon("x", Pal().Tx2, 18))
-	sp.head.icon.SetPixmap(iconPixmap("search", Pal().Tx2, 16))
+	sp.head.icon.SetPixmap(iconPixmap(sp.iconName(), Pal().Tx2, 16))
 	sp.head.icon.SetVisible(true)
+}
+
+// setList — панель показывает список kind ("" — снова поиск: строка запроса).
+func (sp *searchPanel) setList(kind string) {
+	sp.list = kind
+	sp.query = ""
+	sp.field.SetVisible(kind == "")
+	if kind == "" {
+		sp.head.set(nil, sp.title(), "")
+		sp.restyle()
+	}
+}
+
+func (sp *searchPanel) iconName() string {
+	switch sp.list {
+	case listPinned:
+		return "pin"
+	case listSaved:
+		return "bookmark"
+	}
+	return "search"
+}
+
+func (sp *searchPanel) title() string {
+	switch sp.list {
+	case listPinned:
+		return "Закреплённые"
+	case listSaved:
+		return "Сохранённые"
+	}
+	return "Поиск"
 }
 
 func (sp *searchPanel) dispose() {
@@ -112,13 +146,19 @@ func (m *MainWindow) openSearch() {
 	if m.thread != nil {
 		m.closeThread()
 	}
+	if m.search.list != "" {
+		m.search.gen++
+		m.search.setList("")
+		m.search.feed.Reset("Введите запрос и нажмите Enter")
+		m.search.info.SetText("")
+	}
 	m.showRight(m.search.w)
 	m.search.field.SetFocus()
 	m.search.field.SelectAll()
 }
 
 func (m *MainWindow) closeSearch() {
-	m.search.query = ""
+	m.search.setList("")
 	m.search.gen++
 	m.search.feed.Reset("Введите запрос и нажмите Enter")
 	m.search.info.SetText("")

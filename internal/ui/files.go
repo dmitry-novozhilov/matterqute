@@ -31,6 +31,9 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnEditPost = func(p *model.Post) { m.editPost(f, p) }
 	f.OnDeletePost = m.confirmDelete
 	f.OnCopyLink = m.copyPostLink
+	f.OnPin = m.pinPost
+	f.OnSave = m.savePost
+	f.OnMarkUnread = func(p *model.Post) { m.markUnread(f, p) }
 }
 
 func (m *MainWindow) channelExists(name string) bool {

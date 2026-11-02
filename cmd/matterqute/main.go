@@ -1,16 +1,20 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6/mainthread"
 
 	"matterqute/internal/config"
 	"matterqute/internal/desktop"
+	"matterqute/internal/instance"
 	"matterqute/internal/notify"
 	"matterqute/internal/ui"
 )
@@ -33,6 +37,22 @@ func main() {
 	install := len(os.Args) > 1 && (os.Args[1] == "--install" || os.Args[1] == "--uninstall")
 	if install {
 		os.Setenv("QT_QPA_PLATFORM", "offscreen") // иконки рисуем без окон и дисплея
+	}
+	// Ссылка аргументом: mattermost://… из браузера (через ярлык) или адрес
+	// сервера. Уже запущены — отдаём её тому приложению и выходим.
+	link := linkArg(os.Args[1:])
+	var inst *instance.Instance
+	if !install && os.Getenv("MATTERQUTE_SCREENSHOT") == "" {
+		in, err := instance.Claim(link, os.Getenv("XDG_ACTIVATION_TOKEN"))
+		switch {
+		case errors.Is(err, instance.ErrRunning):
+			log.Info("already running: passed the link to it", "link", link)
+			os.Exit(0)
+		case err != nil:
+			log.Warn("single instance off", "err", err)
+		default:
+			inst = in
+		}
 	}
 	app := qt.NewQApplication(os.Args)
 	// Имя приложения — служебное (WM_CLASS для дока, как StartupWMClass ярлыка),
@@ -73,6 +93,12 @@ func main() {
 		a.SetLauncher(l)
 	}
 	a.Start()
+	if inst != nil {
+		inst.SetHandler(func(link, token string) { mainthread.Start(func() { a.OpenLink(link, token) }) })
+	}
+	if link != "" {
+		a.OpenLink(link, "")
+	}
 	scheduleScreenshot(log)
 	os.Exit(qt.QApplication_Exec())
 }
@@ -124,6 +150,7 @@ func installDesktop(install bool, log *slog.Logger) int {
 			return 1
 		}
 		fmt.Println("Ярлык установлен, запускает", exe)
+		registerScheme(data, log)
 	} else {
 		if paths, err = desktop.Uninstall(data); err != nil {
 			log.Error("uninstall", "err", err)
@@ -135,4 +162,34 @@ func installDesktop(install bool, log *slog.Logger) int {
 		fmt.Println("  " + p)
 	}
 	return 0
+}
+
+// linkArg — ссылка среди аргументов: mattermost://, http(s)://.
+func linkArg(args []string) string {
+	for _, a := range args {
+		if strings.HasPrefix(a, "mattermost://") || strings.HasPrefix(a, "https://") || strings.HasPrefix(a, "http://") {
+			return a
+		}
+	}
+	return ""
+}
+
+// registerScheme — ссылки mattermost:// из браузера открывает это приложение:
+// база ярлыков и обработчик по умолчанию (xdg-mime). Нет утилит — сказать,
+// ярлык всё равно работает.
+func registerScheme(dataDir string, log *slog.Logger) {
+	// xdg-mime молча ничего не пишет, если каталога настроек ещё нет.
+	if dir, err := os.UserConfigDir(); err == nil {
+		os.MkdirAll(dir, 0o755)
+	}
+	for _, c := range desktop.SchemeCommands(dataDir) {
+		if _, err := exec.LookPath(c[0]); err != nil {
+			fmt.Printf("Нет %s — ссылки mattermost:// может открывать другое приложение\n", c[0])
+			continue
+		}
+		if out, err := exec.Command(c[0], c[1:]...).CombinedOutput(); err != nil {
+			log.Warn("register mattermost:// links", "command", strings.Join(c, " "), "err", err, "output", strings.TrimSpace(string(out)))
+		}
+	}
+	fmt.Println("Ссылки mattermost:// открывает matterqute")
 }

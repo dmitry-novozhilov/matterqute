@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -48,6 +50,7 @@ type server struct {
 	counts  Counts
 	mood    *qt.QPixmap // свой статус на этом сервере (эмодзи) и подсказка
 	moodTip string
+	pending string // путь из ссылки снаружи: открыть, когда войдём
 }
 
 // SetNotifier включает уведомления рабочего стола; звать до Start.
@@ -172,6 +175,69 @@ func (a *App) activate(sv *server) {
 	}
 	a.shell.SetConnection(sv.conn)
 	a.updateServers()
+}
+
+// OpenLink — ссылка снаружи (mattermost:// из браузера, адрес сервера
+// аргументом запуска): окно наверх, сервер ссылки — на экран, путь — в нём.
+// Сервера нет в списке — страница добавления с его адресом. token — токен
+// активации окна (Wayland) от того, кто передал ссылку.
+func (a *App) OpenLink(link, token string) {
+	if token != "" {
+		os.Setenv("XDG_ACTIVATION_TOKEN", token) // Qt возьмёт его, поднимая окно
+	}
+	a.shell.Raise()
+	if link == "" {
+		return
+	}
+	u, err := url.Parse(link)
+	if err != nil || u.Host == "" || (u.Scheme != "mattermost" && u.Scheme != "http" && u.Scheme != "https") {
+		a.log.Warn("open link", "link", truncate(link, 200), "err", err)
+		a.shell.ShowMessage("Не понял ссылку: " + truncate(link, 200))
+		return
+	}
+	sv, path := a.serverOf(u)
+	if sv == nil {
+		a.showAdd()
+		a.adding.server.SetText(u.Host)
+		a.shell.ShowMessage("Сервер " + u.Host + " не добавлен: войдите, и ссылку можно будет открыть")
+		return
+	}
+	a.activate(sv)
+	if sv.main != nil {
+		sv.main.OpenPath(path)
+	} else {
+		sv.pending = path
+	}
+}
+
+// openOnOtherServer — ссылка из сообщения на другой добавленный сервер.
+func (a *App) openOnOtherServer(link string) bool {
+	u, err := url.Parse(link)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	sv, path := a.serverOf(u)
+	if sv == nil || sv == a.active || sv.main == nil {
+		return false
+	}
+	a.activate(sv)
+	sv.main.OpenPath(path)
+	return true
+}
+
+// serverOf — сервер из списка по адресу ссылки и путь на нём.
+func (a *App) serverOf(u *url.URL) (*server, string) {
+	for _, sv := range a.servers {
+		own, err := url.Parse(sv.url)
+		if err != nil || !strings.EqualFold(own.Host, u.Host) {
+			continue
+		}
+		base := strings.TrimSuffix(own.Path, "/")
+		if base == "" || u.Path == base || strings.HasPrefix(u.Path, base+"/") {
+			return sv, strings.TrimPrefix(u.Path, base)
+		}
+	}
+	return nil, ""
 }
 
 // showAdd — «Добавить сервер…»: пустая страница входа. Уйти с неё — выбрать
@@ -407,6 +473,11 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool) {
 		a.updateCounts()
 	}
 	m.OnConnection = func(c ConnState) { a.setConn(sv, c) }
+	m.OnOtherServerLink = a.openOnOtherServer
+	if sv.pending != "" {
+		m.OpenPath(sv.pending)
+		sv.pending = ""
+	}
 	m.OnOwnStatus = func(pm *qt.QPixmap, tip string) {
 		sv.mood, sv.moodTip = pm, tip
 		if sv == a.active {

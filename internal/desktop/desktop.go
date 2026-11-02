@@ -16,6 +16,10 @@ import (
 // ID — имя .desktop-файла; его же Qt сообщает окружению (setDesktopFileName).
 const ID = "matterqute.desktop"
 
+// Scheme — тип ссылок mattermost://: их открывает приложение (страница
+// Mattermost «Открыть в приложении» в браузере ведёт на такую ссылку).
+const Scheme = "x-scheme-handler/mattermost"
+
 // IconSizes — размеры иконки в hicolor.
 var IconSizes = []int{48, 64, 128, 256}
 
@@ -38,12 +42,13 @@ func Entry(exe string) string {
 		"Name=Matterqute\n" +
 		"GenericName=Mattermost\n" +
 		"Comment=Клиент Mattermost\n" +
-		"Exec=" + quoteExec(exe) + "\n" +
+		"Exec=" + quoteExec(exe) + " %u\n" +
 		"Icon=matterqute\n" +
 		"Terminal=false\n" +
 		"Categories=Network;InstantMessaging;Chat;\n" +
 		"StartupWMClass=matterqute\n" +
-		"StartupNotify=true\n"
+		"StartupNotify=true\n" +
+		"MimeType=" + Scheme + ";\n"
 }
 
 // quoteExec — путь для Exec по спецификации Desktop Entry: в кавычках, если в
@@ -84,6 +89,15 @@ func Install(dataDir, exe string, saveIcon func(path string, px int) error) ([]s
 		return written, fmt.Errorf("install %s: %w", p, err)
 	}
 	return append(written, p), nil
+}
+
+// SchemeCommands — команды, после которых ссылки mattermost:// открывает
+// приложение: обновить базу ярлыков и сделать его обработчиком по умолчанию.
+func SchemeCommands(dataDir string) [][]string {
+	return [][]string{
+		{"update-desktop-database", filepath.Join(dataDir, "applications")},
+		{"xdg-mime", "default", ID, Scheme},
+	}
 }
 
 // Uninstall убирает то, что поставил Install; возвращает удалённое.

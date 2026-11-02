@@ -64,6 +64,7 @@ type MainWindow struct {
 	suggestPending func()
 
 	scrollTo     string       // после загрузки ленты прокрутить к этому посту (ссылка на сообщение)
+	pendingPath  string       // путь сервера из ссылки снаружи: открыть после загрузки сайдбара
 	dndEnd       int64        // свой конец «не беспокоить», секунды; 0 — неизвестен или без срока
 	statusPanel  *card        // последняя открытая панель статуса (для тестов)
 	statusDialog *dialog      // последнее открытое окно своего статуса
@@ -83,13 +84,14 @@ type MainWindow struct {
 	connectedOnce   bool
 	online          bool
 
-	OnChannelOpened  func(id string)
-	OnConnection     func(ConnState)
-	OnMessage        func(text string)                // короткое сообщение в строке состояния окна
-	OnColumnsChanged func(sidebar, thread int)        // пользователь передвинул разделитель
-	OnRaise          func()                           // показать окно поверх остальных (клик по уведомлению)
-	OnCounts         func(Counts)                     // изменилось, сколько ждёт сообщений (трей)
-	OnOwnStatus      func(pm *qt.QPixmap, tip string) // свой статус: эмодзи и подсказка, nil — нет
+	OnChannelOpened   func(id string)
+	OnConnection      func(ConnState)
+	OnMessage         func(text string)                // короткое сообщение в строке состояния окна
+	OnColumnsChanged  func(sidebar, thread int)        // пользователь передвинул разделитель
+	OnRaise           func()                           // показать окно поверх остальных (клик по уведомлению)
+	OnCounts          func(Counts)                     // изменилось, сколько ждёт сообщений (трей)
+	OnOtherServerLink func(link string) bool           // ссылка на другой добавленный сервер: открыть там; false — не он
+	OnOwnStatus       func(pm *qt.QPixmap, tip string) // свой статус: эмодзи и подсказка, nil — нет
 }
 
 // Ширины колонок по дизайну: сайдбар 240 (от 180 до 360), тред 380 (от 280).
@@ -590,9 +592,7 @@ func (m *MainWindow) showTimeline(id string, tl *store.Timeline) {
 	m.feed.SetPosts(tl.Posts, tl.HasMore)
 	if to := m.scrollTo; to != "" {
 		m.scrollTo = ""
-		if m.feed.Has(to) {
-			m.feed.ScrollToPost(to) // перешли по ссылке на сообщение
-		}
+		m.reveal(to) // перешли по ссылке на сообщение
 	}
 	if len(tl.Posts) > 0 {
 		return
@@ -716,7 +716,11 @@ func (m *MainWindow) preloadNext() bool {
 	return false
 }
 
-func (m *MainWindow) loadOlder() {
+func (m *MainWindow) loadOlder() { m.loadOlderThen(nil) }
+
+// loadOlderThen подгружает страницу постов старше загруженных; done — когда
+// они в ленте (если ничего не вышло — не зовётся).
+func (m *MainWindow) loadOlderThen(done func()) {
 	id := m.current
 	tl := m.st.Timeline(id)
 	if tl == nil || !tl.Loaded || tl.Oldest() == nil {
@@ -745,6 +749,9 @@ func (m *MainWindow) loadOlder() {
 				added := tl.Prepend(posts, len(list.Order) >= pageSize)
 				if m.current == id {
 					m.feed.PrependOlder(added, tl.HasMore)
+				}
+				if done != nil {
+					done()
 				}
 			})
 		})

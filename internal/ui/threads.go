@@ -68,7 +68,16 @@ type threadView struct {
 }
 
 // openThread показывает тред в правой панели и грузит его целиком.
-func (m *MainWindow) openThread(rootID string) {
+func (m *MainWindow) openThread(rootID string) { m.openThreadAt(rootID, "") }
+
+// openThreadAt — тред rootID с прокруткой к ответу focus и его подсветкой
+// (переход по ссылке на сообщение); уже открытый — не перезагружается.
+func (m *MainWindow) openThreadAt(rootID, focus string) {
+	if t := m.thread; t != nil && t.rootID == rootID && t.tl.Loaded && m.panel.w.IsVisible() && m.panel.feed.Has(focus) {
+		m.panel.feed.Highlight(focus) // перерисовка поста — до прокрутки: она ставит курсор
+		m.panel.feed.ScrollToPost(focus)
+		return
+	}
 	t := &threadView{rootID: rootID, tl: &store.Timeline{}}
 	m.thread = t
 	m.panel.head.set(nil, m.threadTitleHTML(t), "")
@@ -107,6 +116,10 @@ func (m *MainWindow) openThread(rootID string) {
 				m.panel.feed.SetPosts(t.tl.Posts, false)
 				m.panel.composer.SetEnabled(t.channelID != "")
 				m.panel.composer.Focus()
+				if focus != "" && m.panel.feed.Has(focus) {
+					m.panel.feed.Highlight(focus) // перерисовка поста — до прокрутки: она ставит курсор
+					m.panel.feed.ScrollToPost(focus)
+				}
 				if m.st.CRT() && t.channelID != "" {
 					m.markThreadRead(rootID, t.channelID)
 				}

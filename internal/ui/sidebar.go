@@ -121,6 +121,10 @@ func (m *MainWindow) fillSidebar() {
 		m.sidebar.SetCurrentItem(toSelect)
 	}
 	m.updateCounts()
+	if path := m.pendingPath; path != "" {
+		m.pendingPath = ""
+		m.OpenPath(path)
+	}
 }
 
 // defaultChannel — канал при первом запуске: Town Square первой команды,

@@ -62,6 +62,14 @@ func (m *MainWindow) handleLink(link string) {
 			m.showUserCard(name)
 		}
 	default:
+		// Ссылка на свой сервер (сообщение, канал, личка) — здесь, на другой
+		// добавленный — там, остальное — в браузере.
+		if path, ok := m.ownPath(link); ok && m.openServerPath(path) {
+			return
+		}
+		if m.OnOtherServerLink != nil && m.OnOtherServerLink(link) {
+			return
+		}
 		u, err := url.Parse(link)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "mailto") {
 			m.log.Warn("ignore link", "url", truncate(link, 200), "err", err)

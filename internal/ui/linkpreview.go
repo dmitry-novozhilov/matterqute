@@ -165,23 +165,6 @@ func firstRunes(s string, n int) string {
 	return s
 }
 
-// openPermalink — «Перейти к сообщению»: канал, а если сообщение в
-// загруженной ленте — прокрутка к нему.
-func (m *MainWindow) openPermalink(channelID, postID string) {
-	if m.items[channelID] == nil {
-		m.message("Канал этого сообщения вам недоступен")
-		return
-	}
-	if m.current == channelID {
-		if m.feed.Has(postID) {
-			m.feed.ScrollToPost(postID)
-		}
-		return
-	}
-	m.scrollTo = postID
-	m.selectChannel(channelID)
-}
-
 // removePreview — автор убирает предпросмотр ссылки у своего сообщения (как
 // веб-клиент: свойство remove_link_preview).
 func (m *MainWindow) removePreview(p *model.Post) {

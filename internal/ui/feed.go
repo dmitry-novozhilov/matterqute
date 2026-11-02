@@ -103,7 +103,9 @@ type Feed struct {
 	videos      map[string]*inlineVideo // ролики, которые играют в ленте, по id файла
 	animSubs    map[string]func()       // подписки на кадры анимированных эмодзи: отписка по имени
 	placeTimer  *qt.QTimer              // поставить ролики и панель реакций на места после правок документа
-	quick       *quickBar               // реакции у поста под курсором
+	highlight   string                  // id поста, к которому перешли по ссылке: подсвечен
+	unhighlight *qt.QTimer
+	quick       *quickBar // реакции у поста под курсором
 	unsubscribe func()
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
@@ -171,6 +173,15 @@ func NewFeed(d FeedDeps) *Feed {
 	f.refit.SetSingleShot(true)
 	f.refit.SetInterval(50)
 	f.refit.OnTimeout(f.fitImages)
+	f.unhighlight = qt.NewQTimer2(f.view.QObject)
+	f.unhighlight.SetSingleShot(true)
+	f.unhighlight.OnTimeout(func() {
+		if i := f.index(f.highlight); i >= 0 {
+			f.highlight = ""
+			f.edit(func() { f.render(i) })
+		}
+		f.highlight = ""
+	})
 	f.placeTimer = qt.NewQTimer2(f.view.QObject)
 	f.placeTimer.SetSingleShot(true)
 	f.placeTimer.OnTimeout(func() {
@@ -350,6 +361,13 @@ func (f *Feed) OlderFailed() {
 	f.loadingOlder = false
 }
 
+// LoadingOlder — подгрузка старого запущена не прокруткой (поиск сообщения
+// по ссылке): строка «Загружаем историю…» сверху.
+func (f *Feed) LoadingOlder() {
+	f.loadingOlder = true
+	f.showHistoryLoading()
+}
+
 func (f *Feed) showHistoryLoading() {
 	if f.history != nil || len(f.items) == 0 {
 		return
@@ -489,17 +507,34 @@ func (f *Feed) cursorRect(c *qt.QTextCursor) *qt.QRect {
 	return r
 }
 
-// ScrollToPost прокручивает к посту (и ставит курсор в его начало).
+// ScrollToPost прокручивает к посту — его верх на трети высоты ленты — и
+// ставит курсор в его начало.
 func (f *Feed) ScrollToPost(id string) {
 	i := f.index(id)
 	if i < 0 {
 		return
 	}
-	f.stick, f.keepFromBottom = false, -1
 	c := qt.NewQTextCursor2(f.doc)
 	c.SetPosition(f.items[i].frame.FirstPosition())
 	f.view.SetTextCursor(c)
-	f.view.EnsureCursorVisible()
+	f.programmatic = true
+	f.bar.SetValue(f.bar.Value() + f.postTop(i) - f.view.Viewport().Height()/3)
+	f.programmatic = false
+	f.stick, f.keepFromBottom = f.bar.Value() >= f.bar.Maximum()-4, -1
+}
+
+// Highlight подсвечивает пост на несколько секунд: к нему перешли по ссылке.
+func (f *Feed) Highlight(id string) {
+	prev := f.highlight
+	f.highlight = id
+	f.edit(func() {
+		for _, x := range []string{prev, id} {
+			if i := f.index(x); i >= 0 && x != "" {
+				f.render(i)
+			}
+		}
+	})
+	f.unhighlight.Start(highlightFor)
 }
 
 // refreshSoon перерисует ленту один раз после текущих событий: догрузились
@@ -605,6 +640,9 @@ func (f *Feed) post(id string) *model.Post {
 	}
 	return nil
 }
+
+// highlightFor — сколько держится подсветка поста, к которому перешли, мс.
+const highlightFor = 4000
 
 // postAtY — пост, в чей фрейм (вместе с полями) попадает строка y viewport.
 // CursorForPosition для этого не годится: в верхнем поле поста он отдаёт
@@ -759,7 +797,10 @@ func (f *Feed) postHTML(i int) string {
 
 	group := f.startsGroup(i)
 	bg := ""
-	if f.mentionsMe(p) {
+	switch {
+	case p.Id == f.highlight:
+		bg = ` bgcolor="` + pal.AccW + `"`
+	case f.mentionsMe(p):
 		bg = ` bgcolor="` + pal.MenRow + `"`
 	}
 	top := 6

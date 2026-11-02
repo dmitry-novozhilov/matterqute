@@ -177,9 +177,7 @@ func (s *Store) Sections() []Section {
 			}
 		}
 		s.sortChannels(sec.Channels, model.SidebarCategorySortRecent)
-		if len(sec.Channels) > 0 {
-			out = append(out, sec)
-		}
+		out = append(out, sec) // и пустая: видно, что группа включена
 	}
 	for i, t := range s.teams {
 		first := i == 0

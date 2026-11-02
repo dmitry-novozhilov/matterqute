@@ -14,7 +14,9 @@ import (
 // «Файлы канала» (кнопка в шапке канала): вложения открытого канала в
 // правой колонке, новые сверху; строка поиска — по имени (и всему, что
 // понимает поиск файлов сервера: ext:pdf, from:имя, after:…). Ищет сервер
-// с in:канал (у лички — in:@собеседник), как веб-клиент. Щелчок — открыть
+// с in:<id канала>: имя канала сервер ищет в команде поиска, а поиск — по
+// всем командам (команды нет — имени не найти, файлов ноль); id он
+// пропускает как есть (convertChannelNamesToChannelIds в app/post.go). Щелчок — открыть
 // (картинку — в просмотре), правый — «Сохранить…», «Перейти к сообщению».
 
 const fileIDRole = int(qt.UserRole) + 10
@@ -190,14 +192,6 @@ func (m *MainWindow) showFiles(channelID string) {
 	m.loadFiles()
 }
 
-// inChannelTerm — фильтр поиска по каналу: in:имя, у лички — in:@собеседник.
-func (m *MainWindow) inChannelTerm(ch *model.Channel) string {
-	if ch.Type == model.ChannelTypeDirect {
-		return "in:@" + m.st.Username(m.st.DMPeer(ch))
-	}
-	return "in:" + ch.Name
-}
-
 // loadFiles — файлы канала с сервера под запрос из строки поиска.
 func (m *MainWindow) loadFiles() {
 	fp := m.files
@@ -207,7 +201,7 @@ func (m *MainWindow) loadFiles() {
 	}
 	fp.gen++
 	gen, channel := fp.gen, ch.Id
-	terms := strings.TrimSpace(m.inChannelTerm(ch) + " " + strings.TrimSpace(fp.field.Text()))
+	terms := strings.TrimSpace("in:" + ch.Id + " " + strings.TrimSpace(fp.field.Text()))
 	_, offset := time.Now().Zone()
 	params := &model.SearchParameter{Terms: &terms, IsOrSearch: new(false), TimeZoneOffset: &offset, Page: new(0), PerPage: new(searchLimit)}
 	team := m.teamOf(channel)

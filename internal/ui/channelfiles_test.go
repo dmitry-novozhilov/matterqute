@@ -22,6 +22,19 @@ func TestChannelFiles(t *testing.T) {
 			return
 		}
 		backend := channelByName(m, "dev", "backend").Id
+		// Как у сервера: в поиске по всем командам имя канала не найти (оно
+		// ищется в команде) — файлов ноль; id канала — работает.
+		search := func(terms string) int {
+			list, _, err := s.Client.SearchFilesWithParams(context.Background(), "", &model.SearchParameter{Terms: &terms})
+			if err != nil {
+				t.Error(err)
+				return -1
+			}
+			return len(list.Order)
+		}
+		if byName, byID := search("in:backend"), search("in:"+backend); byName != 0 || byID != 4 {
+			t.Errorf("search across teams: by name %d, by id %d", byName, byID)
+		}
 		m.selectChannel(backend)
 		fp := m.files
 		m.toggleFiles()

@@ -105,8 +105,9 @@ func (s *Server) searchPosts(w http.ResponseWriter, r *http.Request, me *model.U
 }
 
 // searchFiles — POST /files/search и /teams/{tid}/files/search: файлы
-// постов в каналах пользователя; in:канал (или in:@имя — личка), ext:,
-// слова — в имени файла; новые первыми.
+// постов в каналах пользователя; ext:, слова — в имени файла; новые первыми.
+// in:, как у сервера: id канала — как есть, @имя — личка, имя канала — только
+// в поиске по команде (без команды имени не найти — ничего).
 func (s *Server) searchFiles(w http.ResponseWriter, r *http.Request, me *model.User) {
 	var params model.SearchParameter
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil || params.Terms == nil {
@@ -127,16 +128,19 @@ func (s *Server) searchFiles(w http.ResponseWriter, r *http.Request, me *model.U
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	tid := r.PathValue("tid")
 	inChannel := func(cid string) bool {
 		c := s.channels[cid]
 		switch {
 		case in == "":
 			return true
+		case model.IsValidId(in):
+			return cid == in
 		case strings.HasPrefix(in, "@"):
 			u := s.byName(strings.TrimPrefix(in, "@"))
 			return u != nil && c.Type == model.ChannelTypeDirect && c.Name == model.GetDMNameFromIds(me.Id, u.Id)
 		}
-		return c.Name == in
+		return tid != "" && c.TeamId == tid && c.Name == in
 	}
 	var found []*model.FileInfo
 	for _, f := range s.files {

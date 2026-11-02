@@ -156,6 +156,10 @@ func TestUnreadSection(t *testing.T) {
 	if got := sections(s); !strings.HasPrefix(got, "/Непрочитанные:d1 |") || !strings.Contains(got, "dev/Каналы:a,b") {
 		t.Errorf("after leaving: %s", got)
 	}
+	s.MarkViewed("d1")
+	if got := sections(s); !strings.HasPrefix(got, "/Непрочитанные: |") {
+		t.Errorf("empty section must stay visible: %s", got)
+	}
 	s.SetUnreadSection(false)
 	if got := sections(s); strings.Contains(got, "Непрочитанные") {
 		t.Errorf("section off: %s", got)

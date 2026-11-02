@@ -62,6 +62,10 @@ type FeedDeps struct {
 	Assets        *Assets // nil — без картинок и кастомных эмодзи (тесты прокрутки)
 	ChannelExists func(name string) bool
 	LinkPreviews  func() bool // показывать предпросмотр ссылок; nil — да
+	// QuickReactions — эмодзи панели реакций у сообщения под курсором; nil — только «все реакции».
+	QuickReactions func() []string
+	// EmojiImage — эмодзи картинкой (кастомное догружается, потом done).
+	EmojiImage func(name string, size int, done func()) *qt.QPixmap
 }
 
 // pill — плашка реакции: обычная и под курсором. render рисует её заново —
@@ -98,7 +102,8 @@ type Feed struct {
 	spin        *spinner                // крутилка заглушки «Загружаем сообщения…»
 	videos      map[string]*inlineVideo // ролики, которые играют в ленте, по id файла
 	animSubs    map[string]func()       // подписки на кадры анимированных эмодзи: отписка по имени
-	placeTimer  *qt.QTimer              // поставить ролики на места после правок документа
+	placeTimer  *qt.QTimer              // поставить ролики и панель реакций на места после правок документа
+	quick       *quickBar               // реакции у поста под курсором
 	unsubscribe func()
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
@@ -141,6 +146,19 @@ func NewFeed(d FeedDeps) *Feed {
 	f.view.OnAnchorClicked(func(u *qt.QUrl) { f.onAnchor(u.ToString()) })
 	f.view.OnHighlighted(func(u *qt.QUrl) { f.onHover(u.ToString()) })
 	f.view.OnContextMenuEvent(func(_ func(*qt.QContextMenuEvent), e *qt.QContextMenuEvent) { f.contextMenu(e) })
+	f.quick = newQuickBar(f)
+	f.view.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+		super(e)
+		if e.Buttons() == qt.NoButton {
+			f.quick.hover(e.Pos())
+		} else {
+			f.quick.hide() // выделяют текст
+		}
+	})
+	f.view.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) {
+		super(e)
+		f.quick.hide()
+	})
 	f.view.OnCreateMimeDataFromSelection(f.copySelection)
 	f.view.OnResizeEvent(func(super func(*qt.QResizeEvent), e *qt.QResizeEvent) {
 		super(e)
@@ -153,9 +171,12 @@ func NewFeed(d FeedDeps) *Feed {
 	f.refit.OnTimeout(f.fitImages)
 	f.placeTimer = qt.NewQTimer2(f.view.QObject)
 	f.placeTimer.SetSingleShot(true)
-	f.placeTimer.OnTimeout(f.placeVideos)
+	f.placeTimer.OnTimeout(func() {
+		f.placeVideos()
+		f.quick.follow()
+	})
 	f.doc.OnContentsChanged(func() {
-		if len(f.videos) > 0 {
+		if len(f.videos) > 0 || f.quick.post != "" {
 			f.placeTimer.Start(0)
 		}
 	})
@@ -165,7 +186,10 @@ func NewFeed(d FeedDeps) *Feed {
 	})
 	f.bar = f.view.VerticalScrollBar()
 	f.bar.OnValueChanged(f.onScroll)
-	f.bar.OnValueChanged(func(int) { f.placeVideos() })
+	f.bar.OnValueChanged(func(int) {
+		f.placeVideos()
+		f.quick.follow()
+	})
 	f.bar.OnRangeChanged(f.onRange)
 	f.restyleRenderer()
 	f.unsubscribe = OnThemeChanged(f.restyle)
@@ -197,6 +221,7 @@ func (f *Feed) restyle() {
 	for _, v := range f.videos {
 		v.restyle()
 	}
+	f.quick.restyle()
 	f.renderAll()
 }
 
@@ -265,6 +290,7 @@ func (f *Feed) clearDoc() {
 	f.resources = map[string][2]int{}
 	f.pills = map[string]pill{}
 	f.hovered = ""
+	f.quick.hide()
 	f.doc.Clear()
 	f.doc.SetDocumentMargin(0)
 }
@@ -1337,7 +1363,7 @@ func (f *Feed) fileAndPost(id string) (*model.FileInfo, *model.Post) {
 	return nil, nil
 }
 
-// contextMenu — все действия с сообщением: кнопок при наведении в ленте нет.
+// contextMenu — все действия с сообщением; при наведении — панель реакций (quickBar).
 func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	it := f.postAtY(e.Pos().Y())
 	menu := qt.NewQMenu(f.view.QWidget)
@@ -1506,6 +1532,7 @@ func newTextLabel(format qt.TextFormat) *qt.QLabel {
 func (f *Feed) onResize() {
 	f.pinToBottom()
 	f.placeVideos()
+	f.quick.follow()
 	if abs(f.view.Viewport().Width()-f.lastWidth) >= 24 {
 		f.refit.Start2()
 	}

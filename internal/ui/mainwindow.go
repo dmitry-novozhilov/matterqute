@@ -147,7 +147,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	}
 
 	deps := FeedDeps{Names: m.st.Username, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists,
-		LinkPreviews: m.st.LinkPreviews}
+		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage}
 	m.feed = NewFeed(deps)
 	m.feed.OnNeedOlder = m.loadOlder
 	m.feed.OnOpenThread = m.openThread

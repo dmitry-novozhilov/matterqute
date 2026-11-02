@@ -429,6 +429,16 @@ func (m *MainWindow) loadEmojiData(done func()) {
 	}()
 }
 
+// quickReactions — эмодзи панели реакций у сообщения; недавние приходят с
+// сервера при первом показе панели — тогда она перерисуется.
+func (m *MainWindow) quickReactions() []string {
+	m.loadEmojiData(func() {
+		m.feed.quick.refresh()
+		m.panel.feed.quick.refresh()
+	})
+	return quickReactions(m.recent)
+}
+
 // useEmoji — эмодзи поставили реакцией: в недавние и на сервер (общие с веб-клиентом).
 func (m *MainWindow) useEmoji(name string) {
 	m.recent = m.recent.Add(name)

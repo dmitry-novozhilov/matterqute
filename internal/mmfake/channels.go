@@ -27,17 +27,23 @@ func (s *Server) publicChannels(w http.ResponseWriter, r *http.Request, me *mode
 	s.json(w, out)
 }
 
-// joinChannel — POST /channels/{cid}/members: войти в открытый канал (себя).
+// joinChannel — POST /channels/{cid}/members: войти в открытый канал (себя)
+// или добавить других (user_ids, addMembers).
 func (s *Server) joinChannel(w http.ResponseWriter, r *http.Request, me *model.User) {
 	var body struct {
-		UserID string `json:"user_id"`
+		UserID  string   `json:"user_id"`
+		UserIDs []string `json:"user_ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.UserID != me.Id {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.UserID != me.Id && len(body.UserIDs) == 0 {
 		s.fail(w, http.StatusBadRequest, "api.context.invalid_body_param.app_error")
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(body.UserIDs) > 0 {
+		s.addMembers(w, me, r.PathValue("cid"), body.UserIDs)
+		return
+	}
 	c := s.channels[r.PathValue("cid")]
 	if c == nil || c.Type != model.ChannelTypeOpen && s.members[me.Id][c.Id] == nil {
 		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
@@ -74,12 +80,13 @@ func (s *Server) createChannel(w http.ResponseWriter, r *http.Request, me *model
 	s.json(w, &c)
 }
 
-// leaveChannel — DELETE /channels/{cid}/members/{uid}: выйти (только себя).
+// leaveChannel — DELETE /channels/{cid}/members/{uid}: выйти самому или
+// удалить другого (removeMember).
 func (s *Server) leaveChannel(w http.ResponseWriter, r *http.Request, me *model.User) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c := s.channels[r.PathValue("cid")]
-	if c == nil || r.PathValue("uid") != me.Id || s.members[me.Id][c.Id] == nil {
+	if c == nil || s.members[me.Id][c.Id] == nil {
 		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
 		return
 	}
@@ -87,7 +94,15 @@ func (s *Server) leaveChannel(w http.ResponseWriter, r *http.Request, me *model.
 		s.failMessage(w, http.StatusBadRequest, "api.channel.remove.default.app_error", "Cannot remove user from the default channel town-square.")
 		return
 	}
+	if uid := r.PathValue("uid"); uid != me.Id {
+		s.removeMember(w, me, c, uid)
+		return
+	}
 	delete(s.members[me.Id], c.Id)
+	ev := model.NewWebSocketEvent(model.WebsocketEventUserRemoved, "", c.Id, "", nil, "")
+	ev.Add("user_id", me.Id)
+	ev.Add("remover_id", me.Id)
+	s.sendToChannel(c.Id, ev)
 	s.memberEvent(model.WebsocketEventUserRemoved, me.Id, c)
 	s.json(w, map[string]string{"status": "OK"})
 }

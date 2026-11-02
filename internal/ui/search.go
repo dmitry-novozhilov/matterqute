@@ -165,23 +165,37 @@ func (m *MainWindow) closeSearch() {
 	m.showRight(nil)
 }
 
-// showRight — правая колонка: тред, поиск или ничего; ширина — общая.
+// rightPanels — что бывает в правой колонке, в порядке в разделителе после
+// сайдбара и центра.
+func (m *MainWindow) rightPanels() []*qt.QWidget {
+	return []*qt.QWidget{m.panel.w, m.search.w, m.members.w}
+}
+
+// showRight — правая колонка: тред, поиск, участники или ничего; ширина — общая.
 func (m *MainWindow) showRight(w *qt.QWidget) {
-	for _, x := range []*qt.QWidget{m.panel.w, m.search.w} {
+	rights := m.rightPanels()
+	for _, x := range rights {
 		x.SetVisible(w != nil && x.UnsafePointer() == w.UnsafePointer())
 	}
 	if w == nil {
 		return
 	}
 	sizes := m.split.Sizes()
-	if len(sizes) == 4 {
-		total := sizes[0] + sizes[1] + sizes[2] + sizes[3]
-		right := m.columns.thread
-		panel, search := right, 0
-		if w.UnsafePointer() == m.search.w.UnsafePointer() {
-			panel, search = 0, right
+	if len(sizes) == 2+len(rights) {
+		total := 0
+		for _, s := range sizes {
+			total += s
 		}
-		m.split.SetSizes([]int{sizes[0], max(total-sizes[0]-right, 1), panel, search})
+		right := m.columns.thread
+		out := []int{sizes[0], max(total-sizes[0]-right, 1)}
+		for _, x := range rights {
+			if x.UnsafePointer() == w.UnsafePointer() {
+				out = append(out, right)
+			} else {
+				out = append(out, 0)
+			}
+		}
+		m.split.SetSizes(out)
 	}
 }
 

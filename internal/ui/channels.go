@@ -89,6 +89,19 @@ func (m *MainWindow) sidebarItems(team, channelID string) []menuItem {
 		return out
 	}
 	id := ch.Id
+	if ch.Type != model.ChannelTypeDirect {
+		out = append(out, menuItem{title: "Участники", do: func() {
+			m.selectChannel(id)
+			m.showMembers(id)
+		}})
+	}
+	if !ch.IsGroupOrDirect() {
+		out = append(out, menuItem{title: "Добавить участников…", do: func() { m.showAddMembers(id) }},
+			menuItem{title: "Настройки канала…", do: func() { m.showChannelSettings(id) }})
+	} else {
+		out = append(out, menuItem{title: "Изменить шапку…", do: func() { m.showChannelSettings(id) }})
+	}
+	out = append(out, menuItem{})
 	if m.st.Muted(id) {
 		out = append(out, menuItem{title: "Включить уведомления", do: func() { m.setMuted(id, false) }})
 	} else {
@@ -106,6 +119,19 @@ func (m *MainWindow) sidebarItems(team, channelID string) []menuItem {
 		out = append(out, menuItem{}, menuItem{title: "Покинуть канал…", do: func() { m.confirmLeave(id) }})
 	}
 	return out
+}
+
+// channelMenu — щелчок по названию канала в шапке: то же меню, что у канала
+// в сайдбаре.
+func (m *MainWindow) channelMenu() {
+	items := m.sidebarItems("", m.current)
+	if len(items) == 0 {
+		return
+	}
+	menu := qt.NewQMenu(m.w)
+	defer menu.DeleteLater()
+	fillMenu(menu, items)
+	menu.ExecWithPos(m.head.title.MapToGlobalWithQPoint(qt.NewQPoint2(0, m.head.title.Height()+4)))
 }
 
 // channelLink — ссылка на канал, как у веб-клиента; у личек — пусто.
@@ -480,4 +506,126 @@ func (m *MainWindow) showCreateChannel(team string) {
 	d.bottom.AddWidget(ok.QWidget)
 	d.w.Show()
 	name.SetFocus()
+}
+
+// showChannelSettings — название, адрес, назначение и шапка канала (у
+// личек — только шапка): серверу — изменённое (PatchChannel), отказ — под
+// полями. Адрес главного канала команды не меняется.
+func (m *MainWindow) showChannelSettings(channelID string) {
+	ch := m.st.Channel(channelID)
+	if ch == nil {
+		return
+	}
+	group := ch.IsGroupOrDirect()
+	title := "Настройки канала"
+	if group {
+		title = "Шапка " + channelPrefix(ch) + m.st.Title(ch)
+	}
+	d := newDialog(m.w, title)
+	m.channelDialog = d
+	d.w.SetMinimumWidth(460)
+	name := qt.NewQLineEdit3(ch.DisplayName)
+	addr := qt.NewQLineEdit3(ch.Name)
+	if ch.Name == model.DefaultChannelName {
+		addr.SetEnabled(false)
+		addr.SetToolTip("Адрес главного канала команды не меняется")
+	}
+	purpose := qt.NewQLineEdit3(ch.Purpose)
+	purpose.SetPlaceholderText("Необязательно")
+	head := qt.NewQPlainTextEdit3(ch.Header)
+	head.SetTabChangesFocus(true)
+	head.SetPlaceholderText("Ссылки, @упоминания, разметка — как в сообщениях")
+	head.SetFixedHeight(head.FontMetrics().LineSpacing()*4 + 12)
+	hint := qt.NewQLabel2()
+	hint.SetProperty("role", qt.NewQVariant11("hint"))
+	hint.SetWordWrap(true)
+	hint.SetVisible(false)
+	if !group {
+		for _, f := range []struct {
+			label string
+			w     *qt.QWidget
+		}{{"Название", name.QWidget}, {"Адрес", addr.QWidget}, {"Назначение", purpose.QWidget}} {
+			d.lay.AddWidget(fieldLabel(f.label).QWidget)
+			d.lay.AddWidget(f.w)
+		}
+	}
+	d.lay.AddWidget(fieldLabel("Шапка").QWidget)
+	d.lay.AddWidget(head.QWidget)
+	d.lay.AddWidget(hint.QWidget)
+
+	d.bottom.AddStretch()
+	cancel := qt.NewQPushButton3("Отмена")
+	cancel.OnClicked(func() { d.w.Close() })
+	ok := qt.NewQPushButton3("Сохранить")
+	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetDefault(true)
+	ok.OnClicked(func() {
+		var patch model.ChannelPatch
+		changed := false
+		set := func(field **string, now, was string) {
+			if now != was {
+				*field = &now
+				changed = true
+			}
+		}
+		problem := ""
+		if !group {
+			display, url := strings.TrimSpace(name.Text()), strings.TrimSpace(addr.Text())
+			if url != ch.Name {
+				problem = store.ValidChannelName(url)
+			}
+			if display == "" {
+				problem = "Нужно название канала"
+			}
+			set(&patch.DisplayName, display, ch.DisplayName)
+			set(&patch.Name, url, ch.Name)
+			set(&patch.Purpose, strings.TrimSpace(purpose.Text()), ch.Purpose)
+		}
+		set(&patch.Header, strings.TrimSpace(head.ToPlainText()), ch.Header)
+		if problem != "" {
+			hint.SetText(problem)
+			hint.SetVisible(true)
+			return
+		}
+		if !changed {
+			d.w.Close()
+			return
+		}
+		ok.SetEnabled(false)
+		go func() {
+			ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
+			defer cancel()
+			updated, _, err := m.s.Client.PatchChannel(ctx, channelID, &patch)
+			m.ui(func() {
+				if err != nil {
+					m.log.Warn("patch channel", "channel", channelID, "err", err)
+					if !d.closed {
+						ok.SetEnabled(true)
+						hint.SetText("Не сохранено: " + commandError(err))
+						hint.SetVisible(true)
+					}
+					return
+				}
+				if !d.closed {
+					d.w.Close()
+				}
+				if m.st.Channel(channelID) == nil {
+					return // пока сохраняли, из канала вышли
+				}
+				m.st.AddChannel(updated, nil)
+				if channelID == m.current {
+					m.composer.SetPlaceholder("Сообщение в " + channelPrefix(updated) + m.st.Title(updated))
+				}
+				m.fillSidebar() // название — и порядок в сайдбаре
+			})
+		}()
+	})
+	d.bottom.AddWidget(cancel.QWidget)
+	d.bottom.AddWidget(ok.QWidget)
+	d.w.Show()
+	if group {
+		head.SetFocus()
+	} else {
+		name.SetFocus()
+	}
 }

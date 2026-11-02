@@ -15,13 +15,16 @@ type header struct {
 	f     *qt.QFrame
 	icon  *qt.QLabel
 	title *qt.QLabel
+	chev  *qt.QLabel // стрелка меню после заголовка; видна, если задан onTitle
 	sub   *qt.QLabel
 	close *qt.QToolButton
 	row   *qt.QHBoxLayout
+
+	onTitle func() // щелчок по заголовку (меню канала)
 }
 
 func newHeader(objectName string, closable bool, onLink func(string)) *header {
-	h := &header{f: qt.NewQFrame2(), icon: qt.NewQLabel2(), title: qt.NewQLabel2(), sub: qt.NewQLabel2()}
+	h := &header{f: qt.NewQFrame2(), icon: qt.NewQLabel2(), title: qt.NewQLabel2(), chev: qt.NewQLabel2(), sub: qt.NewQLabel2()}
 	setName(h.f.QObject, objectName)
 	h.f.SetFixedHeight(52)
 	h.title.SetTextFormat(qt.RichText)
@@ -34,10 +37,23 @@ func newHeader(objectName string, closable bool, onLink func(string)) *header {
 		h.title.OnLinkActivated(onLink)
 	}
 
+	h.chev.SetVisible(false)
+	for _, l := range []*qt.QLabel{h.title, h.chev} {
+		l.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+			if h.onTitle != nil && h.chev.IsVisible() && e.Button() == qt.LeftButton {
+				h.onTitle()
+				return
+			}
+			super(e)
+		})
+	}
+
 	top := qt.NewQHBoxLayout2()
 	top.SetSpacing(6)
 	top.AddWidget(h.icon.QWidget)
-	top.AddWidget2(h.title.QWidget, 1)
+	top.AddWidget(h.title.QWidget)
+	top.AddWidget(h.chev.QWidget)
+	top.AddStretch()
 	col := qt.NewQVBoxLayout2()
 	col.SetSpacing(0)
 	col.AddLayout(top.QLayout)

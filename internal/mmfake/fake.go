@@ -144,6 +144,12 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("POST /api/v4/channels/{cid}/members", s.auth(s.joinChannel))
 	s.mux.HandleFunc("DELETE /api/v4/channels/{cid}/members/{uid}", s.auth(s.leaveChannel))
 	s.mux.HandleFunc("GET /api/v4/channels/{cid}/members/{uid}", s.auth(s.channelMember))
+	s.mux.HandleFunc("GET /api/v4/channels/{cid}/members", s.auth(s.channelMembers))
+	s.mux.HandleFunc("GET /api/v4/channels/{cid}/stats", s.auth(s.channelStats))
+	s.mux.HandleFunc("PUT /api/v4/channels/{cid}/patch", s.auth(s.patchChannel))
+	s.mux.HandleFunc("POST /api/v4/channels/group", s.auth(s.createGroup))
+	s.mux.HandleFunc("GET /api/v4/users", s.auth(s.usersList))
+	s.mux.HandleFunc("POST /api/v4/users/search", s.auth(s.searchUsers))
 	s.mux.HandleFunc("PUT /api/v4/channels/{cid}/members/{uid}/notify_props", s.auth(s.memberNotifyProps))
 	s.mux.HandleFunc("GET /api/v4/websocket", s.websocket)
 	// Иконка интеграции на «чужом» сервере: без авторизации, как у Grafana.
@@ -237,6 +243,7 @@ func (s *Server) seed() {
 	town := ch(dev, model.ChannelTypeOpen, "town-square", "Town Square", "Общий канал команды")
 	s.addChannel(town, []*model.User{erin})
 	backend := ch(dev, model.ChannelTypeOpen, "backend", "backend", "Сервисы и API")
+	s.members[carol.Id][backend.Id].SchemeAdmin = true
 	ch(dev, model.ChannelTypePrivate, "releases", "Релизы", "Планирование релизов")
 	// Открытый канал без alice — войти командой /join.
 	s.addChannel(&model.Channel{Id: model.NewId(), TeamId: dev.Id, Type: model.ChannelTypeOpen, Name: "frontend",

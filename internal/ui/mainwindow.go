@@ -64,6 +64,9 @@ type MainWindow struct {
 	search         *searchPanel    // поиск по сообщениям — в правой колонке
 	typing         *typingState    // кто где печатает
 	searchBtn      *qt.QToolButton // лупа в шапке канала
+	members        *membersPanel   // участники канала — в правой колонке (members.go)
+	membersBtn     *qt.QToolButton // участники и их число — в шапке канала
+	memberCounts   map[string]int64
 	pinsBtn        *qt.QToolButton // закреплённые в канале — в шапке
 	savedBtn       *qt.QToolButton // сохранённые — в шапке
 	manualUnread   map[string]bool // каналы и треды, помеченные непрочитанными: сами не отмечаем прочитанными (postactions.go)
@@ -141,6 +144,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		counts:  Counts{-1, -1},
 
 		manualUnread: map[string]bool{},
+		memberCounts: map[string]int64{},
 		retryNow:     make(chan struct{}, 1),
 
 		initialChannel: initialChannel,
@@ -165,6 +169,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.setupSidebar()
 
 	m.head = newHeader("channelHeader", false, m.handleLink)
+	m.head.onTitle = m.channelMenu
 	m.head.set(nil, "Выберите канал", "")
 	m.banner = newBanner(hostOf(s.ServerURL))
 	m.banner.OnRetry = func() {
@@ -278,6 +283,13 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		}
 	})
 	m.panel.follow.SetVisible(false)
+	m.members = m.newMembersPanel()
+	m.membersBtn = m.head.addTool("Участники канала", m.toggleMembers)
+	setName(m.membersBtn.QObject, "membersButton")
+	m.membersBtn.SetToolButtonStyle(qt.ToolButtonTextBesideIcon)
+	m.membersBtn.SetMinimumSize2(28, 28)
+	m.membersBtn.SetMaximumSize2(120, 28)
+	m.membersBtn.SetVisible(false)
 	m.pinsBtn = m.head.addTool("Закреплённые в канале", func() { m.toggleList(listPinned) })
 	m.savedBtn = m.head.addTool("Сохранённые сообщения", func() { m.toggleList(listSaved) })
 	m.searchBtn = m.head.addTool("Поиск по сообщениям (Ctrl+F)", m.openSearch)
@@ -330,11 +342,13 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.split.AddWidget(m.center.QWidget)
 	m.split.AddWidget(m.panel.w)
 	m.split.AddWidget(m.search.w)
+	m.split.AddWidget(m.members.w)
 	m.split.SetStretchFactor(1, 1)
 	m.sidebar.SetMinimumWidth(sidebarMin)
 	m.sidebar.SetMaximumWidth(sidebarMax)
-	m.panel.w.SetMinimumWidth(threadMin)
-	m.search.w.SetMinimumWidth(threadMin)
+	for _, w := range m.rightPanels() {
+		w.SetMinimumWidth(threadMin)
+	}
 	m.SetColumns(0, 0)
 	// splitterMoved идёт на каждый пиксель перетаскивания: сохраняем, когда
 	// разделитель отпустили.
@@ -349,11 +363,10 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.split.OnSplitterMoved(func(int, int) {
 		sizes := m.split.Sizes()
 		m.columns.sidebar = sizes[0]
-		switch {
-		case m.panel.w.IsVisible():
-			m.columns.thread = sizes[2]
-		case m.search.w.IsVisible():
-			m.columns.thread = sizes[3]
+		for i, w := range m.rightPanels() {
+			if w.IsVisible() && 2+i < len(sizes) {
+				m.columns.thread = sizes[2+i]
+			}
 		}
 		m.saveColumns.Start2()
 	})
@@ -411,6 +424,7 @@ func (m *MainWindow) Close() {
 	m.unsubscribe()
 	m.panel.dispose()
 	m.search.dispose()
+	m.members.unsubscribe()
 	m.eachFeed((*Feed).dispose)
 	m.composer.dispose()
 	for _, pl := range m.players {
@@ -435,6 +449,7 @@ func (m *MainWindow) restyle() {
 	m.pinsBtn.SetIcon(icon("pin", Pal().Tx2, 18))
 	m.savedBtn.SetIcon(icon("bookmark", Pal().Tx2, 18))
 	m.panel.back.SetIcon(icon("arrow-left", Pal().Tx2, 18))
+	m.head.chev.SetPixmap(iconPixmap("chevron-down", Pal().Tx2, 14))
 	m.updateFollowButton()
 	m.refreshHeader()
 	m.sidebar.DoItemsLayout() // шрифт сайдбара мог поменяться — с ним высота строк
@@ -705,6 +720,9 @@ func (m *MainWindow) openChannel(id string) {
 	if m.listShown(listPinned) && m.search.listChannel != id {
 		m.showList(listPinned) // закреплённые — открытого канала
 	}
+	if m.membersShown() && m.members.channel != id {
+		m.showMembers(id) // участники — открытого канала
+	}
 	if m.OnChannelOpened != nil {
 		m.OnChannelOpened(id)
 	}
@@ -715,6 +733,13 @@ func (m *MainWindow) refreshHeader() {
 	p := Pal()
 	m.threadsHead.set(iconPixmap("messages-square", p.Tx2, 16), "Треды", "Треды, на которые вы подписаны")
 	ch := m.st.Channel(m.current)
+	m.updateMembersButton()
+	m.head.chev.SetVisible(ch != nil)
+	if ch != nil {
+		m.head.title.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
+	} else {
+		m.head.title.UnsetCursor()
+	}
 	if ch == nil {
 		m.head.set(nil, "Выберите канал", "")
 		return

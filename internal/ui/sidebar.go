@@ -128,6 +128,7 @@ func (m *MainWindow) fillSidebar() {
 		m.sidebar.SetCurrentItem(toSelect)
 	}
 	m.updateCounts()
+	m.refreshHeader() // канал могли переименовать, поменять шапку
 	if path := m.pendingPath; path != "" {
 		m.pendingPath = ""
 		m.OpenPath(path)

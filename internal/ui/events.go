@@ -183,10 +183,19 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		return func() { m.applyUser(&u) }, nil
 
 	case model.WebsocketEventUserAdded, model.WebsocketEventUserRemoved:
-		// Шлётся всем участникам канала; сайдбар меняется, только если это мы.
-		if data["user_id"] == me || ev.GetBroadcast().UserId == me {
-			return m.reloadSidebar, nil
+		// Шлётся всем участникам канала (и удалённому — ему одному, с
+		// channel_id); сайдбар меняется, только если это мы.
+		ch := ev.GetBroadcast().ChannelId
+		if ch == "" {
+			ch, _ = data["channel_id"].(string)
 		}
+		if data["user_id"] == me || ev.GetBroadcast().UserId == me {
+			return func() {
+				m.reloadSidebar()
+				m.membersChanged(ch)
+			}, nil
+		}
+		return func() { m.membersChanged(ch) }, nil
 
 	case model.WebsocketEventChannelCreated, model.WebsocketEventChannelDeleted,
 		model.WebsocketEventChannelRestored, model.WebsocketEventChannelUpdated,

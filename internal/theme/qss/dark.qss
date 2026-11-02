@@ -69,6 +69,12 @@ QListView#threads { background: #201e1b; border: none; }
 QListView#threads::item { border-bottom: 1px solid #383531; padding: 10px 16px 12px; }
 QListView#threads::item:selected { background: #193a2e; }
 
+/* channel members: QListView, a delegate paints rows; header button with the count */
+QListView#members { background: #201e1b; border: none; }
+QListView#members::item:hover { background: #282623; }
+QListView#members::item:selected { background: #193a2e; }
+QToolButton#membersButton { padding: 0 6px 0 4px; }
+
 /* user card: QFrame in a Qt::Popup window */
 QFrame#userCard { background: #201e1b; border: 1px solid #504c47; border-radius: 6px; }
 QLabel#userName { font-size: 16px; font-weight: 600; }

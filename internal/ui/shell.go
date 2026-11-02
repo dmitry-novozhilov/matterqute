@@ -34,9 +34,10 @@ type Shell struct {
 
 	logout     *qt.QAction
 	themeActs  map[ThemeMode]*qt.QAction
-	trayAct    *qt.QAction // «Вид → Значок в трее…»
-	help       *helpWindow // окно справки; nil — не открывали
-	about      *dialog     // «О программе»
+	trayAct    *qt.QAction    // «Вид → Значок в трее…»
+	typingActs [2]*qt.QAction // «Вид → «Печатает…»»: показывать, сообщать
+	help       *helpWindow    // окно справки; nil — не открывали
+	about      *dialog        // «О программе»
 	serverMenu *qt.QMenu
 
 	// HideOnClose — крестик прячет окно в трей, а не завершает приложение:
@@ -104,6 +105,23 @@ func NewShell() *Shell {
 	themes := view.AddMenuWithTitle("Тема")
 	fontsAct := view.QWidget.AddActionWithText("Шрифты…")
 	fontsAct.OnTriggered(func() { showFontsDialog(s.w.QWidget) })
+	typing := view.AddMenuWithTitle("«Печатает…»")
+	showTyping := typing.QWidget.AddActionWithText("Показывать, кто печатает")
+	sendTyping := typing.QWidget.AddActionWithText("Сообщать, что печатаю я")
+	for _, a := range []*qt.QAction{showTyping, sendTyping} {
+		a.SetCheckable(true)
+	}
+	showTyping.SetChecked(style.typingShow)
+	sendTyping.SetChecked(style.typingSend)
+	chosen := func() {
+		SetTyping(showTyping.IsChecked(), sendTyping.IsChecked())
+		if OnTypingChosen != nil {
+			OnTypingChosen(style.typingShow, style.typingSend)
+		}
+	}
+	showTyping.OnTriggered(chosen)
+	sendTyping.OnTriggered(chosen)
+	s.typingActs = [2]*qt.QAction{showTyping, sendTyping}
 	s.trayAct = view.QWidget.AddActionWithText("Значок в трее…")
 	s.trayAct.SetVisible(false) // только если трей есть
 	s.trayAct.OnTriggered(func() {

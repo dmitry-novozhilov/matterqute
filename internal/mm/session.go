@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -25,6 +26,9 @@ type Session struct {
 	ServerURL string
 	Client    *model.Client4
 	Me        *model.User
+
+	wsMu sync.Mutex
+	ws   *model.WebSocketClient // текущее соединение realtime; nil — нет
 }
 
 func (s *Session) Token() string { return s.Client.AuthToken }

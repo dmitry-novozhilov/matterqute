@@ -53,6 +53,7 @@ type MainWindow struct {
 	schedDialog  *dialog // «Отправить позже» / «Перенести»
 	sched        *scheduler
 	search       *searchPanel    // поиск по сообщениям — в правой колонке
+	typing       *typingState    // кто где печатает
 	searchBtn    *qt.QToolButton // лупа в шапке канала
 	threadsHead  *header
 	threadsList  *qt.QListWidget
@@ -186,6 +187,8 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.composer.OnEditLast = func() { m.editLast(m.feed) }
 	m.composer.OnCommand = func(text string) { m.runCommand(m.composer, m.current, "", text) }
 	m.sched = newScheduler(m, filepath.Join(cacheDir, "scheduled.json"))
+	m.initTyping()
+	m.composer.OnTyping = func() { m.userTyping(m.current, "") }
 	m.laterFor(m.composer, func() (string, string) {
 		if m.st.Channel(m.current) == nil {
 			return "", ""
@@ -266,6 +269,11 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		}
 		return "", ""
 	})
+	m.panel.composer.OnTyping = func() {
+		if t := m.thread; t != nil {
+			m.userTyping(t.channelID, t.rootID)
+		}
+	}
 	m.panel.composer.OnCommand = func(text string) {
 		if t := m.thread; t != nil {
 			m.runCommand(m.panel.composer, t.channelID, t.rootID, text)
@@ -385,6 +393,10 @@ func (m *MainWindow) Close() {
 // restyle — смена темы: иконки и цвета, нарисованные кодом.
 func (m *MainWindow) restyle() {
 	m.banner.restyle()
+	if !style.typingShow {
+		m.typing.who = map[typingKey]map[string]time.Time{}
+	}
+	m.updateTypingNotes()
 	m.searchBtn.SetIcon(icon("search", Pal().Tx2, 18))
 	m.panel.back.SetIcon(icon("arrow-left", Pal().Tx2, 18))
 	m.refreshHeader()
@@ -599,6 +611,7 @@ func (m *MainWindow) openChannel(id string) {
 	m.composer.SwitchTo(id)
 	m.composer.SetPlaceholder("Сообщение в " + channelPrefix(ch) + m.st.Title(ch))
 	m.updateScheduledNotes()
+	m.updateTypingNotes()
 	m.refreshHeader()
 	m.composer.SetEnabled(true)
 	m.composer.Focus()
@@ -876,6 +889,7 @@ func (m *MainWindow) send(text string, fileIDs []string) {
 // applyPosted — новый пост из WebSocket или из ответа на отправку.
 func (m *MainWindow) applyPosted(e store.NewPost) {
 	p := e.Post
+	m.stopTyping(p)
 	r := m.st.ApplyPosted(p, e.Mentioned)
 	m.applyToThread(p)
 	m.maybeNotify(e)

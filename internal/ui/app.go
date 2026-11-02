@@ -93,6 +93,10 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		a.cfg.FormatBar = on
 		a.saveConfig()
 	}
+	OnTypingChosen = func(show, send bool) {
+		a.cfg.Typing = config.Typing{Hide: !show, NoSend: !send}
+		a.saveConfig()
+	}
 	if a.tray = NewTray(a.cfg.Tray); a.tray != nil {
 		a.shell.HideOnClose = true
 		a.tray.OnOpen = a.shell.Raise

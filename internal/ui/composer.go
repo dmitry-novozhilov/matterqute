@@ -95,8 +95,11 @@ type Composer struct {
 	// OnShowScheduled — «показать» в подсказке об отложенных.
 	OnShowScheduled func()
 	later           *qt.QToolButton // «Отправить позже»
-	schedNote       *qt.QLabel      // «2 отложенных сообщения здесь · показать»
-	asText          string          // это сообщение — уже не команда: сервер такой не знает, отправить текстом
+	typingNote      *qt.QLabel      // «bob печатает…» под полем; место под неё есть всегда, если показ включён
+	// OnTyping — набирают текст (не правка своего): сообщить серверу.
+	OnTyping  func()
+	schedNote *qt.QLabel // «2 отложенных сообщения здесь · показать»
+	asText    string     // это сообщение — уже не команда: сервер такой не знает, отправить текстом
 	// OnUpload — загрузить файл (path с диска или data — вставленная картинка);
 	// progress(0…100) по ходу, результат — Uploaded или UploadFailed.
 	OnUpload func(id int, name, path string, data []byte, progress func(percent int))
@@ -171,6 +174,9 @@ func NewComposer() *Composer {
 		c.typing = e.Text() != ""
 		super(e)
 		c.typing = false
+		if c.editID == "" && c.OnTyping != nil && (e.Text() != "" || k == qt.Key_Backspace || k == qt.Key_Delete) {
+			c.OnTyping()
+		}
 		c.autoformat(e.Text())
 	})
 	c.edit.OnFocusInEvent(func(super func(*qt.QFocusEvent), e *qt.QFocusEvent) {
@@ -270,6 +276,10 @@ func NewComposer() *Composer {
 	lay.AddWidget(c.editBar.QWidget)
 	lay.AddWidget(c.frame.QWidget)
 	lay.AddWidget(c.hint.QWidget)
+	c.typingNote = qt.NewQLabel2()
+	setName(c.typingNote.QObject, "typingNote")
+	c.typingNote.SetTextFormat(qt.PlainText)
+	lay.AddWidget(c.typingNote.QWidget)
 
 	c.unsubscribe = OnThemeChanged(c.restyle)
 	c.restyle()
@@ -284,6 +294,14 @@ func (c *Composer) dispose() { c.unsubscribe() }
 func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
 	c.later.SetIcon(icon("clock", Pal().Tx2, 18))
+	// Строка «печатает…» — всегда своей высоты: иначе поле прыгало бы, когда
+	// кто-то начинает и перестаёт печатать.
+	tf := pixelFont(12, qt.QFont__Normal)
+	tf.SetItalic(true)
+	c.typingNote.SetFont(tf)
+	c.typingNote.SetFixedHeight(qt.NewQFontMetrics(tf).Height())
+	c.typingNote.SetStyleSheet("color: " + Pal().Tx2)
+	c.typingNote.SetVisible(style.typingShow)
 	c.restyleEditBar()
 	c.edit.SetFont(feedFont())
 	c.edit.Viewport().SetFont(feedFont()) // плейсхолдер Qt рисует шрифтом viewport
@@ -637,6 +655,9 @@ func (c *Composer) ScheduleAt(at time.Time) bool {
 	c.OnSchedule(text, ids, at)
 	return true
 }
+
+// SetTypingNote — «bob печатает…» под полем ("" — пусто, место остаётся).
+func (c *Composer) SetTypingNote(text string) { c.typingNote.SetText(text) }
 
 // SetScheduledNote — «N отложенных» над полем (n=0 — прячется).
 func (c *Composer) SetScheduledNote(n int) {

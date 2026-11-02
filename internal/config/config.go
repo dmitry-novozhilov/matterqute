@@ -33,6 +33,7 @@ type Config struct {
 	Fonts     Fonts    `json:"fonts,omitzero"`       // шрифты сайдбара, ленты, моноширинного; пусто — по дизайну
 	Tray      Tray     `json:"tray,omitzero"`        // цвета значка в трее; пусто — по панели
 	FormatBar bool     `json:"format_bar,omitempty"` // панель оформления над полем ввода
+	Typing    Typing   `json:"typing,omitzero"`      // «печатает…»: показывать ли и сообщать ли
 
 	path string
 }
@@ -43,6 +44,12 @@ type Tray struct {
 	Unread   string `json:"unread,omitempty"`   // новые сообщения в каналах, но не мне
 	Mentions string `json:"mentions,omitempty"` // сообщения мне: упоминания и лички
 	Digits   int    `json:"digits,omitempty"`   // размер цифр, % высоты значка; 0 — сами по облачку
+}
+
+// Typing — «печатает…»; нули — как по умолчанию: показывать и сообщать.
+type Typing struct {
+	Hide   bool `json:"hide,omitempty"`    // не показывать, кто печатает
+	NoSend bool `json:"no_send,omitempty"` // не сообщать, что печатаю я
 }
 
 // Fonts — шрифты, выбранные в «Вид → Шрифты…».

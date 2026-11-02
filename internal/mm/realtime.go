@@ -40,7 +40,7 @@ func (s *Session) RunRealtime(ctx context.Context, h RealtimeHandler, retry <-ch
 	delay := reconnectMinDelay
 	for ctx.Err() == nil {
 		started := time.Now()
-		err := listenOnce(ctx, wsURL, s.Token(), h)
+		err := listenOnce(ctx, wsURL, s.Token(), h, s.setWS)
 		if ctx.Err() != nil {
 			return
 		}
@@ -58,7 +58,7 @@ func (s *Session) RunRealtime(ctx context.Context, h RealtimeHandler, retry <-ch
 	}
 }
 
-func listenOnce(ctx context.Context, wsURL, token string, h RealtimeHandler) error {
+func listenOnce(ctx context.Context, wsURL, token string, h RealtimeHandler, setWS func(*model.WebSocketClient)) error {
 	wsc, err := model.NewWebSocketClient4(wsURL, token)
 	if err != nil {
 		return fmt.Errorf("connect %s: %w", wsURL, err)
@@ -88,6 +88,8 @@ func listenOnce(ctx context.Context, wsURL, token string, h RealtimeHandler) err
 				return fmt.Errorf("websocket %s: closed by server", wsURL)
 			}
 			if ev.EventType() == model.WebsocketEventHello {
+				setWS(wsc)
+				defer setWS(nil) // до wsc.Close (defer выше): после него писать некуда
 				h.OnConnected()
 				continue
 			}
@@ -101,6 +103,25 @@ func listenOnce(ctx context.Context, wsURL, token string, h RealtimeHandler) err
 			return fmt.Errorf("websocket %s: no ping from server for %ds", wsURL, 60+model.PingTimeoutBufferSeconds)
 		}
 	}
+}
+
+func (s *Session) setWS(ws *model.WebSocketClient) {
+	s.wsMu.Lock()
+	s.ws = ws
+	s.wsMu.Unlock()
+}
+
+// Typing — сообщить серверу, что пользователь набирает текст в канале (в
+// треде — parentID): остальные увидят «печатает…». Без соединения — false.
+func (s *Session) Typing(channelID, parentID string) bool {
+	s.wsMu.Lock()
+	ws := s.ws
+	s.wsMu.Unlock()
+	if ws == nil {
+		return false
+	}
+	go ws.UserTyping(channelID, parentID) // через канал писателя соединения: главный поток не ждёт
+	return true
 }
 
 // websocketURL: https://host/sub → wss://host/sub (model.WebSocketClient сам добавит /api/v4/websocket).

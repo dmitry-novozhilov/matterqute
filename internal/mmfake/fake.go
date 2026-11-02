@@ -35,6 +35,7 @@ type Server struct {
 	// их API отвечает ошибкой лицензии.
 	NoScheduledPosts bool
 	scheduled        map[string]*model.ScheduledPost
+	typed            []TypingEvent
 
 	mu        sync.Mutex
 	users     map[string]*model.User // по id
@@ -815,8 +816,14 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer close(done)
 		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
+			var req model.WebSocketRequest
+			if err := conn.ReadJSON(&req); err != nil {
 				return
+			}
+			if req.Action == "user_typing" {
+				ch, _ := req.Data["channel_id"].(string)
+				parent, _ := req.Data["parent_id"].(string)
+				s.typing(uid, ch, parent)
 			}
 		}
 	}()

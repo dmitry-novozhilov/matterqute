@@ -83,6 +83,7 @@ func main() {
 	ui.InitStyle(app, ui.ThemeMode(cfg.Theme), log)
 	ui.SetFonts(cfg.Fonts)
 	ui.SetFormatBar(cfg.FormatBar)
+	ui.SetTyping(!cfg.Typing.Hide, !cfg.Typing.NoSend)
 	a := ui.NewApp(cfg, tokens, log)
 	if n := startNotifier(log); n != nil {
 		a.SetNotifier(n)

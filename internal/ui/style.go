@@ -28,18 +28,20 @@ const resourceDPR = 2
 
 // style — состояние оформления приложения; только из главного потока.
 var style = struct {
-	app       *qt.QApplication
-	mode      ThemeMode
-	pal       theme.Palette
-	applied   bool
-	listeners map[int]func()
-	nextID    int
-	icons     map[string]*qt.QPixmap
-	avatars   map[string]*qt.QPixmap
-	fonts     config.Fonts // выбранные шрифты, умолчания подставлены
-	formatBar bool         // панель оформления над полем ввода
+	app        *qt.QApplication
+	mode       ThemeMode
+	pal        theme.Palette
+	applied    bool
+	listeners  map[int]func()
+	nextID     int
+	icons      map[string]*qt.QPixmap
+	avatars    map[string]*qt.QPixmap
+	fonts      config.Fonts // выбранные шрифты, умолчания подставлены
+	formatBar  bool         // панель оформления над полем ввода
+	typingShow bool         // показывать, кто печатает
+	typingSend bool         // сообщать, что печатаю я
 }{mode: ThemeSystem, pal: theme.Light, listeners: map[int]func(){}, icons: map[string]*qt.QPixmap{}, avatars: map[string]*qt.QPixmap{},
-	fonts: defaultFonts}
+	fonts: defaultFonts, typingShow: true, typingSend: true}
 
 // Pal — палитра текущей темы.
 func Pal() theme.Palette { return style.pal }

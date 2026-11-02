@@ -50,6 +50,12 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		kind := ev.EventType()
 		return func() { m.sched.applyEvent(kind, sp) }, nil
 
+	case model.WebsocketEventTyping:
+		user, _ := data["user_id"].(string)
+		parent, _ := data["parent_id"].(string)
+		ch := ev.GetBroadcast().ChannelId
+		return func() { m.applyTyping(ch, parent, user) }, nil
+
 	case model.WebsocketEventEphemeralMessage:
 		p, err := eventPost(data)
 		if err != nil {

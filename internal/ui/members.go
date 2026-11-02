@@ -62,6 +62,7 @@ func (m *MainWindow) newMembersPanel() *membersPanel {
 	l.SetMouseTracking(true)
 	d := qt.NewQStyledItemDelegate2(l.QObject)
 	d.OnPaint(func(super func(*qt.QPainter, *qt.QStyleOptionViewItem, *qt.QModelIndex), p *qt.QPainter, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) {
+		noFocusFrame(opt)
 		super(p, opt, idx)
 		if it := l.ItemFromIndex(idx); it != nil {
 			if u := m.st.User(it.Data(memberIDRole).ToString()); u != nil {

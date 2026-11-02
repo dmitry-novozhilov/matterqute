@@ -279,6 +279,7 @@ func (m *MainWindow) setupThreadsList() {
 	l.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
 	d := qt.NewQStyledItemDelegate2(l.QObject)
 	d.OnPaint(func(super func(*qt.QPainter, *qt.QStyleOptionViewItem, *qt.QModelIndex), p *qt.QPainter, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) {
+		noFocusFrame(opt)
 		super(p, opt, idx)
 		if it := l.ItemFromIndex(idx); it != nil {
 			m.paintThreadRow(p, opt, it.Data(threadIDRole).ToString())
@@ -462,4 +463,10 @@ func threadPostAuthors(ts []*model.ThreadResponse) []string {
 		}
 	}
 	return ids
+}
+
+// noFocusFrame — строку без рамки фокуса: после щелчка список в фокусе, и
+// стиль обводил выбранную строку прямоугольником внутри фона выделения.
+func noFocusFrame(opt *qt.QStyleOptionViewItem) {
+	opt.SetState(opt.State() &^ qt.QStyle__State_HasFocus)
 }

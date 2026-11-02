@@ -37,14 +37,17 @@ func (a *Assets) WantLinkImage(rawURL string, done func()) {
 func (f *Feed) embedsHTML(p *model.Post) string {
 	withLinks := f.d.LinkPreviews == nil || f.d.LinkPreviews()
 	var b strings.Builder
+	images := 0
 	for _, pv := range store.PostPreviews(p, withLinks) {
 		switch pv.Kind {
 		case model.PostEmbedOpengraph:
 			b.WriteString(f.openGraphHTML(pv))
 		case model.PostEmbedImage:
+			// Клик — просмотр во весь экран (MainWindow.viewerItems считает так же).
 			w, h := f.linkImageSize(pv, f.columnWidth(), previewMaxH)
-			fmt.Fprintf(&b, `<p style="margin-top:6px;margin-bottom:0"><a href="%s"><img src="%s" width="%d" height="%d" title="%s"></a></p>`,
-				html.EscapeString(pv.URL), f.linkImageSrc(pv.Image, w, h), w, h, html.EscapeString(pv.URL))
+			fmt.Fprintf(&b, `<p style="margin-top:6px;margin-bottom:0"><a href="%s%s:%d"><img src="%s" width="%d" height="%d" title="%s"></a></p>`,
+				linkImageLink, p.Id, images, f.linkImageSrc(pv.Image, w, h), w, h, html.EscapeString(pv.URL))
+			images++
 		case model.PostEmbedPermalink:
 			b.WriteString(f.permalinkHTML(pv))
 		}

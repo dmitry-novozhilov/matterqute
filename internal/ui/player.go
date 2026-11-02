@@ -42,7 +42,7 @@ func (m *MainWindow) fullscreenVideo(fi *model.FileInfo, p *model.Post, path str
 		pl.w.ActivateWindow()
 		return
 	}
-	pl := newPlayer(m.w, m.videoTitle(fi, p))
+	pl := newPlayer(m.w, m.mediaTitle(fi.Name, p))
 	m.players[fi.Id] = pl
 	pl.onClosed = func() { delete(m.players, fi.Id) }
 	pl.back = back
@@ -50,16 +50,16 @@ func (m *MainWindow) fullscreenVideo(fi *model.FileInfo, p *model.Post, path str
 	pl.load(path, pos, playing)
 }
 
-// videoTitle — «demo.mp4 — bob, # backend».
-func (m *MainWindow) videoTitle(fi *model.FileInfo, p *model.Post) string {
+// mediaTitle — «demo.mp4 — bob, # backend»: ролик или картинка во весь экран.
+func (m *MainWindow) mediaTitle(name string, p *model.Post) string {
 	if p == nil {
-		return fi.Name
+		return name
 	}
 	author := m.st.Username(p.UserId)
 	if in, ok := store.PostIntegration(p); ok && in.Name != "" {
 		author = in.Name
 	}
-	title := fi.Name + " — " + author
+	title := name + " — " + author
 	if ch := m.st.Channel(p.ChannelId); ch != nil && ch.Type != model.ChannelTypeDirect {
 		title += ", " + channelPrefix(ch) + m.st.Title(ch)
 	}

@@ -54,6 +54,7 @@ type MainWindow struct {
 	notifier    Notifier           // nil — уведомлений нет (нет шины или сервера уведомлений)
 	notes       map[string]uint32  // показанное уведомление по каналу или треду: следующее его заменит
 	players     map[string]*player // открытые плееры по id файла
+	viewer      *imageViewer       // картинка во весь экран; nil — закрыта
 
 	preloadQueue []string // каналы, чьи ленты ещё грузить заранее
 	preloading   int      // сколько лент грузится заранее прямо сейчас
@@ -300,6 +301,9 @@ func (m *MainWindow) Close() {
 	m.composer.dispose()
 	for _, pl := range m.players {
 		pl.w.Close()
+	}
+	if m.viewer != nil {
+		m.viewer.w.Close()
 	}
 	m.assets.stopAnimations()
 	m.w.Close()

@@ -40,6 +40,7 @@ const (
 	openLink      = "mm-open:"       // mm-open:<файл>
 	saveLink      = "mm-save:"       // mm-save:<файл>
 	imageLink     = "mm-img:"        // mm-img:<файл> — картинка целиком
+	linkImageLink = "mm-linkimg:"    // mm-linkimg:<пост>:<N> — N-я картинка по ссылке в посте
 	retryLink     = "mm-retry:"      // повторить загрузку ленты
 	hookLink      = "mm-hook:"       // mm-hook:<post> — карточка интеграции, написавшей пост
 	videoLink     = "mm-video:"      // mm-video:<файл> — играть ролик в ленте (повторно — пауза)
@@ -120,6 +121,7 @@ type Feed struct {
 	// позиции; back — вернуть позицию и «играл ли», когда окно закроют.
 	OnFullscreenVideo func(fi *model.FileInfo, p *model.Post, path string, pos int64, playing bool, back func(pos int64, playing bool))
 	OnOpenFile        func(fi *model.FileInfo)
+	OnOpenImage       func(p *model.Post, key string) // клик по картинке: key — id файла или «link:N»
 	OnSaveFile        func(fi *model.FileInfo)
 	OnRetry           func() // «Повторить» в заглушке ошибки
 }
@@ -1269,10 +1271,18 @@ func (f *Feed) onAnchor(link string) {
 		}
 	case strings.HasPrefix(link, threadLink):
 		f.openThread(strings.TrimPrefix(link, threadLink))
-	case strings.HasPrefix(link, openLink), strings.HasPrefix(link, imageLink):
-		id := strings.TrimPrefix(strings.TrimPrefix(link, openLink), imageLink)
-		if fi := f.file(id); fi != nil && f.OnOpenFile != nil {
+	case strings.HasPrefix(link, openLink):
+		if fi := f.file(strings.TrimPrefix(link, openLink)); fi != nil && f.OnOpenFile != nil {
 			f.OnOpenFile(fi)
+		}
+	case strings.HasPrefix(link, imageLink):
+		if fi, p := f.fileAndPost(strings.TrimPrefix(link, imageLink)); fi != nil && f.OnOpenImage != nil {
+			f.OnOpenImage(p, fi.Id)
+		}
+	case strings.HasPrefix(link, linkImageLink):
+		id, n, _ := strings.Cut(strings.TrimPrefix(link, linkImageLink), ":")
+		if p := f.post(id); p != nil && f.OnOpenImage != nil {
+			f.OnOpenImage(p, "link:"+n)
 		}
 	case strings.HasPrefix(link, saveLink):
 		if fi := f.file(strings.TrimPrefix(link, saveLink)); fi != nil && f.OnSaveFile != nil {

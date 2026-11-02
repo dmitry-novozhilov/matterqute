@@ -26,6 +26,7 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnIntegration = m.showIntegrationCard
 	f.OnFullscreenVideo = m.fullscreenVideo
 	f.OnOpenFile = m.openFile
+	f.OnOpenImage = m.openImage
 	f.OnSaveFile = m.saveFile
 }
 

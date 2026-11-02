@@ -14,6 +14,7 @@ import (
 const (
 	channelIDRole = int(qt.UserRole) + 1 // id канала или threadsID; у групп пусто
 	groupRole     = int(qt.UserRole) + 4 // подпись группы (команда, «Личные сообщения»)
+	teamRole      = int(qt.UserRole) + 5 // id команды у её группы
 )
 
 // Сайдбар — QTreeWidget без текста в строках: всё рисует делегат
@@ -57,6 +58,8 @@ func (m *MainWindow) setupSidebar() {
 			m.openChannel(id)
 		}
 	})
+	t.SetContextMenuPolicy(qt.CustomContextMenu)
+	t.OnCustomContextMenuRequested(m.sidebarMenu)
 	m.sidebar = t
 }
 
@@ -85,12 +88,13 @@ func (m *MainWindow) fillSidebar() {
 	if len(m.sched.posts) > 0 {
 		row(nil, schedID)
 	}
-	addGroup := func(title string, chs []*model.Channel) {
+	addGroup := func(title, teamID string, chs []*model.Channel) {
 		if len(chs) == 0 {
 			return
 		}
 		group := qt.NewQTreeWidgetItem()
 		group.SetData(0, groupRole, qt.NewQVariant11(title))
+		group.SetData(0, teamRole, qt.NewQVariant11(teamID))
 		group.SetFlags(qt.ItemIsEnabled)
 		m.sidebar.AddTopLevelItem(group)
 		for _, ch := range chs {
@@ -99,9 +103,9 @@ func (m *MainWindow) fillSidebar() {
 		group.SetExpanded(true)
 	}
 	for _, t := range m.st.Teams() {
-		addGroup(t.DisplayName, m.st.TeamChannels(t.Id))
+		addGroup(t.DisplayName, t.Id, m.st.TeamChannels(t.Id))
 	}
-	addGroup("Личные сообщения", m.st.DirectChannels())
+	addGroup("Личные сообщения", "", m.st.DirectChannels())
 	for _, ch := range m.st.DirectChannels() {
 		if it := m.items[ch.Id]; it != nil && ch.Type == model.ChannelTypeDirect {
 			if cs := status.Current(m.st.User(m.st.DMPeer(ch)), time.Now()); cs != nil {

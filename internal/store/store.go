@@ -217,6 +217,22 @@ func (s *Store) Muted(channelID string) bool {
 	return m != nil && m.NotifyProps[model.MarkUnreadNotifyProp] == model.ChannelMarkUnreadMention
 }
 
+// SetMuted — канал заглушили или включили (mark_unread участника), пока
+// сервер не прислал обновление сам.
+func (s *Store) SetMuted(channelID string, muted bool) {
+	m := s.members[channelID]
+	if m == nil {
+		return
+	}
+	if m.NotifyProps == nil {
+		m.NotifyProps = model.StringMap{}
+	}
+	m.NotifyProps[model.MarkUnreadNotifyProp] = model.ChannelMarkUnreadAll
+	if muted {
+		m.NotifyProps[model.MarkUnreadNotifyProp] = model.ChannelMarkUnreadMention
+	}
+}
+
 // LastViewed — когда канал был прочитан в последний раз (мс); 0 — неизвестно.
 func (s *Store) LastViewed(channelID string) int64 {
 	if m := s.members[channelID]; m != nil {

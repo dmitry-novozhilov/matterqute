@@ -35,36 +35,37 @@ type MainWindow struct {
 	cancel context.CancelFunc
 	closed bool
 
-	split        *qt.QSplitter
-	columns      columns    // ширины сайдбара и панели треда
-	saveColumns  *qt.QTimer // сохранить ширины, когда разделитель отпустили
-	sidebar      *qt.QTreeWidget
-	items        map[string]*qt.QTreeWidgetItem // по id канала; threadsID — «Треды»
-	center       *qt.QStackedWidget             // channelPage или threadsPage
-	channelPage  *qt.QWidget
-	head         *header
-	banner       *banner
-	feed         *Feed
-	composer     *Composer
-	threadsPage  *qt.QWidget
-	schedPage    *qt.QWidget // «Отложенные»
-	schedHead    *header
-	schedRows    *qt.QVBoxLayout
-	schedDialog  *dialog // «Отправить позже» / «Перенести»
-	sched        *scheduler
-	search       *searchPanel    // поиск по сообщениям — в правой колонке
-	typing       *typingState    // кто где печатает
-	searchBtn    *qt.QToolButton // лупа в шапке канала
-	threadsHead  *header
-	threadsList  *qt.QListWidget
-	panel        *ThreadPanel
-	thread       *threadView // открытый в панели тред; nil — панель закрыта
-	assets       *Assets
-	notifier     Notifier           // nil — уведомлений нет (нет шины или сервера уведомлений)
-	notes        map[string]uint32  // показанное уведомление по каналу или треду: следующее его заменит
-	players      map[string]*player // открытые плееры по id файла
-	deleteDialog *dialog            // «Удалить сообщение?»
-	viewer       *imageViewer       // картинка во весь экран; nil — закрыта
+	split         *qt.QSplitter
+	columns       columns    // ширины сайдбара и панели треда
+	saveColumns   *qt.QTimer // сохранить ширины, когда разделитель отпустили
+	sidebar       *qt.QTreeWidget
+	items         map[string]*qt.QTreeWidgetItem // по id канала; threadsID — «Треды»
+	center        *qt.QStackedWidget             // channelPage или threadsPage
+	channelPage   *qt.QWidget
+	head          *header
+	banner        *banner
+	feed          *Feed
+	composer      *Composer
+	threadsPage   *qt.QWidget
+	schedPage     *qt.QWidget // «Отложенные»
+	schedHead     *header
+	schedRows     *qt.QVBoxLayout
+	schedDialog   *dialog // «Отправить позже» / «Перенести»
+	sched         *scheduler
+	search        *searchPanel    // поиск по сообщениям — в правой колонке
+	typing        *typingState    // кто где печатает
+	searchBtn     *qt.QToolButton // лупа в шапке канала
+	threadsHead   *header
+	threadsList   *qt.QListWidget
+	panel         *ThreadPanel
+	thread        *threadView // открытый в панели тред; nil — панель закрыта
+	assets        *Assets
+	notifier      Notifier           // nil — уведомлений нет (нет шины или сервера уведомлений)
+	notes         map[string]uint32  // показанное уведомление по каналу или треду: следующее его заменит
+	players       map[string]*player // открытые плееры по id файла
+	deleteDialog  *dialog            // «Удалить сообщение?»
+	channelDialog *dialog            // обзор, создание канала, «покинуть»
+	viewer        *imageViewer       // картинка во весь экран; nil — закрыта
 
 	preloadQueue []string // каналы, чьи ленты ещё грузить заранее
 	preloading   int      // сколько лент грузится заранее прямо сейчас

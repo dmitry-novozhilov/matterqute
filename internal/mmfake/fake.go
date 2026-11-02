@@ -120,6 +120,12 @@ func New(log *slog.Logger) *Server {
 	// /users/username/{name} и /users/{id}/status — одним обработчиком: иначе ServeMux видит конфликт.
 	s.mux.HandleFunc("GET /api/v4/users/{a}/{b}", s.auth(s.userRoute))
 	s.mux.HandleFunc("POST /api/v4/channels/direct", s.auth(s.createDirect))
+	s.mux.HandleFunc("GET /api/v4/teams/{tid}/channels", s.auth(s.publicChannels))
+	s.mux.HandleFunc("POST /api/v4/channels", s.auth(s.createChannel))
+	s.mux.HandleFunc("POST /api/v4/channels/{cid}/members", s.auth(s.joinChannel))
+	s.mux.HandleFunc("DELETE /api/v4/channels/{cid}/members/{uid}", s.auth(s.leaveChannel))
+	s.mux.HandleFunc("GET /api/v4/channels/{cid}/members/{uid}", s.auth(s.channelMember))
+	s.mux.HandleFunc("PUT /api/v4/channels/{cid}/members/{uid}/notify_props", s.auth(s.memberNotifyProps))
 	s.mux.HandleFunc("GET /api/v4/websocket", s.websocket)
 	// Иконка интеграции на «чужом» сервере: без авторизации, как у Grafana.
 	// Картинки «чужих» сайтов: иконка интеграции, картинки предпросмотра ссылок.

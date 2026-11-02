@@ -93,6 +93,16 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		a.cfg.FormatBar = on
 		a.saveConfig()
 	}
+	a.shell.OnBrowseChannels = func() {
+		if sv := a.active; sv != nil && sv.main != nil {
+			sv.main.showBrowseChannels("")
+		}
+	}
+	a.shell.OnCreateChannel = func() {
+		if sv := a.active; sv != nil && sv.main != nil {
+			sv.main.showCreateChannel("")
+		}
+	}
 	OnTypingChosen = func(show, send bool) {
 		a.cfg.Typing = config.Typing{Hide: !show, NoSend: !send}
 		a.saveConfig()
@@ -178,6 +188,8 @@ func (a *App) activate(sv *server) {
 		sv.login.Focus()
 	}
 	a.shell.SetConnection(sv.conn)
+	a.shell.browseAct.SetEnabled(sv.main != nil)
+	a.shell.createAct.SetEnabled(sv.main != nil)
 	a.updateServers()
 }
 
@@ -269,6 +281,8 @@ func (a *App) showAdd() {
 		a.adding = l
 	}
 	a.active = nil
+	a.shell.browseAct.SetEnabled(false)
+	a.shell.createAct.SetEnabled(false)
 	a.shell.SetPage(a.adding.Widget())
 	a.shell.SetUser("", "")
 	a.shell.SetConnection(ConnNone)

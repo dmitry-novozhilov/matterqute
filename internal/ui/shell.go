@@ -34,7 +34,9 @@ type Shell struct {
 
 	logout     *qt.QAction
 	themeActs  map[ThemeMode]*qt.QAction
-	trayAct    *qt.QAction    // «Вид → Значок в трее…»
+	trayAct    *qt.QAction // «Вид → Значок в трее…»
+	browseAct  *qt.QAction // «Обзор каналов…» и «Создать канал…»: есть, когда вошли
+	createAct  *qt.QAction
 	typingActs [2]*qt.QAction // «Вид → «Печатает…»»: показывать, сообщать
 	help       *helpWindow    // окно справки; nil — не открывали
 	about      *dialog        // «О программе»
@@ -46,13 +48,15 @@ type Shell struct {
 	quitting    bool
 	quitApp     func() // QCoreApplication::quit; в тестах — подделка
 
-	OnLogout       func()
-	OnClose        func()              // окно закрывается или прячется в трей: сохранить, что нужно
-	OnSelectServer func(i int)         // выбран сервер в меню «Сервер»
-	OnStatus       func(at *qt.QPoint) // открыть панель статуса (клик по @user или «Файл → Статус…»)
-	OnAddServer    func()
-	OnRemoveServer func() // «Удалить сервер…» — текущий
-	OnTrayColors   func() // «Вид → Значок в трее…»
+	OnLogout         func()
+	OnClose          func()              // окно закрывается или прячется в трей: сохранить, что нужно
+	OnSelectServer   func(i int)         // выбран сервер в меню «Сервер»
+	OnStatus         func(at *qt.QPoint) // открыть панель статуса (клик по @user или «Файл → Статус…»)
+	OnAddServer      func()
+	OnRemoveServer   func() // «Удалить сервер…» — текущий
+	OnTrayColors     func() // «Вид → Значок в трее…»
+	OnBrowseChannels func() // «Файл → Обзор каналов…» — на текущем сервере
+	OnCreateChannel  func() // «Файл → Создать канал…»
 }
 
 // ServerItem — пункт меню «Сервер».
@@ -78,6 +82,19 @@ func NewShell() *Shell {
 			s.OnLogout()
 		}
 	})
+	s.browseAct = file.QWidget.AddActionWithText("Обзор каналов…")
+	s.browseAct.OnTriggered(func() {
+		if s.OnBrowseChannels != nil {
+			s.OnBrowseChannels()
+		}
+	})
+	s.createAct = file.QWidget.AddActionWithText("Создать канал…")
+	s.createAct.OnTriggered(func() {
+		if s.OnCreateChannel != nil {
+			s.OnCreateChannel()
+		}
+	})
+	file.AddSeparator()
 	s.myStatus = file.QWidget.AddActionWithText("Статус…")
 	// Панель статуса — всегда над своим именем в строке состояния, и из меню тоже.
 	s.myStatus.OnTriggered(func() {

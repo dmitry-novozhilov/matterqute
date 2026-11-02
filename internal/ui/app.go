@@ -189,6 +189,22 @@ func (a *App) OpenLink(link, token string) {
 	if link == "" {
 		return
 	}
+	// Сначала окно: пусть оконный менеджер покажет и отрисует его, переход —
+	// после (загрузка ленты и треда занимает главный поток, и поднятое окно
+	// стояло пустым, с одним заголовком).
+	t := qt.NewQTimer2(a.shell.w.QObject)
+	t.SetSingleShot(true)
+	t.OnTimeout(func() {
+		t.DeleteLater()
+		a.openLink(link)
+	})
+	t.Start(linkDelay)
+}
+
+// linkDelay — пауза между подъёмом окна и переходом по ссылке, мс.
+const linkDelay = 150
+
+func (a *App) openLink(link string) {
 	u, err := url.Parse(link)
 	if err != nil || u.Host == "" || (u.Scheme != "mattermost" && u.Scheme != "http" && u.Scheme != "https") {
 		a.log.Warn("open link", "link", truncate(link, 200), "err", err)

@@ -149,8 +149,8 @@ func TestOpenLinkFromBrowser(t *testing.T) {
 		}
 
 		a.OpenLink("mattermost://mm.example.org/dev/channels/town-square", "")
-		if a.adding == nil || a.adding.server.Text() != "mm.example.org" {
-			t.Error("unknown server: no «add server» page with its address")
-		}
+		waitFor(t, "«add server» page with the unknown server", func() bool {
+			return a.adding != nil && a.adding.server.Text() == "mm.example.org"
+		})
 	})
 }

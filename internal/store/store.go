@@ -35,6 +35,10 @@ type Store struct {
 	saved   map[string]bool // сохранённые посты (настройки flagged_post)
 	// Категории сайдбара по командам (categories.go).
 	categories map[string]*model.OrderedSidebarCategories
+	// Непрочитанные — отдельной группой; keepUnread — открытый канал, который
+	// был непрочитанным: остаётся в ней, пока его не покинут.
+	unreadSection bool
+	keepUnread    string
 }
 
 func New(me *model.User) *Store {
@@ -81,6 +85,8 @@ type Sidebar struct {
 	SyncDrafts   bool                    // черновики хранит сервер (иначе — файл приложения)
 	// Категории сайдбара по командам; команды, чьи не загрузились, — без них.
 	Categories map[string]*model.OrderedSidebarCategories
+	// UnreadSection — непрочитанные отдельной группой вверху сайдбара.
+	UnreadSection bool
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
@@ -89,6 +95,7 @@ func (s *Store) SetSidebar(sb *Sidebar) {
 	s.noPreviews = !sb.LinkPreviews
 	s.maxFileSize = sb.MaxFileSize
 	s.teams = sb.Teams
+	s.unreadSection = sb.UnreadSection
 	s.categories = map[string]*model.OrderedSidebarCategories{}
 	for team, c := range sb.Categories {
 		s.categories[team] = c
@@ -618,7 +625,7 @@ func (s *Store) ThreadsUnread() (unread bool, mentions int64) {
 // потоке: в нём те же объекты, что в store.
 func (s *Store) Snapshot(tail int) (*Sidebar, map[string]*Timeline) {
 	sb := &Sidebar{CRT: s.crt, MaxFileSize: s.maxFileSize, LinkPreviews: !s.noPreviews, Teams: s.teams,
-		Categories: s.categories, Saved: []string{}}
+		Categories: s.categories, Saved: []string{}, UnreadSection: s.unreadSection}
 	for _, ch := range s.channels {
 		sb.Channels = append(sb.Channels, ch)
 	}

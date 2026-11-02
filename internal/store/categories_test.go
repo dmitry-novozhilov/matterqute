@@ -131,3 +131,33 @@ func TestMoveChannel(t *testing.T) {
 		t.Errorf("default category of DM: %+v", d)
 	}
 }
+
+// Непрочитанные отдельно: первой группой, свежие сверху, из своих категорий
+// уходят; открытый, который был непрочитанным, держится там до ухода.
+func TestUnreadSection(t *testing.T) {
+	s := sidebarStore(t)
+	for _, id := range []string{"a", "b", "z", "o", "d1", "d2"} {
+		s.members[id] = &model.ChannelMember{ChannelId: id, UserId: "me"}
+	}
+	s.channels["b"].TotalMsgCount = 2
+	s.channels["d1"].TotalMsgCount = 1
+	s.SetUnreadSection(true)
+	want := "/Непрочитанные:d1,b | dev/Избранное:z | dev/Моё: | dev/Каналы:a | ops/Каналы:o | dev/Личные сообщения:d2"
+	if got := sections(s); got != want {
+		t.Errorf("unread section\n got %s\nwant %s", got, want)
+	}
+	// Открыли b — прочитан, но остаётся в группе, пока открыт.
+	s.MarkViewed("b")
+	s.KeepUnread("b")
+	if got := sections(s); !strings.HasPrefix(got, "/Непрочитанные:d1,b |") {
+		t.Errorf("kept: %s", got)
+	}
+	s.KeepUnread("")
+	if got := sections(s); !strings.HasPrefix(got, "/Непрочитанные:d1 |") || !strings.Contains(got, "dev/Каналы:a,b") {
+		t.Errorf("after leaving: %s", got)
+	}
+	s.SetUnreadSection(false)
+	if got := sections(s); strings.Contains(got, "Непрочитанные") {
+		t.Errorf("section off: %s", got)
+	}
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"matterqute/internal/mm"
 	"matterqute/internal/store"
 )
 
@@ -122,7 +123,8 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		changed := ev.EventType() == model.WebsocketEventPreferencesChanged
 		// Пользователь мог включить или выключить свёрнутые треды или предпросмотр ссылок.
 		raw, _ := data["preferences"].(string)
-		reload := changed && (strings.Contains(raw, model.PreferenceNameCollapsedThreadsEnabled) || strings.Contains(raw, `"link_previews"`))
+		reload := changed && (strings.Contains(raw, model.PreferenceNameCollapsedThreadsEnabled) || strings.Contains(raw, `"link_previews"`)) ||
+			strings.Contains(raw, `"`+mm.PrefUnreadSection+`"`) // непрочитанные отдельно — включили или выключили
 		if len(saved) == 0 && !reload {
 			return nil, nil
 		}

@@ -42,7 +42,16 @@ type Settings struct {
 	// конфиге (AllowSyncedDrafts) и не выключено пользователем
 	// (advanced_settings/sync_drafts), как решает веб-клиент.
 	SyncDrafts bool
+	// UnreadSection — непрочитанные отдельной группой вверху сайдбара
+	// (sidebar_settings/show_unread_section, как в веб-клиенте).
+	UnreadSection bool
 }
+
+// Настройка «непрочитанные отдельно» — категория и имя, как у веб-клиента.
+const (
+	PrefSidebarSettings = "sidebar_settings"
+	PrefUnreadSection   = "show_unread_section"
+)
 
 // FetchSettings читает клиентский конфиг сервера и настройки отображения пользователя.
 func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
@@ -71,6 +80,16 @@ func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 			if p.Name == "sync_drafts" && p.Value == "false" {
 				st.SyncDrafts = false
 			}
+		}
+	}
+	// Нет ни одной настройки в категории — сервер может ответить 404.
+	side, resp, err := s.Client.GetPreferencesByCategory(ctx, s.Me.Id, PrefSidebarSettings)
+	if err != nil && (resp == nil || resp.StatusCode != http.StatusNotFound) {
+		return st, describe(s.ServerURL, fmt.Sprintf("load %s preferences", PrefSidebarSettings), resp, err)
+	}
+	for _, p := range side {
+		if p.Name == PrefUnreadSection {
+			st.UnreadSection = p.Value == "true"
 		}
 	}
 	if v := cfg["MaxFileSize"]; v != "" {

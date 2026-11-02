@@ -10,6 +10,7 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/status"
+	"matterqute/internal/store"
 )
 
 // Роли данных строк сайдбара.
@@ -220,6 +221,9 @@ func (m *MainWindow) defaultChannel() string {
 
 // refreshItem перерисовывает строку канала (непрочитанное, упоминания, статус).
 func (m *MainWindow) refreshItem(string) {
+	if m.st.UnreadSection() && m.unreadGroupStale() {
+		m.rebuildSidebarSoon() // канал стал (не)прочитанным — переехал в группу или из неё
+	}
 	m.applyCollapsed()
 	m.sidebar.Viewport().Update()
 	m.updateCounts()
@@ -452,4 +456,39 @@ func (m *MainWindow) rowUnread(id string) bool {
 	}
 	unread, mentions := m.st.Unread(id)
 	return unread || mentions > 0
+}
+
+// unreadGroupStale — группа «Непрочитанные» в дереве не та, что сейчас
+// (состав или порядок): сайдбар надо перестроить.
+func (m *MainWindow) unreadGroupStale() bool {
+	var want, have []string
+	if secs := m.st.Sections(); len(secs) > 0 && secs[0].Category == nil && secs[0].Title == store.UnreadTitle {
+		want = secs[0].Channels
+	}
+	for i := range m.sidebar.TopLevelItemCount() {
+		g := m.sidebar.TopLevelItem(i)
+		if g.Data(0, groupRole).ToString() == store.UnreadTitle && g.Data(0, categoryRole).ToString() == "" {
+			for j := range g.ChildCount() {
+				have = append(have, g.Child(j).Data(0, channelIDRole).ToString())
+			}
+			break
+		}
+	}
+	return !slices.Equal(want, have)
+}
+
+// rebuildSidebarSoon — перестроить сайдбар после текущего события: зовут и
+// из выбора строки (открыли канал — он прочитан), а удалять строки дерева
+// внутри его сигнала нельзя. Повторы склеиваются.
+func (m *MainWindow) rebuildSidebarSoon() {
+	if m.rebuildPending {
+		return
+	}
+	m.rebuildPending = true
+	mainthread.Start(func() {
+		m.rebuildPending = false
+		if !m.closed {
+			m.fillSidebar()
+		}
+	})
 }

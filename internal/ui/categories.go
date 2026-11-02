@@ -8,6 +8,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"matterqute/internal/mm"
 	"matterqute/internal/store"
 )
 
@@ -229,7 +230,8 @@ func (m *MainWindow) categoryItems(team, catID string) []menuItem {
 			}},
 			menuItem{title: "Удалить категорию…", do: func() { m.confirmDeleteCategory(team, catID) }})
 	}
-	out = append(out, menuItem{}, menuItem{title: "Новая категория…", do: func() { m.newCategory(team, "") }})
+	out = append(out, menuItem{}, menuItem{title: "Новая категория…", do: func() { m.newCategory(team, "") }},
+		menuItem{title: "Непрочитанные — отдельной группой", check: checkIf(m.st.UnreadSection()), do: func() { m.setUnreadSection(!m.st.UnreadSection()) }})
 	switch c.Type {
 	case model.SidebarCategoryChannels:
 		out = append(out, menuItem{}, menuItem{title: "Обзор каналов…", do: func() { m.showBrowseChannels(team) }},
@@ -403,6 +405,42 @@ func (m *MainWindow) markThreadsRead() {
 			if _, err := m.s.Client.UpdateThreadsReadForUser(ctx, m.s.Me.Id, t.Id); err != nil {
 				m.ui(func() { m.fail("mark threads read", fmt.Errorf("mark threads read in team %s: %w", t.Name, err)) })
 			}
+		}
+	}()
+}
+
+// unreadGroupItems — меню группы «Непрочитанные»: прочитать всё в ней,
+// выключить группу.
+func (m *MainWindow) unreadGroupItems(g *qt.QTreeWidgetItem) []menuItem {
+	var ids []string
+	for j := range g.ChildCount() {
+		ids = append(ids, g.Child(j).Data(0, channelIDRole).ToString())
+	}
+	return []menuItem{
+		{title: "Отметить прочитанным", do: func() { m.markRead(ids) }},
+		{},
+		{title: "Непрочитанные — отдельной группой", check: checked, do: func() { m.setUnreadSection(false) }},
+	}
+}
+
+// setUnreadSection — непрочитанные отдельной группой или нет: сразу в
+// сайдбаре, на сервер — настройкой, общей с веб-клиентом.
+func (m *MainWindow) setUnreadSection(on bool) {
+	m.st.SetUnreadSection(on)
+	m.fillSidebar()
+	value := "false"
+	if on {
+		value = "true"
+	}
+	pref := model.Preferences{{UserId: m.s.Me.Id, Category: mm.PrefSidebarSettings, Name: mm.PrefUnreadSection, Value: value}}
+	go func() {
+		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
+		defer cancel()
+		_, err := m.s.Client.UpdatePreferences(ctx, m.s.Me.Id, pref)
+		if err != nil {
+			m.ui(func() {
+				m.fail("save sidebar setting", fmt.Errorf("save %s/%s: %w", mm.PrefSidebarSettings, mm.PrefUnreadSection, err))
+			})
 		}
 	}()
 }

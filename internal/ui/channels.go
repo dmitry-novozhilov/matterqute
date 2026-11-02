@@ -76,6 +76,8 @@ func (m *MainWindow) sidebarMenu(pos *qt.QPoint) {
 		items = m.sidebarItems("", id)
 	case cat != "":
 		items = m.categoryItems(team, cat)
+	case team == "" && it.Data(0, groupRole).ToString() == store.UnreadTitle:
+		items = m.unreadGroupItems(it)
 	case it.Data(0, teamLabelRole).ToString() != "":
 		items = m.teamLabelItems(team)
 	case team != "": // группа команды без категорий

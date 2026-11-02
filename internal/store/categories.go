@@ -163,13 +163,33 @@ func (s *Store) sortChannels(ids []string, how model.SidebarCategorySorting) {
 func (s *Store) Sections() []Section {
 	var out, tail []Section
 	dmsPlaced := false
+	// Непрочитанные отдельно — первой группой, свежие сверху; из своих
+	// категорий они на это время уходят.
+	unread := map[string]bool{}
+	if s.unreadSection {
+		sec := Section{Title: UnreadTitle}
+		for id, ch := range s.channels {
+			if u, n := s.Unread(id); u || n > 0 || id == s.keepUnread {
+				if ch.IsGroupOrDirect() || s.hasTeam(ch.TeamId) {
+					unread[id] = true
+					sec.Channels = append(sec.Channels, id)
+				}
+			}
+		}
+		s.sortChannels(sec.Channels, model.SidebarCategorySortRecent)
+		if len(sec.Channels) > 0 {
+			out = append(out, sec)
+		}
+	}
 	for i, t := range s.teams {
 		first := i == 0
 		cats := s.Categories(t.Id)
 		if cats == nil {
 			var ids []string
 			for _, ch := range s.TeamChannels(t.Id) {
-				ids = append(ids, ch.Id)
+				if !unread[ch.Id] {
+					ids = append(ids, ch.Id)
+				}
 			}
 			if len(ids) > 0 {
 				out = append(out, Section{Team: t.Id, Title: t.DisplayName, Channels: ids})
@@ -186,7 +206,7 @@ func (s *Store) Sections() []Section {
 			sec := Section{Team: t.Id, Category: c, Title: CategoryTitle(c), Collapsed: c.Collapsed}
 			for _, id := range c.Channels {
 				ch := s.channels[id]
-				if ch == nil || placed[id] || (ch.IsGroupOrDirect() && !first) || (!ch.IsGroupOrDirect() && ch.TeamId != t.Id) {
+				if ch == nil || placed[id] || unread[id] || (ch.IsGroupOrDirect() && !first) || (!ch.IsGroupOrDirect() && ch.TeamId != t.Id) {
 					continue
 				}
 				placed[id] = true
@@ -199,7 +219,7 @@ func (s *Store) Sections() []Section {
 		}
 		orphan := func(kind model.SidebarCategoryType, title string, chs []*model.Channel) {
 			for _, ch := range chs {
-				if placed[ch.Id] {
+				if placed[ch.Id] || unread[ch.Id] {
 					continue
 				}
 				j, ok := def[kind]
@@ -234,7 +254,9 @@ func (s *Store) Sections() []Section {
 	if !dmsPlaced {
 		var ids []string
 		for _, ch := range s.DirectChannels() {
-			ids = append(ids, ch.Id)
+			if !unread[ch.Id] {
+				ids = append(ids, ch.Id)
+			}
 		}
 		if len(ids) > 0 {
 			tail = append(tail, Section{Title: "Личные сообщения", Channels: ids})
@@ -359,3 +381,20 @@ func (s *Store) MarkThreadsRead() {
 		t.UnreadReplies, t.UnreadMentions = 0, 0
 	}
 }
+
+// UnreadTitle — группа непрочитанных вверху сайдбара.
+const UnreadTitle = "Непрочитанные"
+
+func (s *Store) hasTeam(id string) bool {
+	return slices.ContainsFunc(s.teams, func(t *model.Team) bool { return t.Id == id })
+}
+
+// UnreadSection — непрочитанные отдельной группой (настройка сервера).
+func (s *Store) UnreadSection() bool { return s.unreadSection }
+
+// SetUnreadSection — настройку поменяли здесь.
+func (s *Store) SetUnreadSection(on bool) { s.unreadSection = on }
+
+// KeepUnread — открытый канал id был непрочитанным: в группе непрочитанных
+// он остаётся, пока открыт (иначе строка уезжала бы из-под курсора). "" — никакой.
+func (s *Store) KeepUnread(id string) { s.keepUnread = id }

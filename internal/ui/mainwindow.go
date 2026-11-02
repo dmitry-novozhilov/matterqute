@@ -77,6 +77,7 @@ type MainWindow struct {
 	restore        *savedState     // снимок, из которого построить окно в Start
 	restored       bool            // окно построено из снимка
 	sidebarOK      bool            // сайдбар хоть раз пришёл с сервера
+	rebuildPending bool            // сайдбар перестроится после текущего события (rebuildSidebarSoon)
 	pinsBtn        *qt.QToolButton // закреплённые в канале — в шапке
 	savedBtn       *qt.QToolButton // сохранённые — в шапке
 	mentionsBtn    *qt.QToolButton // упоминания — в шапке
@@ -648,6 +649,7 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 		settings.LinkPreviews = true
 	}
 	sb.CRT, sb.MaxFileSize, sb.LinkPreviews, sb.SyncDrafts = settings.CRT, settings.MaxFileSize, settings.LinkPreviews, settings.SyncDrafts
+	sb.UnreadSection = settings.UnreadSection
 	peers := map[string]bool{}
 	for _, t := range teams {
 		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")
@@ -739,6 +741,12 @@ func (m *MainWindow) openChannel(id string) {
 	prev := m.current
 	if prev == threadsID {
 		prev = ""
+	}
+	// Был непрочитанным — в группе непрочитанных остаётся, пока открыт.
+	if m.rowUnread(id) {
+		m.st.KeepUnread(id)
+	} else {
+		m.st.KeepUnread("")
 	}
 	m.current = id
 	m.center.SetCurrentWidget(m.channelPage)

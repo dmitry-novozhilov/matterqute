@@ -113,7 +113,7 @@ func (c *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
 	}
-	return writeFileAtomic(c.path, append(data, '\n'), 0o644)
+	return WriteFileAtomic(c.path, append(data, '\n'), 0o644)
 }
 
 // Server возвращает сервер по URL или nil.
@@ -173,7 +173,9 @@ func (c *Config) DraftsPath(serverURL string) string {
 	return filepath.Join(filepath.Dir(c.path), "drafts", hex.EncodeToString(sum[:8])+".json")
 }
 
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+// WriteFileAtomic — файл целиком или никак: через временный рядом и rename;
+// каталог создаётся с правами 0700.
+func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}

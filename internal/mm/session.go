@@ -92,6 +92,15 @@ func Resume(ctx context.Context, serverURL, token string) (*Session, error) {
 	return &Session{ServerURL: serverURL, Client: c, Me: me}, nil
 }
 
+// Offline — сессия по сохранённому токену без запроса к серверу: окно
+// открывается из снимка сразу, а токен проверяют следом (Resume). me — из
+// снимка, свежий профиль подставит окно.
+func Offline(serverURL, token string, me *model.User) *Session {
+	c := model.NewAPIv4Client(serverURL)
+	c.SetToken(token)
+	return &Session{ServerURL: serverURL, Client: c, Me: me}
+}
+
 func (s *Session) Logout(ctx context.Context) error {
 	resp, err := s.Client.Logout(ctx)
 	if err != nil {

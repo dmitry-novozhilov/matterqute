@@ -105,6 +105,7 @@ func main() {
 		a.SetLauncher(l)
 	}
 	a.Start()
+	app.OnAboutToQuit(a.BeforeQuit) // и когда закрыли последнее окно, а не «Выход»
 	if inst != nil {
 		inst.SetHandler(func(link, token string) { mainthread.Start(func() { a.OpenLink(link, token) }) })
 	}

@@ -611,3 +611,71 @@ func (s *Store) ThreadsUnread() (unread bool, mentions int64) {
 	}
 	return unread || mentions > 0, mentions
 }
+
+// Snapshot — что сохранить на диск для быстрого запуска: сайдбар и хвосты
+// загруженных лент (до tail постов, без «только вам»); пользователи — авторы
+// этих постов и собеседники по личкам, без себя. Сохраняют снимок в главном
+// потоке: в нём те же объекты, что в store.
+func (s *Store) Snapshot(tail int) (*Sidebar, map[string]*Timeline) {
+	sb := &Sidebar{CRT: s.crt, MaxFileSize: s.maxFileSize, LinkPreviews: !s.noPreviews, Teams: s.teams,
+		Categories: s.categories, Saved: []string{}}
+	for _, ch := range s.channels {
+		sb.Channels = append(sb.Channels, ch)
+	}
+	for _, m := range s.members {
+		sb.Members = append(sb.Members, m)
+	}
+	for _, t := range s.threads {
+		sb.Threads = append(sb.Threads, t)
+	}
+	for id := range s.saved {
+		sb.Saved = append(sb.Saved, id)
+	}
+	users := map[string]bool{}
+	tls := map[string]*Timeline{}
+	for id, t := range s.timelines {
+		if !t.Loaded || s.channels[id] == nil {
+			continue
+		}
+		posts, cut := t.Posts, len(t.Posts) > tail
+		if cut {
+			posts = posts[len(posts)-tail:]
+		}
+		posts = slices.DeleteFunc(slices.Clone(posts), func(p *model.Post) bool { return p.Type == model.PostTypeEphemeral })
+		tls[id] = &Timeline{Posts: posts, HasMore: t.HasMore || cut, Loaded: true}
+		for _, p := range posts {
+			users[p.UserId] = true
+		}
+	}
+	for _, ch := range s.channels {
+		if ch.Type == model.ChannelTypeDirect {
+			users[s.DMPeer(ch)] = true
+		}
+	}
+	delete(users, s.me.Id)
+	for id := range users {
+		if u := s.users[id]; u != nil {
+			sb.Users = append(sb.Users, u)
+		}
+	}
+	return sb, tls
+}
+
+// Restore — снимок с диска вместо загрузки с сервера. Всё как после обрыва
+// связи: ленты загружены, но их сверят с сервером (Stale).
+func (s *Store) Restore(sb *Sidebar, tls map[string]*Timeline) {
+	s.SetSidebar(sb)
+	for id, t := range tls {
+		if s.channels[id] == nil || t == nil {
+			continue
+		}
+		t.Loaded, t.Stale = true, true
+		s.timelines[id] = t
+	}
+}
+
+// SetMe — свой профиль пришёл с сервера (окно открыто из снимка со старым).
+func (s *Store) SetMe(u *model.User) {
+	s.me = u
+	s.users[u.Id] = u
+}

@@ -55,6 +55,7 @@ type Shell struct {
 
 	OnLogout         func()
 	OnClose          func()              // окно закрывается или прячется в трей: сохранить, что нужно
+	OnQuit           func()              // приложение завершается («Выход»): сохранить, что нужно
 	OnSelectServer   func(i int)         // выбран сервер в меню «Сервер»
 	OnStatus         func(at *qt.QPoint) // открыть панель статуса (клик по @user или «Файл → Статус…»)
 	OnAddServer      func()
@@ -412,6 +413,9 @@ func (s *Shell) Quit() {
 	s.quitting = true
 	if s.w.IsVisible() {
 		s.w.Close()
+	}
+	if s.OnQuit != nil {
+		s.OnQuit()
 	}
 	s.quitApp()
 }

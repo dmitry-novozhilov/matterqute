@@ -111,5 +111,5 @@ func (t *Tokens) updateFile(change func(map[string]string)) error {
 	if err != nil {
 		return fmt.Errorf("encode tokens: %w", err)
 	}
-	return writeFileAtomic(t.file, data, 0o600)
+	return WriteFileAtomic(t.file, data, 0o600)
 }

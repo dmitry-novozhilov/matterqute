@@ -42,11 +42,16 @@ type call struct {
 	err  error
 }
 
-// New — кэш сервера в base/<хэш URL сервера>: у разных серверов свои эмодзи и файлы.
-func New(base, serverURL string, c *model.Client4) *Cache {
+// DirFor — каталог кэша сервера: base/<хэш URL сервера>.
+func DirFor(base, serverURL string) string {
 	sum := sha256.Sum256([]byte(serverURL))
+	return filepath.Join(base, hex.EncodeToString(sum[:8]))
+}
+
+// New — кэш сервера в DirFor(base, serverURL): у разных серверов свои эмодзи и файлы.
+func New(base, serverURL string, c *model.Client4) *Cache {
 	return &Cache{
-		dir:      filepath.Join(base, hex.EncodeToString(sum[:8])),
+		dir:      DirFor(base, serverURL),
 		server:   serverURL,
 		c:        c,
 		inflight: map[string]*call{},

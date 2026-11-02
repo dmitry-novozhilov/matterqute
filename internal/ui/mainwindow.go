@@ -68,6 +68,10 @@ type MainWindow struct {
 	membersBtn     *qt.QToolButton // участники и их число — в шапке канала
 	memberCounts   map[string]int64
 	catLoading     map[string]int  // команда → 1 — категории грузятся, 2 — и после этого ещё раз
+	statePath      string          // снимок для быстрого запуска (state.go); пусто — не писать
+	restore        *savedState     // снимок, из которого построить окно в Start
+	restored       bool            // окно построено из снимка
+	sidebarOK      bool            // сайдбар хоть раз пришёл с сервера
 	pinsBtn        *qt.QToolButton // закреплённые в канале — в шапке
 	savedBtn       *qt.QToolButton // сохранённые — в шапке
 	manualUnread   map[string]bool // каналы и треды, помеченные непрочитанными: сами не отмечаем прочитанными (postactions.go)
@@ -151,6 +155,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 
 		initialChannel: initialChannel,
 	}
+	m.statePath = statePath(cacheDir, s.ServerURL)
 	m.assets = NewAssets(cache.New(cacheDir, s.ServerURL, s.Client), ctx, m.ui, m.log)
 	m.w.Resize(1280, 774)
 	m.w.OnEvent(func(super func(*qt.QEvent) bool, ev *qt.QEvent) bool {
@@ -405,8 +410,13 @@ func (m *MainWindow) SetColumns(sidebar, thread int) {
 // панель была открыта).
 func (m *MainWindow) Columns() (sidebar, thread int) { return m.columns.sidebar, m.columns.thread }
 
-// Start грузит сайдбар и подключает realtime.
+// Start грузит сайдбар и подключает realtime; есть снимок — окно сначала из него.
 func (m *MainWindow) Start() {
+	if st := m.restore; st != nil {
+		m.restore = nil
+		m.applyState(st)
+	}
+	m.startStateTimer()
 	m.reloadSidebar()
 	go m.s.RunRealtime(m.ctx, m, m.retryNow)
 }
@@ -424,6 +434,7 @@ func (m *MainWindow) Close() {
 		return
 	}
 	m.drafts.save(true) // набранное за последние доли секунды — тоже
+	m.saveState(true)
 	m.closed = true
 	m.cancel()
 	// Все подписки на тему — до удаления виджетов: смена темы после выхода
@@ -545,6 +556,7 @@ func (m *MainWindow) reloadSidebar() {
 				crtChanged := sb.CRT != m.st.CRT()
 				previewsChanged := sb.LinkPreviews != m.st.LinkPreviews()
 				m.st.SetSidebar(sb)
+				m.sidebarOK = true
 				for _, st := range sb.Statuses {
 					if st.UserId == m.s.Me.Id {
 						m.dndEnd = st.DNDEndTime
@@ -910,6 +922,9 @@ func (m *MainWindow) preload() {
 		}
 	}
 	m.preloadQueue = append(append(unread, direct...), rest...)
+	if tl := m.st.Timeline(m.current); tl != nil && tl.Stale {
+		m.preloadQueue = append([]string{m.current}, m.preloadQueue...) // открытая — первой
+	}
 	for m.preloading < preloadWorkers && m.preloadNext() {
 	}
 }
@@ -1066,8 +1081,12 @@ func (m *MainWindow) OnConnected() {
 		m.composer.SetOffline(false)
 		m.panel.composer.SetOffline(false)
 		if !m.connectedOnce {
-			m.connectedOnce = true // сайдбар уже грузится из Start
-			return
+			m.connectedOnce = true
+			if m.sidebarOK || m.sidebarLoading {
+				return // сайдбар уже грузится из Start
+			}
+			// Start не достучался (окно из снимка, сервер был недоступен) —
+			// всё как после обрыва.
 		}
 		// События за время обрыва потеряны: загруженные ленты сверяем с
 		// сервером (открытую — первой), остальные — preload после сайдбара.

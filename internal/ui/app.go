@@ -4,6 +4,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/url"
 	"os"
@@ -39,6 +40,7 @@ type App struct {
 	adding  *LoginView // вход на новый сервер
 
 	removeDialog *dialog // последнее окно «Удалить сервер» (для тестов)
+	quitSaved    bool    // при выходе всё уже сохранено
 }
 
 // server — сервер из списка: окно, если вошли, иначе страница входа.
@@ -147,7 +149,25 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 		}
 		a.saveConfig()
 	}
+	// Окна серверов при выходе не закрываются (процесс просто завершается):
+	// черновики и снимки для быстрого запуска — здесь. «Выход» — OnQuit,
+	// последнее окно закрыли без трея — aboutToQuit (подключает main).
+	a.shell.OnQuit = a.BeforeQuit
 	return a
+}
+
+// BeforeQuit — приложение завершается: сохранить черновики и снимки серверов (один раз).
+func (a *App) BeforeQuit() {
+	if a.quitSaved {
+		return
+	}
+	a.quitSaved = true
+	for _, sv := range a.servers {
+		if m := sv.main; m != nil && !m.closed {
+			m.drafts.save(true)
+			m.saveState(true)
+		}
+	}
 }
 
 func (a *App) saveConfig() {
@@ -395,7 +415,22 @@ func (a *App) resume(sv *server) {
 	l.OnRetry = func() { a.resume(sv) }
 	l.SetResuming(sv.url)
 	a.setConn(sv, ConnConnecting)
+	path := statePath(a.cacheBase(), sv.url)
 	go func() {
+		// Есть снимок — окно из него сразу, токен проверяем следом (state.go).
+		st, err := readState(path)
+		if err != nil {
+			a.log.Warn("saved state", "server", sv.url, "err", err)
+		}
+		if st != nil {
+			mainthread.Start(func() {
+				if sv.login == l {
+					a.openMain(sv, mm.Offline(sv.url, token, st.Me), false, st)
+					a.checkToken(sv, token, st.Me.Id)
+				}
+			})
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
 		s, err := mm.Resume(ctx, sv.url, token)
@@ -405,7 +440,7 @@ func (a *App) resume(sv *server) {
 			}
 			switch {
 			case err == nil:
-				a.openMain(sv, s, false)
+				a.openMain(sv, s, false, nil)
 			case mm.IsUnauthorized(err):
 				a.log.Info("saved session rejected", "server", sv.url, "err", err)
 				a.dropToken(sv.url)
@@ -455,7 +490,7 @@ func (a *App) submitLogin(l *LoginView, f LoginForm) {
 				if sv.main != nil { // вошли заново туда, где уже были
 					a.closeMain(sv)
 				}
-				a.openMain(sv, s, true)
+				a.openMain(sv, s, true, nil)
 			case errors.As(err, &se) && se.Status == 0:
 				// Ответа не было вовсе: сеть, DNS, TLS.
 				a.log.Warn("login", "server", serverURL, "err", err)
@@ -506,18 +541,14 @@ func (a *App) remember(s *mm.Session, loginID string) {
 // openMain — окно сервера вместо страницы входа. show — показать его сразу
 // (вошли руками); после фонового входа по токену показываем, только если
 // этот сервер и так на экране.
-func (a *App) openMain(sv *server, s *mm.Session, show bool) {
-	a.log.Info("signed in", "server", s.ServerURL, "user", s.Me.Username)
+func (a *App) openMain(sv *server, s *mm.Session, show bool, st *savedState) {
+	a.log.Info("signed in", "server", s.ServerURL, "user", s.Me.Username, "from_saved_state", st != nil)
 	lastChannel := ""
 	if c := a.cfg.Server(s.ServerURL); c != nil {
 		lastChannel = c.LastChannel
 	}
-	cacheDir, err := config.CacheDir()
-	if err != nil {
-		a.log.Warn("cache dir, using temp", "err", err)
-		cacheDir = filepath.Join(os.TempDir(), "matterqute-cache")
-	}
-	m := NewMainWindow(s, a.log, lastChannel, cacheDir)
+	m := NewMainWindow(s, a.log, lastChannel, a.cacheBase())
+	m.restore = st
 	if path := a.cfg.ScheduledPath(s.ServerURL); path != "" {
 		m.sched.path = path // отложенные, которые отправляет приложение, — с настройками, не в кэше
 	}
@@ -572,6 +603,55 @@ func (a *App) openMain(sv *server, s *mm.Session, show bool) {
 	a.dropLogin(sv)
 }
 
+// cacheBase — общий каталог кэша (в нём у каждого сервера свой).
+func (a *App) cacheBase() string {
+	dir, err := config.CacheDir()
+	if err != nil {
+		a.log.Warn("cache dir, using temp", "err", err)
+		return filepath.Join(os.TempDir(), "matterqute-cache")
+	}
+	return dir
+}
+
+// checkToken — окно открыто из снимка: проверить токен. Тот же пользователь —
+// свежий профиль в окно; другой (снимок от прошлого входа) — окно заново,
+// без снимка; токен отозван — страница входа, снимок прочь; сервер
+// недоступен — остаётся снимок, связь переподключится сама.
+func (a *App) checkToken(sv *server, token, userID string) {
+	m := sv.main
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+		s, err := mm.Resume(ctx, sv.url, token)
+		mainthread.Start(func() {
+			if sv.main != m {
+				return // окно уже закрыли (выход, удаление сервера)
+			}
+			switch {
+			case err == nil && s.Me.Id == userID:
+				m.setMe(s.Me)
+			case err == nil:
+				a.log.Info("saved state of another user, reopening", "server", sv.url)
+				m.dropState()
+				a.closeMain(sv)
+				a.openMain(sv, s, a.active == sv, nil)
+			case mm.IsUnauthorized(err):
+				a.log.Info("saved session rejected", "server", sv.url, "err", err)
+				m.dropState()
+				a.dropToken(sv.url)
+				a.ensureLogin(sv)
+				a.closeMain(sv)
+				sv.login.SetExpired()
+				if sv == a.active {
+					a.activate(sv)
+				}
+			default:
+				a.log.Warn("check saved session", "server", sv.url, "err", err)
+			}
+		})
+	}()
+}
+
 func (a *App) closeMain(sv *server) {
 	m := sv.main
 	sv.main, sv.counts, sv.conn = nil, Counts{}, ConnNone
@@ -585,6 +665,7 @@ func (a *App) closeMain(sv *server) {
 func (a *App) logout(sv *server) {
 	s := sv.main.s
 	a.dropToken(sv.url)
+	sv.main.dropState() // в снимке переписка
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
@@ -655,7 +736,10 @@ func (a *App) removeServer(sv *server) {
 				a.log.Warn("logout", "server", sv.url, "err", err)
 			}
 		}()
+		sv.main.dropState()
 		a.closeMain(sv)
+	} else if err := os.Remove(statePath(a.cacheBase(), sv.url)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		a.log.Warn("drop saved state", "server", sv.url, "err", err)
 	}
 	a.dropToken(sv.url)
 	a.dropLogin(sv)

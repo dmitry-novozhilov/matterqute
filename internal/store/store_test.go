@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -341,5 +342,51 @@ func TestNewMessages(t *testing.T) {
 	})
 	if got := s.NewMessages(); got != 5 {
 		t.Errorf("NewMessages with CRT = %d, want 3 roots in a + 2 thread replies (muted m skipped)", got)
+	}
+}
+
+// Снимок для быстрого запуска: хвосты лент без «только вам», пользователи —
+// авторы и собеседники без себя; восстановленные ленты сверят с сервером.
+func TestSnapshotRestore(t *testing.T) {
+	me := &model.User{Id: "me", Username: "me"}
+	bob := &model.User{Id: "bob", Username: "bob"}
+	carol := &model.User{Id: "carol", Username: "carol"}
+	s := New(me)
+	s.SetSidebar(&Sidebar{
+		Teams: []*model.Team{{Id: "t"}},
+		Channels: []*model.Channel{{Id: "c", TeamId: "t", Type: model.ChannelTypeOpen},
+			{Id: "d", Type: model.ChannelTypeDirect, Name: model.GetDMNameFromIds("me", "carol")}},
+		Members: []*model.ChannelMember{{ChannelId: "c", UserId: "me"}},
+		Users:   []*model.User{bob, carol, {Id: "dave", Username: "dave"}},
+	})
+	var posts []*model.Post
+	for i := range 5 {
+		posts = append(posts, post(string(rune('a'+i)), "c", "bob", int64(i)))
+	}
+	posts[4].Type = model.PostTypeEphemeral
+	s.SetTimeline("c", &Timeline{Posts: posts, Loaded: true})
+	s.SetTimeline("gone", &Timeline{Posts: posts, Loaded: true})
+
+	sb, tls := s.Snapshot(3)
+	if got := ids(tls["c"].Posts); len(got) != 2 || got[0] != "c" || got[1] != "d" || !tls["c"].HasMore {
+		t.Errorf("tail %v, has more %v", got, tls["c"].HasMore)
+	}
+	if tls["gone"] != nil {
+		t.Error("timeline of a channel we left is saved")
+	}
+	var users []string
+	for _, u := range sb.Users {
+		users = append(users, u.Username)
+	}
+	slices.Sort(users)
+	if strings.Join(users, ",") != "bob,carol" {
+		t.Errorf("users %v", users)
+	}
+
+	r := New(me)
+	r.Restore(sb, tls)
+	tl := r.Timeline("c")
+	if tl == nil || !tl.Loaded || !tl.Stale || r.Channel("d") == nil || r.User("bob") == nil {
+		t.Errorf("restored: %+v", tl)
 	}
 }

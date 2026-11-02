@@ -708,3 +708,25 @@ func TestFeedRerenderKeepsText(t *testing.T) {
 		check("day separator came and went")
 	})
 }
+
+// Отладочный дамп ленты: по строке на пост, без текста сообщений.
+func TestFeedDebugDump(t *testing.T) {
+	onMain(func() {
+		var buf strings.Builder
+		log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}, Log: log})
+		f.Widget().Resize(600, 400)
+		f.Widget().Show()
+		defer f.Widget().Close()
+		f.SetPosts(makePosts(100, 5), false)
+		drained(f)
+		if len(f.debugItems()) != 2 {
+			t.Error("no debug menu items with debug logging")
+		}
+		f.debugDump()
+		out := buf.String()
+		if strings.Count(out, `msg="feed post"`) != 5 || !strings.Contains(out, "frame_in_doc=true") || strings.Contains(out, "сообщение 10") {
+			t.Errorf("dump:\n%s", out)
+		}
+	})
+}

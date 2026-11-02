@@ -2299,6 +2299,10 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	all := menu.QWidget.AddActionWithText("Выделить всё")
 	all.SetShortcut(qt.NewQKeySequence2("Ctrl+A"))
 	all.OnTriggered(f.view.SelectAll)
+	if dbg := f.debugItems(); len(dbg) > 0 {
+		menu.AddSeparator()
+		fillMenu(menu, dbg)
+	}
 	menu.ExecWithPos(e.GlobalPos())
 	menu.DeleteLater()
 }

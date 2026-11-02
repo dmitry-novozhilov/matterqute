@@ -29,6 +29,9 @@ type Store struct {
 	// Посты, уже учтённые в счётчиках: свой пост приходит дважды — ответом
 	// на CreatePost и по WebSocket.
 	applied map[string]bool
+	// Удалённые посты: удаление применяется по ответу DeletePost и ещё раз
+	// приходит по WebSocket.
+	deleted map[string]bool
 }
 
 func New(me *model.User) *Store {
@@ -41,6 +44,7 @@ func New(me *model.User) *Store {
 		threads:   map[string]*model.ThreadResponse{},
 		statuses:  map[string]string{},
 		applied:   map[string]bool{},
+		deleted:   map[string]bool{},
 	}
 }
 
@@ -361,10 +365,26 @@ func (s *Store) ApplyEdited(p *model.Post) bool {
 	return t != nil && t.Replace(p)
 }
 
-// ApplyDeleted убирает пост из ленты; false — ленты или поста в ней нет.
-func (s *Store) ApplyDeleted(p *model.Post) bool {
+// ApplyDeleted убирает пост из ленты канала (removed — он там был), у ответа
+// уменьшает счётчик ответов корня в ленте (root — перерисовать). first=false
+// — это удаление уже применяли: оно приходит и ответом на DeletePost, и по
+// WebSocket.
+func (s *Store) ApplyDeleted(p *model.Post) (removed bool, root *model.Post, first bool) {
+	if s.deleted[p.Id] {
+		return false, nil, false
+	}
+	s.deleted[p.Id] = true
 	t := s.timelines[p.ChannelId]
-	return t != nil && t.Remove(p.Id)
+	if t == nil {
+		return false, nil, true
+	}
+	removed = t.Remove(p.Id)
+	if p.RootId != "" {
+		if root = t.Get(p.RootId); root != nil && root.ReplyCount > 0 {
+			root.ReplyCount--
+		}
+	}
+	return removed, root, true
 }
 
 // ApplyReaction меняет реакции поста в ленте канала. Возвращает пост, если он

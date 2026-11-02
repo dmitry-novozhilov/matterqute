@@ -52,6 +52,12 @@ type Composer struct {
 	fmtShow  *qt.QToolButton // «Aa» — показать или спрятать панель
 	acts     formatActions
 	styleKey string // тема и шрифты, которыми нарисован документ поля
+	typing   bool   // идёт набор с клавиатуры: курсор сдвинул ввод, а не переход
+
+	editID   string     // правится своё сообщение с этим id; пусто — пишется новое
+	stash    *draft     // черновик, отложенный на время правки
+	editBar  *qt.QFrame // «Редактирование сообщения» над полем
+	editText *qt.QLabel
 	chips    *qt.QWidget
 	chipsLay *qt.QHBoxLayout
 	chipWs   []*qt.QWidget
@@ -75,6 +81,10 @@ type Composer struct {
 	dismissed string         // Esc: для этого слова список больше не открывать
 
 	OnSend func(text string, fileIDs []string)
+	// OnEdit — сохранить правку сообщения id (text пустой — сообщение стёрли).
+	OnEdit func(id, text string, blocks []markdown.Block)
+	// OnEditLast — ↑ в пустом поле: править последнее своё сообщение.
+	OnEditLast func()
 	// OnUpload — загрузить файл (path с диска или data — вставленная картинка);
 	// progress(0…100) по ходу, результат — Uploaded или UploadFailed.
 	OnUpload func(id int, name, path string, data []byte, progress func(percent int))
@@ -89,7 +99,12 @@ func NewComposer() *Composer {
 	c.edit.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
 	c.edit.SetToolTip("Enter — отправить, Shift+Enter — новая строка")
 	c.edit.OnCurrentCharFormatChanged(func(*qt.QTextCharFormat) { c.syncFormat() })
-	c.edit.OnCursorPositionChanged(c.syncFormat)
+	c.edit.OnCursorPositionChanged(func() {
+		if !c.typing {
+			c.leaveCodeAndLink()
+		}
+		c.syncFormat()
+	})
 	c.edit.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) {
 		super(e)
 		c.paintQuotes()
@@ -109,6 +124,12 @@ func NewComposer() *Composer {
 		}
 		mods := e.Modifiers()
 		switch {
+		case k == qt.Key_Escape && c.editID != "":
+			c.CancelEdit()
+			return
+		case k == qt.Key_Up && mods == qt.NoModifier && c.editID == "" && c.empty() && len(c.files) == 0 && c.OnEditLast != nil:
+			c.OnEditLast()
+			return
 		case k == qt.Key_Return || k == qt.Key_Enter:
 			switch {
 			case mods&qt.ControlModifier != 0:
@@ -124,7 +145,9 @@ func NewComposer() *Composer {
 		case k == qt.Key_Backspace && mods == qt.NoModifier && c.backspaceAtStart():
 			return
 		}
+		c.typing = e.Text() != ""
 		super(e)
+		c.typing = false
 		c.autoformat(e.Text())
 	})
 	c.edit.OnFocusInEvent(func(super func(*qt.QFocusEvent), e *qt.QFocusEvent) {
@@ -194,9 +217,12 @@ func NewComposer() *Composer {
 	c.hint.SetProperty("role", qt.NewQVariant11("hint"))
 	c.hint.SetVisible(false)
 
+	c.buildEditBar()
+
 	lay := qt.NewQVBoxLayout(c.w)
 	lay.SetContentsMargins(16, 12, 16, 12)
 	lay.SetSpacing(4)
+	lay.AddWidget(c.editBar.QWidget)
 	lay.AddWidget(c.frame.QWidget)
 	lay.AddWidget(c.hint.QWidget)
 
@@ -212,6 +238,7 @@ func (c *Composer) dispose() { c.unsubscribe() }
 
 func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
+	c.restyleEditBar()
 	c.edit.SetFont(feedFont())
 	c.edit.Viewport().SetFont(feedFont()) // плейсхолдер Qt рисует шрифтом viewport
 	c.restyleFormatBar()
@@ -240,10 +267,7 @@ func (c *Composer) setBlocks(blocks []markdown.Block) {
 	cur := c.edit.TextCursor()
 	writeBlocks(cur, blocks)
 	c.edit.SetTextCursor(cur)
-	c.edit.SetCurrentCharFormat(qt.NewQTextCharFormat())
-	if blockKind(cur.Block()) == markdown.Code {
-		c.edit.SetCurrentCharFormat(blockCharFormat(markdown.Code))
-	}
+	c.leaveCodeAndLink()
 }
 
 // fitHeight — поле растёт с текстом от одной строки до семи, дальше прокрутка.
@@ -298,6 +322,7 @@ func (c *Composer) SwitchTo(key string) {
 	if key == c.key {
 		return
 	}
+	c.CancelEdit()
 	if !c.empty() || len(c.files) > 0 {
 		c.drafts[c.key] = &draft{key: c.key, blocks: readBlocks(c.edit.Document()), files: c.files}
 	}
@@ -497,6 +522,15 @@ func (c *Composer) uploading() bool {
 }
 
 func (c *Composer) send() {
+	if c.editID != "" {
+		blocks := readBlocks(c.edit.Document())
+		id := c.editID
+		c.CancelEdit()
+		if c.OnEdit != nil {
+			c.OnEdit(id, strings.TrimSpace(markdown.FromBlocks(blocks)), blocks)
+		}
+		return
+	}
 	if c.OnSend == nil {
 		return
 	}
@@ -657,3 +691,87 @@ func (c *Composer) acceptSuggestion(s Suggestion) {
 	c.edit.SetTextCursor(cur)
 	c.edit.SetFocus()
 }
+
+// buildEditBar — плашка над полем на время правки: что правим и «отменить».
+func (c *Composer) buildEditBar() {
+	c.editBar = qt.NewQFrame2()
+	setName(c.editBar.QObject, "editBar")
+	row := qt.NewQHBoxLayout(c.editBar.QWidget)
+	row.SetContentsMargins(10, 4, 4, 4)
+	row.SetSpacing(8)
+	pencil := qt.NewQLabel2()
+	setName(pencil.QObject, "editIcon")
+	c.editText = qt.NewQLabel2()
+	c.editText.SetTextFormat(qt.PlainText)
+	setName(c.editText.QObject, "editText")
+	cancel := qt.NewQToolButton2()
+	setName(cancel.QObject, "editCancel")
+	cancel.SetFixedSize2(24, 24)
+	cancel.SetIconSize(qt.NewQSize2(14, 14))
+	cancel.SetFocusPolicy(qt.NoFocus)
+	cancel.SetToolTip("Отменить правку (Esc)")
+	cancel.OnClicked(func() {
+		c.CancelEdit()
+		c.edit.SetFocus()
+	})
+	row.AddWidget(pencil.QWidget)
+	row.AddWidget2(c.editText.QWidget, 1)
+	row.AddWidget(cancel.QWidget)
+	c.editBar.Hide()
+}
+
+func (c *Composer) restyleEditBar() {
+	pal := Pal()
+	for _, o := range c.editBar.Children() {
+		switch {
+		case o.ObjectName() == "editIcon":
+			qt.UnsafeNewQLabel(o.UnsafePointer()).SetPixmap(iconPixmap("pencil", pal.Acc, 14))
+		case o.ObjectName() == "editCancel":
+			qt.UnsafeNewQToolButton(o.UnsafePointer()).SetIcon(icon("x", pal.Tx2, 14))
+		}
+	}
+	c.editBar.SetStyleSheet(fmt.Sprintf(`QFrame#editBar { background: %[1]s; border-left: 3px solid %[2]s; border-radius: 4px; }
+QLabel#editText { color: %[3]s; }
+QToolButton { border: none; border-radius: 4px; background: transparent; min-width: 0; min-height: 0; }
+QToolButton:hover { background: %[4]s; }`, pal.Surf2, pal.Acc, pal.Tx2, pal.Hover))
+}
+
+// StartEdit — править своё сообщение id в поле (preview — его начало для
+// плашки): черновик откладывается до конца правки, Enter сохраняет, Esc и
+// крестик отменяют.
+func (c *Composer) StartEdit(id, preview string, blocks []markdown.Block) {
+	if c.editID == "" {
+		c.stash = &draft{key: c.key, blocks: readBlocks(c.edit.Document()), files: c.files}
+		c.files = nil
+		c.renderChips()
+	}
+	c.editID = id
+	c.setBlocks(blocks)
+	c.editText.SetText("Редактирование: " + preview)
+	c.editBar.Show()
+	c.attach.SetEnabled(false)
+	c.hint.SetVisible(false)
+	c.edit.SetFocus()
+}
+
+// CancelEdit — конец правки: в поле — отложенный черновик.
+func (c *Composer) CancelEdit() {
+	if c.editID == "" {
+		return
+	}
+	c.editID = ""
+	c.editBar.Hide()
+	c.attach.SetEnabled(true)
+	st := c.stash
+	c.stash = nil
+	c.setBlocks(nil)
+	c.files = nil
+	if st != nil {
+		c.setBlocks(st.blocks)
+		c.files = st.files
+	}
+	c.renderChips()
+}
+
+// Editing — id сообщения, которое правится; пусто — пишется новое.
+func (c *Composer) Editing() string { return c.editID }

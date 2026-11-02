@@ -34,27 +34,28 @@ type MainWindow struct {
 	cancel context.CancelFunc
 	closed bool
 
-	split       *qt.QSplitter
-	columns     columns    // ширины сайдбара и панели треда
-	saveColumns *qt.QTimer // сохранить ширины, когда разделитель отпустили
-	sidebar     *qt.QTreeWidget
-	items       map[string]*qt.QTreeWidgetItem // по id канала; threadsID — «Треды»
-	center      *qt.QStackedWidget             // channelPage или threadsPage
-	channelPage *qt.QWidget
-	head        *header
-	banner      *banner
-	feed        *Feed
-	composer    *Composer
-	threadsPage *qt.QWidget
-	threadsHead *header
-	threadsList *qt.QListWidget
-	panel       *ThreadPanel
-	thread      *threadView // открытый в панели тред; nil — панель закрыта
-	assets      *Assets
-	notifier    Notifier           // nil — уведомлений нет (нет шины или сервера уведомлений)
-	notes       map[string]uint32  // показанное уведомление по каналу или треду: следующее его заменит
-	players     map[string]*player // открытые плееры по id файла
-	viewer      *imageViewer       // картинка во весь экран; nil — закрыта
+	split        *qt.QSplitter
+	columns      columns    // ширины сайдбара и панели треда
+	saveColumns  *qt.QTimer // сохранить ширины, когда разделитель отпустили
+	sidebar      *qt.QTreeWidget
+	items        map[string]*qt.QTreeWidgetItem // по id канала; threadsID — «Треды»
+	center       *qt.QStackedWidget             // channelPage или threadsPage
+	channelPage  *qt.QWidget
+	head         *header
+	banner       *banner
+	feed         *Feed
+	composer     *Composer
+	threadsPage  *qt.QWidget
+	threadsHead  *header
+	threadsList  *qt.QListWidget
+	panel        *ThreadPanel
+	thread       *threadView // открытый в панели тред; nil — панель закрыта
+	assets       *Assets
+	notifier     Notifier           // nil — уведомлений нет (нет шины или сервера уведомлений)
+	notes        map[string]uint32  // показанное уведомление по каналу или треду: следующее его заменит
+	players      map[string]*player // открытые плееры по id файла
+	deleteDialog *dialog            // «Удалить сообщение?»
+	viewer       *imageViewer       // картинка во весь экран; nil — закрыта
 
 	preloadQueue []string // каналы, чьи ленты ещё грузить заранее
 	preloading   int      // сколько лент грузится заранее прямо сейчас
@@ -171,6 +172,8 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.composer = NewComposer()
 	m.composer.Suggest = m.suggester(func() string { return m.current })
 	m.composer.OnSend = m.send
+	m.composer.OnEdit = m.saveEdit(m.feed)
+	m.composer.OnEditLast = func() { m.editLast(m.feed) }
 	m.composer.OnUpload = func(id int, name, path string, data []byte, progress func(int)) {
 		m.upload(m.composer, m.current, id, name, path, data, progress)
 	}
@@ -204,6 +207,8 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.panel = NewThreadPanel(deps, m.closeThread)
 	m.wireFeed(m.panel.feed)
 	m.panel.composer.OnSend = m.sendReply
+	m.panel.composer.OnEdit = m.saveEdit(m.panel.feed)
+	m.panel.composer.OnEditLast = func() { m.editLast(m.panel.feed) }
 	m.panel.composer.Suggest = m.suggester(func() string {
 		if t := m.thread; t != nil {
 			return t.channelID

@@ -502,7 +502,7 @@ func (a *App) confirmRemove(sv *server) {
 	text := qt.NewQLabel3("Удалить сервер " + hostOf(sv.url) + " из списка? Сессия на нём будет закрыта, черновики пропадут.")
 	text.SetWordWrap(true)
 	d.lay.AddWidget(text.QWidget)
-	d.buttons("Удалить", func() { a.removeServer(sv) })
+	danger(d.buttons("Удалить", func() { a.removeServer(sv) }))
 	d.w.Show()
 }
 

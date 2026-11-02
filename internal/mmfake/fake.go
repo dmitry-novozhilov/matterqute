@@ -135,6 +135,7 @@ func New(log *slog.Logger) *Server {
 		w.Write(data)
 	})
 	s.mux.HandleFunc("PUT /api/v4/posts/{pid}/patch", s.auth(s.patchPost))
+	s.mux.HandleFunc("DELETE /api/v4/posts/{pid}", s.auth(s.deletePost))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/status", s.auth(s.setStatus))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/status/custom", s.auth(s.setCustomStatus))
 	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/status/custom", s.auth(s.setCustomStatus))
@@ -639,6 +640,41 @@ func (s *Server) patchPost(w http.ResponseWriter, r *http.Request, me *model.Use
 		c.write(data)
 	}
 	s.json(w, p)
+}
+
+// deletePost — автор удаляет пост; корень — вместе с ответами, как сервер.
+// Всем в канале — post_deleted на каждый.
+func (s *Server) deletePost(w http.ResponseWriter, r *http.Request, me *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.post(r.PathValue("pid"))
+	if p == nil || p.UserId != me.Id {
+		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
+		return
+	}
+	now := model.GetMillis()
+	var gone []*model.Post
+	s.posts[p.ChannelId] = slices.DeleteFunc(s.posts[p.ChannelId], func(q *model.Post) bool {
+		if q.Id == p.Id || p.RootId == "" && q.RootId == p.Id {
+			q.DeleteAt, q.UpdateAt = now, now
+			gone = append(gone, q)
+			return true
+		}
+		return false
+	})
+	if root := s.post(p.RootId); root != nil {
+		root.ReplyCount--
+	}
+	for _, q := range gone {
+		postJSON, _ := json.Marshal(q)
+		for _, c := range s.connsIn(q.ChannelId) {
+			ev := model.NewWebSocketEvent(model.WebsocketEventPostDeleted, "", q.ChannelId, "", nil, "")
+			ev.Add("post", string(postJSON))
+			data, _ := ev.ToJSON()
+			c.write(data)
+		}
+	}
+	s.json(w, map[string]string{"status": "OK"})
 }
 
 // setStatus — присутствие (и конец «не беспокоить»); всем — status_change.

@@ -367,6 +367,32 @@ func (c *Composer) indentList(d int) bool {
 	return true
 }
 
+// leaveCodeAndLink — курсор перешёл (стрелкой, кликом, из кода) в конец
+// кода или ссылки: набор дальше — обычным текстом, а не продолжением их. При
+// наборе с клавиатуры не зовётся: включённый код набирается подряд.
+func (c *Composer) leaveCodeAndLink() {
+	cur := c.edit.TextCursor()
+	if cur.HasSelection() || blockKind(cur.Block()) == markdown.Code {
+		return
+	}
+	sp := spanOf(c.edit.CurrentCharFormat())
+	if !sp.Code && sp.Link == "" {
+		return
+	}
+	next := markdown.Span{}
+	if !cur.AtBlockEnd() {
+		n := qt.NewQTextCursor2(c.edit.Document())
+		n.SetPosition(cur.Position())
+		n.MovePosition2(qt.QTextCursor__NextCharacter, qt.QTextCursor__KeepAnchor)
+		next = spanOf(n.CharFormat())
+	}
+	if sp.Code && next.Code || sp.Link != "" && next.Link == sp.Link {
+		return // внутри
+	}
+	sp.Code, sp.Link = sp.Code && next.Code, ""
+	c.edit.SetCurrentCharFormat(spanFormat(sp))
+}
+
 // newLine — Shift+Enter (и Enter в блоке кода): новая строка того же вида —
 // пункт списка, строка цитаты или кода. Пустая строка такого вида вместо этого
 // становится обычной: так из списка, цитаты и кода выходят.

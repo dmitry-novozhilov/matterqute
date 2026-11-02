@@ -47,18 +47,7 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		if err != nil {
 			return nil, err
 		}
-		return func() {
-			if m.st.ApplyDeleted(p) && p.ChannelId == m.current {
-				m.feed.Remove(p.Id)
-			}
-			if t := m.thread; t != nil {
-				if p.Id == t.rootID {
-					m.closeThread()
-				} else if t.tl.Remove(p.Id) {
-					m.panel.feed.Remove(p.Id)
-				}
-			}
-		}, nil
+		return func() { m.applyDeleted(p) }, nil
 
 	case model.WebsocketEventReactionAdded, model.WebsocketEventReactionRemoved:
 		raw, ok := data["reaction"].(string)

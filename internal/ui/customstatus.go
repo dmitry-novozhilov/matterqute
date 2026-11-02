@@ -402,8 +402,8 @@ func (d *dialog) extra(title string, do func()) {
 	d.bottom.AddWidget(b.QWidget)
 }
 
-// buttons — «Отмена» и основная кнопка справа.
-func (d *dialog) buttons(ok string, do func()) {
+// buttons — «Отмена» и основная кнопка справа; её и возвращает.
+func (d *dialog) buttons(ok string, do func()) *qt.QPushButton {
 	d.bottom.AddStretch()
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
@@ -413,7 +413,18 @@ func (d *dialog) buttons(ok string, do func()) {
 	okb.OnClicked(func() { do(); d.w.Close() })
 	d.bottom.AddWidget(cancel.QWidget)
 	d.bottom.AddWidget(okb.QWidget)
+	return okb
 }
+
+// danger — основная кнопка необратимого действия («Удалить»): красная.
+func danger(b *qt.QPushButton) {
+	pal := Pal()
+	b.SetStyleSheet(fmt.Sprintf(`QPushButton { background: %[1]s; border-color: %[1]s; color: #fcfcfc; }
+QPushButton:hover, QPushButton:pressed { background: %[2]s; border-color: %[2]s; }`, pal.Dang, darker(pal.Dang)))
+}
+
+// darker — цвет на 12 % темнее.
+func darker(c string) string { return qt.NewQColor6(c).DarkerWithInt(112).Name() }
 
 func newDateTimeEdit(t time.Time) *qt.QDateTimeEdit {
 	e := qt.NewQDateTimeEdit2()

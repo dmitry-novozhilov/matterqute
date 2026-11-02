@@ -120,6 +120,8 @@ type Feed struct {
 	OnPickReaction   func(p *model.Post)               // окно выбора эмодзи для реакции
 	OnPermalink      func(channelID, postID string)    // «Перейти к сообщению» в предпросмотре ссылки
 	OnRemovePreview  func(p *model.Post)               // автор убирает предпросмотр ссылки
+	OnEditPost       func(p *model.Post)               // «Изменить» своё сообщение
+	OnDeletePost     func(p *model.Post)               // «Удалить…» своё сообщение
 	OnLink           func(url string)                  // клик по ссылке в тексте
 	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
 	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
@@ -1395,6 +1397,14 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 				rm := menu.QWidget.AddActionWithText("Убрать предпросмотр ссылки")
 				rm.OnTriggered(func() { f.OnRemovePreview(p) })
 			}
+			if editable(p, f.d.Me.Id) && f.OnEditPost != nil {
+				edit := menu.QWidget.AddActionWithText("Изменить")
+				edit.OnTriggered(func() { f.OnEditPost(p) })
+			}
+			if p.UserId == f.d.Me.Id && f.OnDeletePost != nil {
+				del := menu.QWidget.AddActionWithText("Удалить…")
+				del.OnTriggered(func() { f.OnDeletePost(p) })
+			}
 		}
 		menu.AddSeparator()
 		ct := menu.QWidget.AddActionWithText("Копировать текст сообщения")
@@ -1438,6 +1448,12 @@ func (f *Feed) toggleReaction(p *model.Post, name string) {
 }
 
 // threadRoot — id корня треда, в котором пост (или он сам — корень).
+// editable — своё сообщение, которое можно править: не системное и не от
+// вебхука (у того текст пишет интеграция).
+func editable(p *model.Post, me string) bool {
+	return p.UserId == me && !p.IsSystemMessage() && p.GetProp(model.PostPropsFromWebhook) != "true"
+}
+
 func threadRoot(p *model.Post) string {
 	if p.RootId != "" {
 		return p.RootId

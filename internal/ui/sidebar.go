@@ -139,6 +139,9 @@ func (m *MainWindow) fillSidebar() {
 	if len(m.sched.posts) > 0 {
 		row(nil, schedID, false)
 	}
+	if m.draftCount() > 0 {
+		row(nil, draftsID, false)
+	}
 	multi := len(m.st.Teams()) > 1
 	label := ""
 	for _, sec := range m.st.Sections() {
@@ -312,6 +315,9 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 	case schedID:
 		label, iconName = "Отложенные", "clock"
 		suffix = fmt.Sprintf("  %d", len(m.sched.posts))
+	case draftsID:
+		label, iconName = "Черновики", "pencil"
+		suffix = fmt.Sprintf("  %d", m.draftCount())
 	default:
 		ch := m.st.Channel(id)
 		if ch == nil {

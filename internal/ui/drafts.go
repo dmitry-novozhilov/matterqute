@@ -43,13 +43,15 @@ type drafts struct {
 	dirty   map[draftKey]bool
 	roots   map[string]string // корень треда → канал: у поля треда ключ — корень
 	timer   *qt.QTimer
-	loaded  bool // загружены после первого сайдбара
-	reload  bool // переподключились: загрузить заново (события за обрыв потеряны)
-	modeSet bool // server уже выбран по настройкам
+	loaded  bool                   // загружены после первого сайдбара
+	reload  bool                   // переподключились: загрузить заново (события за обрыв потеряны)
+	modeSet bool                   // server уже выбран по настройкам
+	edited  map[draftKey]time.Time // когда черновик правили (здесь или, по серверу, где-то ещё)
 }
 
 func newDrafts(m *MainWindow, path string) *drafts {
-	d := &drafts{m: m, path: path, synced: map[draftKey]string{}, dirty: map[draftKey]bool{}, roots: map[string]string{}}
+	d := &drafts{m: m, path: path, synced: map[draftKey]string{}, dirty: map[draftKey]bool{}, roots: map[string]string{},
+		edited: map[draftKey]time.Time{}}
 	d.timer = qt.NewQTimer2(m.w.QObject)
 	d.timer.SetSingleShot(true)
 	d.timer.SetInterval(int(draftDelay.Milliseconds()))
@@ -91,7 +93,9 @@ func (d *drafts) changed(c *Composer, key string) {
 		d.roots[k.root] = k.channel
 	}
 	d.dirty[k] = true
+	d.edited[k] = time.Now()
 	d.timer.Start2()
+	d.m.draftsChanged()
 }
 
 // save — изменившиеся черновики — на сервер или в файл; wait — дождаться
@@ -201,6 +205,7 @@ func (d *drafts) sidebarLoaded(server bool) {
 		ctx, cancel := context.WithTimeout(d.m.ctx, requestTimeout)
 		defer cancel()
 		all := map[draftKey]string{}
+		edited := map[draftKey]time.Time{}
 		var errs []error
 		for _, t := range teams {
 			list, _, err := d.m.s.Client.GetDrafts(ctx, d.m.s.Me.Id, t.Id)
@@ -209,7 +214,9 @@ func (d *drafts) sidebarLoaded(server bool) {
 				continue
 			}
 			for _, dr := range list { // лички приходят в каждой команде
-				all[draftKey{dr.ChannelId, dr.RootId}] = dr.Message
+				k := draftKey{dr.ChannelId, dr.RootId}
+				all[k] = dr.Message
+				edited[k] = time.UnixMilli(dr.UpdateAt)
 			}
 		}
 		d.m.ui(func() {
@@ -218,6 +225,11 @@ func (d *drafts) sidebarLoaded(server bool) {
 				if len(errs) == len(teams) {
 					d.reload = true // попробуем после следующего переподключения
 					return
+				}
+			}
+			for k, at := range edited {
+				if _, ok := d.edited[k]; !ok {
+					d.edited[k] = at
 				}
 			}
 			d.applyAll(all)
@@ -248,6 +260,7 @@ func (d *drafts) applyAll(all map[draftKey]string) {
 		d.timer.Start2()
 	}
 	d.m.refreshItem("")
+	d.m.draftsChanged()
 }
 
 // apply — черновик k с сервера или из файла: в поле, если там его не правили
@@ -272,6 +285,7 @@ func (d *drafts) apply(k draftKey, text string) {
 	c, key := d.composer(k)
 	c.SetDraft(key, text)
 	d.m.refreshItem("")
+	d.m.draftsChanged()
 }
 
 // remote — событие draft_created/updated/deleted (другой клиент или эхо своего).
@@ -282,6 +296,8 @@ func (d *drafts) remote(dr *model.Draft, deleted bool) {
 	text := dr.Message
 	if deleted {
 		text = ""
+	} else if dr.UpdateAt > 0 {
+		d.edited[draftKey{dr.ChannelId, dr.RootId}] = time.UnixMilli(dr.UpdateAt)
 	}
 	d.apply(draftKey{dr.ChannelId, dr.RootId}, text)
 }

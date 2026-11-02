@@ -479,6 +479,42 @@ func (c *Composer) SetDraft(key, text string) {
 	}
 }
 
+// DraftNonEmpty — у key есть черновик (у открытого — что-то в поле; идёт
+// правка — отложенный под неё). Без разбора текста: зовут на каждую правку.
+func (c *Composer) DraftNonEmpty(key string) bool {
+	if key == c.key {
+		if c.editID != "" {
+			return c.stash != nil && (!blocksEmpty(c.stash.blocks) || len(c.stash.files) > 0)
+		}
+		return !c.empty() || len(c.files) > 0
+	}
+	return c.HasDraft(key)
+}
+
+// DraftFiles — у черновика key есть файлы.
+func (c *Composer) DraftFiles(key string) bool {
+	if key == c.key && c.editID == "" {
+		return len(c.files) > 0
+	}
+	d := c.drafts[key]
+	return d != nil && len(d.files) > 0
+}
+
+// ClearDraft — черновик key прочь: открыт — поле очищается (идёт правка —
+// отложенный под неё), иначе — из запаса.
+func (c *Composer) ClearDraft(key string) {
+	switch {
+	case key == c.key && c.editID != "":
+		c.stash = nil
+	case key == c.key:
+		c.setBlocks(nil)
+		c.files = nil
+		c.renderChips()
+	default:
+		delete(c.drafts, key)
+	}
+}
+
 // HasDraft — у key есть черновик, а key не открыт (карандаш в сайдбаре).
 func (c *Composer) HasDraft(key string) bool {
 	d := c.drafts[key]

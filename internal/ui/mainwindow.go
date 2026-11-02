@@ -741,6 +741,10 @@ func (m *MainWindow) openChannel(id string) {
 		m.showScheduled()
 		return
 	}
+	if id == draftsID {
+		m.showDrafts()
+		return
+	}
 	ch := m.st.Channel(id)
 	if ch == nil {
 		return

@@ -84,9 +84,42 @@ func (m *MainWindow) moveChannel(team, channelID, to string, order []string) {
 	}
 }
 
-// saveCategories — изменённые категории команды на сервер; отказ — свои
-// категории с сервера заново.
+// saveCategories — изменённые категории команды на сервер. По одному
+// запросу на команду: параллельные PUT приходили не по порядку, и старая
+// копия затирала новую (сортировка, следом — свёрнутость). Пока запрос в
+// пути, изменения копятся (у категории — последняя копия) и уходят следом.
 func (m *MainWindow) saveCategories(team string, cats ...*model.SidebarCategoryWithChannels) {
+	q := m.catPending[team]
+	if q == nil {
+		q = map[string]*model.SidebarCategoryWithChannels{}
+		m.catPending[team] = q
+	}
+	for _, c := range cats {
+		q[c.Id] = c
+	}
+	if !m.catSaving[team] {
+		m.flushCategories(team)
+	}
+}
+
+// flushCategories — накопленное на сервер; очередь пуста — категории с
+// сервера заново, если о них просили, пока сохраняли.
+func (m *MainWindow) flushCategories(team string) {
+	q := m.catPending[team]
+	delete(m.catPending, team)
+	if len(q) == 0 {
+		delete(m.catSaving, team)
+		if m.catReloadAfter[team] {
+			delete(m.catReloadAfter, team)
+			m.reloadCategories(team)
+		}
+		return
+	}
+	m.catSaving[team] = true
+	cats := make([]*model.SidebarCategoryWithChannels, 0, len(q))
+	for _, c := range q {
+		cats = append(cats, c)
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
@@ -94,15 +127,21 @@ func (m *MainWindow) saveCategories(team string, cats ...*model.SidebarCategoryW
 		m.ui(func() {
 			if err != nil {
 				m.fail("update sidebar categories", fmt.Errorf("update %d sidebar categories in team %s: %w", len(cats), team, err))
-				m.reloadCategories(team)
+				m.catReloadAfter[team] = true
 			}
+			m.flushCategories(team)
 		})
 	}()
 }
 
 // reloadCategories — категории команды с сервера (события sidebar_category_*,
-// отказ в изменении). Пока запрос идёт, новые просьбы копятся в один повтор.
+// отказ в изменении). Пока запрос идёт, новые просьбы копятся в один повтор;
+// пока свои изменения не дошли до сервера, ответ устарел бы — ждём их.
 func (m *MainWindow) reloadCategories(team string) {
+	if m.catSaving[team] {
+		m.catReloadAfter[team] = true
+		return
+	}
 	if m.catLoading[team] > 0 {
 		m.catLoading[team] = 2
 		return
@@ -115,9 +154,12 @@ func (m *MainWindow) reloadCategories(team string) {
 		m.ui(func() {
 			again := m.catLoading[team] == 2
 			delete(m.catLoading, team)
-			if err != nil {
+			switch {
+			case m.catSaving[team]:
+				m.catReloadAfter[team] = true // пока ехал ответ, начали сохранять
+			case err != nil:
 				m.log.Warn("load sidebar categories", "team", team, "err", err)
-			} else {
+			default:
 				m.st.SetCategories(team, cats)
 				m.fillSidebar()
 			}

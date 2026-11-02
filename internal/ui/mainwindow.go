@@ -68,6 +68,9 @@ type MainWindow struct {
 	membersBtn     *qt.QToolButton // участники и их число — в шапке канала
 	memberCounts   map[string]int64
 	catLoading     map[string]int  // команда → 1 — категории грузятся, 2 — и после этого ещё раз
+	catSaving      map[string]bool // команда → изменения категорий в пути (categories.go)
+	catPending     map[string]map[string]*model.SidebarCategoryWithChannels
+	catReloadAfter map[string]bool // перечитать категории, когда сохранение закончится
 	statePath      string          // снимок для быстрого запуска (state.go); пусто — не писать
 	restore        *savedState     // снимок, из которого построить окно в Start
 	restored       bool            // окно построено из снимка
@@ -148,10 +151,13 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		players: map[string]*player{},
 		counts:  Counts{-1, -1},
 
-		manualUnread: map[string]bool{},
-		memberCounts: map[string]int64{},
-		catLoading:   map[string]int{},
-		retryNow:     make(chan struct{}, 1),
+		manualUnread:   map[string]bool{},
+		memberCounts:   map[string]int64{},
+		catLoading:     map[string]int{},
+		catSaving:      map[string]bool{},
+		catPending:     map[string]map[string]*model.SidebarCategoryWithChannels{},
+		catReloadAfter: map[string]bool{},
+		retryNow:       make(chan struct{}, 1),
 
 		initialChannel: initialChannel,
 	}

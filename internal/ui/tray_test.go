@@ -42,12 +42,12 @@ func TestTrayPixmap(t *testing.T) {
 				t.Errorf("trayLook(%+v) = %s %q %q, want %s %q %q", c.counts, color, text, what, c.color, c.text, c.what)
 			}
 		}
-		// По умолчанию — текст панели, «хорошо» и «опасно» темы; заданный цвет
-		// важнее, негодный — как не заданный.
-		if got := trayColors(config.Tray{}, false); got != (config.Tray{Idle: "#211d18", Unread: "#428731", Mentions: "#c13c36"}) {
+		// По умолчанию — текст панели, зелёный значка приложения и тёмный
+		// красный; заданный цвет важнее, негодный — как не заданный.
+		if got := trayColors(config.Tray{}, false); got != (config.Tray{Idle: "#211d18", Unread: appGreen, Mentions: "#a7332f"}) {
 			t.Errorf("light panel defaults %+v", got)
 		}
-		if got := trayColors(config.Tray{Unread: "#00ff00", Mentions: "кумач"}, true); got.Unread != "#00ff00" || got.Mentions != "#ea6b60" {
+		if got := trayColors(config.Tray{Unread: "#00ff00", Mentions: "кумач"}, true); got.Unread != "#00ff00" || got.Mentions != "#e54d43" {
 			t.Errorf("configured colors %+v", got)
 		}
 

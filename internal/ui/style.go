@@ -162,10 +162,13 @@ func dotPixmap(color string, size int) *qt.QPixmap {
 	return pm
 }
 
+// appGreen — плитка значка приложения; им же трей говорит о новых сообщениях.
+const appGreen = "#008a67"
+
 // appIconPixmap — иконка приложения, вариант 1b «Канал»: белое облачко с
 // зелёной решёткой на зелёной плитке (docs/design_handoff_matterqute/design/app-icon.dc.html).
 func appIconPixmap(size int) *qt.QPixmap {
-	const tile, glyph = "#008a67", "#fcfbf9"
+	const tile, glyph = appGreen, "#fcfbf9"
 	img := qt.NewQImage3(size*resourceDPR, size*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
 	img.SetDevicePixelRatio(resourceDPR)
 	img.Fill2(qt.Transparent)

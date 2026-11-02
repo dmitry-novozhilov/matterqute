@@ -97,8 +97,7 @@ type Feed struct {
 	spin        *spinner                // крутилка заглушки «Загружаем сообщения…»
 	videos      map[string]*inlineVideo // ролики, которые играют в ленте, по id файла
 	animSubs    map[string]func()       // подписки на кадры анимированных эмодзи: отписка по имени
-	placeTimer  *qt.QTimer              // поставить ролики и кнопку на места после правок документа
-	actions     *postActions            // «Ответить в треде» у поста под курсором
+	placeTimer  *qt.QTimer              // поставить ролики на места после правок документа
 	unsubscribe func()
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
@@ -140,19 +139,6 @@ func NewFeed(d FeedDeps) *Feed {
 	f.view.OnAnchorClicked(func(u *qt.QUrl) { f.onAnchor(u.ToString()) })
 	f.view.OnHighlighted(func(u *qt.QUrl) { f.onHover(u.ToString()) })
 	f.view.OnContextMenuEvent(func(_ func(*qt.QContextMenuEvent), e *qt.QContextMenuEvent) { f.contextMenu(e) })
-	f.actions = newPostActions(f)
-	f.view.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
-		super(e)
-		if e.Buttons() == qt.NoButton {
-			f.actions.hover(e.Pos())
-		} else {
-			f.actions.hide() // выделяют текст
-		}
-	})
-	f.view.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) {
-		super(e)
-		f.actions.hide()
-	})
 	f.view.OnCreateMimeDataFromSelection(f.copySelection)
 	f.view.OnResizeEvent(func(super func(*qt.QResizeEvent), e *qt.QResizeEvent) {
 		super(e)
@@ -165,12 +151,9 @@ func NewFeed(d FeedDeps) *Feed {
 	f.refit.OnTimeout(f.fitImages)
 	f.placeTimer = qt.NewQTimer2(f.view.QObject)
 	f.placeTimer.SetSingleShot(true)
-	f.placeTimer.OnTimeout(func() {
-		f.placeVideos()
-		f.actions.follow()
-	})
+	f.placeTimer.OnTimeout(f.placeVideos)
 	f.doc.OnContentsChanged(func() {
-		if len(f.videos) > 0 || f.actions.post != "" {
+		if len(f.videos) > 0 {
 			f.placeTimer.Start(0)
 		}
 	})
@@ -180,10 +163,7 @@ func NewFeed(d FeedDeps) *Feed {
 	})
 	f.bar = f.view.VerticalScrollBar()
 	f.bar.OnValueChanged(f.onScroll)
-	f.bar.OnValueChanged(func(int) {
-		f.placeVideos()
-		f.actions.follow()
-	})
+	f.bar.OnValueChanged(func(int) { f.placeVideos() })
 	f.bar.OnRangeChanged(f.onRange)
 	f.restyleRenderer()
 	f.unsubscribe = OnThemeChanged(f.restyle)
@@ -215,7 +195,6 @@ func (f *Feed) restyle() {
 	for _, v := range f.videos {
 		v.restyle()
 	}
-	f.actions.restyle()
 	f.renderAll()
 }
 
@@ -284,7 +263,6 @@ func (f *Feed) clearDoc() {
 	f.resources = map[string][2]int{}
 	f.pills = map[string]pill{}
 	f.hovered = ""
-	f.actions.hide()
 	f.doc.Clear()
 	f.doc.SetDocumentMargin(0)
 }
@@ -1129,12 +1107,17 @@ func (f *Feed) reactionsHTML(p *model.Post) string {
 	return b.String()
 }
 
-// threadHTML — под корнем треда в ленте канала: «3 ответа последний 08:35».
+// threadHTML — под корнем треда в ленте канала: «3 ответа последний 08:35»;
+// у сообщения, из которого тред ещё не начат, — «Ответить».
 func (f *Feed) threadHTML(p *model.Post) string {
-	if f.d.Thread || p.RootId != "" || p.ReplyCount == 0 {
+	if f.d.Thread || p.RootId != "" || p.IsSystemMessage() {
 		return ""
 	}
 	pal := Pal()
+	if p.ReplyCount == 0 {
+		return fmt.Sprintf(`<p style="margin-top:4px;margin-bottom:0"><a href="%s%s" style="text-decoration:none"><img src="%s" width="16" height="16">&nbsp;<span style="font-size:13px;color:%s">Ответить</span></a></p>`,
+			threadLink, p.Id, f.iconSrc("reply", pal.Tx2, 16), pal.Tx2)
+	}
 	last := ""
 	if p.LastReplyAt > 0 {
 		last = fmt.Sprintf(`&nbsp;&nbsp;<span style="font-size:13px;color:%s">последний %s</span>`, pal.Tx2, time.UnixMilli(p.LastReplyAt).Format("15:04"))
@@ -1344,8 +1327,7 @@ func (f *Feed) fileAndPost(id string) (*model.FileInfo, *model.Post) {
 	return nil, nil
 }
 
-// contextMenu — все действия с сообщением; при наведении — только кнопка
-// «Ответить в треде» (postActions).
+// contextMenu — все действия с сообщением: кнопок при наведении в ленте нет.
 func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	it := f.postAtY(e.Pos().Y())
 	menu := qt.NewQMenu(f.view.QWidget)
@@ -1514,7 +1496,6 @@ func newTextLabel(format qt.TextFormat) *qt.QLabel {
 func (f *Feed) onResize() {
 	f.pinToBottom()
 	f.placeVideos()
-	f.actions.follow()
 	if abs(f.view.Viewport().Width()-f.lastWidth) >= 24 {
 		f.refit.Start2()
 	}

@@ -108,12 +108,13 @@ func trayLook(c Counts, colors config.Tray) (color, text, what string) {
 	return colors.Idle, "", ""
 }
 
-// trayColors — цвета значка: заданные (если это цвет) или по умолчанию для
-// панели: текст панели, «хорошо» и «опасно» из темы.
+// trayColors — цвета значка: заданные (если это цвет) или по умолчанию: нового
+// нет — цвет текста панели, новые — зелёный значка приложения, сообщения мне —
+// «опасно» темы, но чуть темнее (у тёмной панели — #ea6b60 → #e54d43).
 func trayColors(c config.Tray, dark bool) config.Tray {
-	pal := theme.Light
+	pal, red := theme.Light, "#a7332f"
 	if dark {
-		pal = theme.Dark
+		pal, red = theme.Dark, "#e54d43"
 	}
 	pick := func(set, def string) string {
 		if set != "" && qt.NewQColor6(set).IsValid() {
@@ -123,8 +124,8 @@ func trayColors(c config.Tray, dark bool) config.Tray {
 	}
 	return config.Tray{
 		Idle:     pick(c.Idle, pal.Tx),
-		Unread:   pick(c.Unread, pal.Good),
-		Mentions: pick(c.Mentions, pal.Dang),
+		Unread:   pick(c.Unread, appGreen),
+		Mentions: pick(c.Mentions, red),
 	}
 }
 

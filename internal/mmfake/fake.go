@@ -156,6 +156,8 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("DELETE /api/v4/posts/{pid}", s.auth(s.deletePost))
 	s.mux.HandleFunc("POST /api/v4/commands/execute", s.auth(s.executeCommand))
 	s.mux.HandleFunc("POST /api/v4/posts/schedule", s.auth(s.createScheduled))
+	s.mux.HandleFunc("POST /api/v4/posts/search", s.auth(s.searchPosts))
+	s.mux.HandleFunc("POST /api/v4/teams/{tid}/posts/search", s.auth(s.searchPosts))
 	s.mux.HandleFunc("GET /api/v4/posts/scheduled/team/{tid}", s.auth(s.listScheduled))
 	s.mux.HandleFunc("DELETE /api/v4/posts/schedule/{id}", s.auth(s.deleteScheduled))
 	s.mux.HandleFunc("GET /api/v4/teams/{tid}/commands/autocomplete_suggestions", s.auth(s.commandSuggestions))

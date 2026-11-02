@@ -17,6 +17,7 @@ type header struct {
 	title *qt.QLabel
 	sub   *qt.QLabel
 	close *qt.QToolButton
+	row   *qt.QHBoxLayout
 }
 
 func newHeader(objectName string, closable bool, onLink func(string)) *header {
@@ -42,6 +43,7 @@ func newHeader(objectName string, closable bool, onLink func(string)) *header {
 	col.AddLayout(top.QLayout)
 	col.AddWidget(h.sub.QWidget)
 	row := qt.NewQHBoxLayout(h.f.QWidget)
+	h.row = row
 	row.SetContentsMargins(16, 6, 10, 6)
 	row.AddLayout2(col.QLayout, 1)
 	if closable {
@@ -51,6 +53,22 @@ func newHeader(objectName string, closable bool, onLink func(string)) *header {
 		row.AddWidget3(h.close.QWidget, 0, qt.AlignVCenter)
 	}
 	return h
+}
+
+// addTool — кнопка справа в шапке (перед «закрыть»): значок задаёт вызывающий.
+func (h *header) addTool(tip string, do func()) *qt.QToolButton {
+	b := qt.NewQToolButton2()
+	b.SetFixedSize2(28, 28)
+	b.SetIconSize(qt.NewQSize2(18, 18))
+	b.SetToolTip(tip)
+	b.SetFocusPolicy(qt.NoFocus)
+	b.OnClicked(do)
+	at := h.row.Count()
+	if h.close != nil {
+		at--
+	}
+	h.row.InsertWidget3(at, b.QWidget, 0, qt.AlignVCenter)
+	return b
 }
 
 // set: icon — иконка 16 px (nil — без неё), sub — HTML второй строки ("" — одна строка).

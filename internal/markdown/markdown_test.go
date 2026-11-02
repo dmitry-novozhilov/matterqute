@@ -123,3 +123,16 @@ func TestPlainText(t *testing.T) {
 		}
 	}
 }
+
+func TestHighlight(t *testing.T) {
+	r := New(Options{Highlight: []string{"отчёт", "deploy"}})
+	got := r.Render("Где **Отчёты** по Deploy-у? предотчёт и `отчёт` в коде")
+	for _, want := range []string{`">Отчёты</span>`, `">Deploy</span>`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no highlight %q in %s", want, got)
+		}
+	}
+	if strings.Contains(got, `">предотчёт`) || strings.Count(got, "<span style=\"background-color") != 2 {
+		t.Errorf("highlighted inside a word or in code: %s", got)
+	}
+}

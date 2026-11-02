@@ -62,6 +62,11 @@ type FeedDeps struct {
 	Assets        *Assets // nil — без картинок и кастомных эмодзи (тесты прокрутки)
 	ChannelExists func(name string) bool
 	LinkPreviews  func() bool // показывать предпросмотр ссылок; nil — да
+	// Search — лента результатов поиска: у каждого сообщения — где оно и
+	// «Перейти», без ссылок на треды и разделителей дней.
+	Search bool
+	// Where — «# backend», «# backend · в треде» для результатов поиска.
+	Where func(p *model.Post) string
 	// QuickReactions — эмодзи панели реакций у сообщения под курсором; nil — только «все реакции».
 	QuickReactions func() []string
 	// EmojiImage — эмодзи картинкой (кастомное догружается, потом done).
@@ -106,6 +111,7 @@ type Feed struct {
 	highlight   string                  // id поста, к которому перешли по ссылке: подсвечен
 	unhighlight *qt.QTimer
 	quick       *quickBar // реакции у поста под курсором
+	marks       []string  // подсвечиваемые слова (результаты поиска)
 	unsubscribe func()
 
 	stick          bool // лента у нижнего края: новые посты её прокручивают
@@ -220,7 +226,14 @@ func (f *Feed) dispose() {
 }
 
 func (f *Feed) restyleRenderer() {
-	f.md = markdown.New(markdown.Options{Me: f.d.Me.Username, ChannelExists: f.d.ChannelExists, CustomEmoji: f.customEmoji, Palette: Pal()})
+	f.md = markdown.New(markdown.Options{Me: f.d.Me.Username, ChannelExists: f.d.ChannelExists, CustomEmoji: f.customEmoji, Palette: Pal(),
+		Highlight: f.marks})
+}
+
+// SetMarks — что подсвечивать в тексте (слова запроса поиска).
+func (f *Feed) SetMarks(terms []string) {
+	f.marks = terms
+	f.restyleRenderer()
 }
 
 // restyle — смена темы: цвета в HTML и картинках рисует код, их надо пересоздать.
@@ -524,6 +537,14 @@ func (f *Feed) ScrollToPost(id string) {
 	f.stick, f.keepFromBottom = f.bar.Value() >= f.bar.Maximum()-4, -1
 }
 
+// ScrollToTop — к началу ленты (результаты поиска: новые сверху).
+func (f *Feed) ScrollToTop() {
+	f.stick, f.keepFromBottom = false, -1
+	f.programmatic = true
+	f.bar.SetValue(0)
+	f.programmatic = false
+}
+
 // Highlight подсвечивает пост на несколько секунд: к нему перешли по ссылке.
 func (f *Feed) Highlight(id string) {
 	prev := f.highlight
@@ -779,7 +800,7 @@ func frameFormat() *qt.QTextFrameFormat {
 // новый день, системный пост, отметка «Новые сообщения», первый ответ в треде.
 func (f *Feed) startsGroup(i int) bool {
 	p := f.items[i].post
-	if i == 0 || p.Id == f.newMarker || (f.d.Thread && i == 1) {
+	if i == 0 || f.d.Search || p.Id == f.newMarker || (f.d.Thread && i == 1) {
 		return true
 	}
 	return !continues(f.items[i-1].post, p)
@@ -789,7 +810,10 @@ func (f *Feed) postHTML(i int) string {
 	pal := Pal()
 	p := f.items[i].post
 	var b strings.Builder
-	if (i == 0 && !f.d.Thread) || (i > 0 && !sameDay(f.items[i-1].post.CreateAt, p.CreateAt)) {
+	switch {
+	case f.d.Search:
+		b.WriteString(f.whereHTML(p))
+	case (i == 0 && !f.d.Thread) || (i > 0 && !sameDay(f.items[i-1].post.CreateAt, p.CreateAt)):
 		b.WriteString(f.separatorHTML(dayLabel(p.CreateAt, time.Now()), pal.Tx2, pal.Line, false))
 	}
 	if p.Id == f.newMarker {
@@ -830,6 +854,19 @@ func (f *Feed) postHTML(i int) string {
 		b.WriteString(f.separatorHTML(pluralReplies(int64(len(f.items)-1)), pal.Tx2, pal.Line, false))
 	}
 	return b.String()
+}
+
+// whereHTML — над результатом поиска: где и когда, «Перейти» к нему.
+func (f *Feed) whereHTML(p *model.Post) string {
+	pal := Pal()
+	where := ""
+	if f.d.Where != nil {
+		where = f.d.Where(p)
+	}
+	return fmt.Sprintf(`<table width="100%%" cellspacing="0" cellpadding="0" style="margin-top:10px"><tr>`+
+		`<td style="padding-left:16px;font-size:12px;color:%s">%s · %s</td>`+
+		`<td align="right" style="padding-right:%dpx;font-size:12px"><a href="%s%s:%s" style="color:%s;text-decoration:none">Перейти</a></td></tr></table>`,
+		pal.Tx2, html.EscapeString(where), html.EscapeString(dayLabel(p.CreateAt, time.Now())), feedPadRight, permalinkLink, p.ChannelId, p.Id, pal.Acc)
 }
 
 // separatorHTML — служебная строка с линией: разделитель дней, «N ответов»
@@ -905,7 +942,7 @@ func (f *Feed) authorHTML(p *model.Post) string {
 
 // replyHTML — без свёрнутых тредов над ответом в ленте канала: «↳ Ответ в треде».
 func (f *Feed) replyHTML(p *model.Post) string {
-	if f.d.Thread || p.RootId == "" {
+	if f.d.Thread || f.d.Search || p.RootId == "" {
 		return ""
 	}
 	pal := Pal()
@@ -1186,7 +1223,7 @@ func (f *Feed) reactionsHTML(p *model.Post) string {
 // threadHTML — под корнем треда в ленте канала: «3 ответа последний 08:35»;
 // у сообщения, из которого тред ещё не начат, — «Ответить».
 func (f *Feed) threadHTML(p *model.Post) string {
-	if f.d.Thread || p.RootId != "" || p.IsSystemMessage() {
+	if f.d.Thread || f.d.Search || p.RootId != "" || p.IsSystemMessage() {
 		return ""
 	}
 	pal := Pal()

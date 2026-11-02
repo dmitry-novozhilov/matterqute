@@ -25,6 +25,7 @@ const threadIDRole = int(qt.UserRole) + 2
 type ThreadPanel struct {
 	w           *qt.QWidget
 	head        *header
+	back        *qt.QToolButton // «к результатам поиска», когда тред открыли из них
 	feed        *Feed
 	composer    *Composer
 	unsubscribe func()
@@ -83,7 +84,8 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 	m.panel.head.set(nil, m.threadTitleHTML(t), "")
 	m.panel.feed.Loading()
 	m.panel.feed.OnRetry = func() { m.openThread(rootID) }
-	m.panel.w.SetVisible(true)
+	m.panel.back.SetVisible(m.search.query != "")
+	m.showRight(m.panel.w)
 	m.panel.composer.SetEnabled(false)
 	m.panel.composer.SwitchTo(rootID)
 	crt := m.st.CRT()

@@ -52,6 +52,8 @@ type MainWindow struct {
 	schedRows    *qt.QVBoxLayout
 	schedDialog  *dialog // «Отправить позже» / «Перенести»
 	sched        *scheduler
+	search       *searchPanel    // поиск по сообщениям — в правой колонке
+	searchBtn    *qt.QToolButton // лупа в шапке канала
 	threadsHead  *header
 	threadsList  *qt.QListWidget
 	panel        *ThreadPanel
@@ -239,6 +241,22 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	deps.Thread = true
 	m.panel = NewThreadPanel(deps, m.closeThread)
 	m.wireFeed(m.panel.feed)
+	sdeps := deps
+	sdeps.Where = m.postWhere
+	m.search = newSearchPanel(sdeps, m.closeSearch, m.runSearch)
+	m.wireFeed(m.search.feed)
+	m.search.feed.OnOpenThread = m.openThread
+	m.panel.back = m.panel.head.addTool("К результатам поиска", func() {
+		m.closeThread()
+		m.showRight(m.search.w)
+	})
+	m.panel.back.SetVisible(false)
+	m.searchBtn = m.head.addTool("Поиск по сообщениям (Ctrl+F)", m.openSearch)
+	find := qt.NewQAction5("Поиск", m.w.QObject)
+	find.SetShortcut(qt.NewQKeySequence2("Ctrl+F"))
+	find.SetShortcutContext(qt.WidgetWithChildrenShortcut)
+	find.OnTriggered(m.openSearch)
+	m.w.AddAction(find)
 	m.panel.composer.OnSend = m.sendReply
 	m.panel.composer.OnEdit = m.saveEdit(m.panel.feed)
 	m.panel.composer.OnEditLast = func() { m.editLast(m.panel.feed) }
@@ -271,10 +289,12 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.split.AddWidget(m.sidebar.QWidget)
 	m.split.AddWidget(m.center.QWidget)
 	m.split.AddWidget(m.panel.w)
+	m.split.AddWidget(m.search.w)
 	m.split.SetStretchFactor(1, 1)
 	m.sidebar.SetMinimumWidth(sidebarMin)
 	m.sidebar.SetMaximumWidth(sidebarMax)
 	m.panel.w.SetMinimumWidth(threadMin)
+	m.search.w.SetMinimumWidth(threadMin)
 	m.SetColumns(0, 0)
 	// splitterMoved идёт на каждый пиксель перетаскивания: сохраняем, когда
 	// разделитель отпустили.
@@ -289,8 +309,11 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.split.OnSplitterMoved(func(int, int) {
 		sizes := m.split.Sizes()
 		m.columns.sidebar = sizes[0]
-		if m.panel.w.IsVisible() {
+		switch {
+		case m.panel.w.IsVisible():
 			m.columns.thread = sizes[2]
+		case m.search.w.IsVisible():
+			m.columns.thread = sizes[3]
 		}
 		m.saveColumns.Start2()
 	})
@@ -346,6 +369,7 @@ func (m *MainWindow) Close() {
 	// из аккаунта иначе полезет в удалённые объекты.
 	m.unsubscribe()
 	m.panel.dispose()
+	m.search.dispose()
 	m.feed.dispose()
 	m.composer.dispose()
 	for _, pl := range m.players {
@@ -361,6 +385,8 @@ func (m *MainWindow) Close() {
 // restyle — смена темы: иконки и цвета, нарисованные кодом.
 func (m *MainWindow) restyle() {
 	m.banner.restyle()
+	m.searchBtn.SetIcon(icon("search", Pal().Tx2, 18))
+	m.panel.back.SetIcon(icon("arrow-left", Pal().Tx2, 18))
 	m.refreshHeader()
 	m.sidebar.DoItemsLayout() // шрифт сайдбара мог поменяться — с ним высота строк
 	m.sidebar.Viewport().Update()

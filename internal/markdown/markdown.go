@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -46,6 +47,9 @@ type Options struct {
 	CustomEmoji func(name string) string
 	// Palette — цвета темы для упоминаний, кода, цитат, таблиц; пусто — светлая.
 	Palette theme.Palette
+	// Highlight — что подсветить (результаты поиска): слова, начинающиеся с
+	// одного из этих (без учёта регистра) — поиск Mattermost находит и формы слова.
+	Highlight []string
 }
 
 // Renderer не потокобезопасен: держите по одному на поток (у нас — главный).
@@ -210,11 +214,50 @@ func (r *qtRenderer) writeEntities(w util.BufWriter, value []byte) {
 		if out == "" {
 			continue
 		}
-		r.Writer.Write(w, value[last:start])
+		r.writeMarked(w, value[last:start])
 		w.WriteString(out)
 		last = end
 	}
-	r.Writer.Write(w, value[last:])
+	r.writeMarked(w, value[last:])
+}
+
+// writeMarked — обычный текст; слова, начинающиеся с искомых (Highlight), —
+// на фоне подсветки.
+func (r *qtRenderer) writeMarked(w util.BufWriter, value []byte) {
+	if len(r.o.Highlight) == 0 {
+		r.Writer.Write(w, value)
+		return
+	}
+	text := []rune(string(value))
+	lower := []rune(strings.ToLower(string(value)))
+	if len(lower) != len(text) {
+		r.Writer.Write(w, value) // редкие буквы меняют длину в нижнем регистре — без подсветки
+		return
+	}
+	word := func(c rune) bool { return unicode.IsLetter(c) || unicode.IsDigit(c) }
+	start := 0
+	for i := 0; i < len(text); i++ {
+		if i > 0 && word(text[i-1]) {
+			continue
+		}
+		for _, h := range r.o.Highlight {
+			term := []rune(strings.ToLower(h))
+			if len(term) == 0 || len(term) > len(lower)-i || string(lower[i:i+len(term)]) != string(term) {
+				continue
+			}
+			end := i + len(term)
+			for end < len(text) && word(text[end]) {
+				end++
+			}
+			r.Writer.Write(w, []byte(string(text[start:i])))
+			fmt.Fprintf(w, `<span style="background-color:%s;color:%s">`, r.o.Palette.MenBg, r.o.Palette.MenTx)
+			r.Writer.Write(w, []byte(string(text[i:end])))
+			w.WriteString("</span>")
+			start, i = end, end-1
+			break
+		}
+	}
+	r.Writer.Write(w, []byte(string(text[start:])))
 }
 
 func (r *qtRenderer) mention(name string) string {

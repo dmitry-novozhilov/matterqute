@@ -84,9 +84,9 @@ func TestAttachments(t *testing.T) {
 			{Title: "host", Value: "db-2", Short: true}, {Title: "severity", Value: "critical", Short: true},
 			{Title: "runbook", Value: "https://wiki/disk"},
 		},
-	}, {Color: `#fff" onclick="x`, Fallback: "только fallback <b>"}})
+	}, {Color: `#fff" onclick="x`, Fallback: "только fallback <b>"}}, 640)
 	for _, w := range []string{
-		"Алерт", `<td width="4" bgcolor="#c13c36">`, `<p style="margin:0;font-weight:600"><a href="https://grafana.example.com/d/1">DiskSpaceLow</a></p>`,
+		"Алерт", `<td width="640">`, `<td width="4" bgcolor="#c13c36">`, `<p style="margin:0;font-weight:600"><a href="https://grafana.example.com/d/1">DiskSpaceLow</a></p>`,
 		"<strong>db-2</strong>: свободно 3%", `width="50%" valign="top" style="padding-bottom:4px"><span style="font-size:12px;font-weight:600;color:#5f5a53">host</span>`,
 		`<td colspan="2" valign="top" style="padding-bottom:4px"><span style="font-size:12px;font-weight:600;color:#5f5a53">runbook</span>`,
 		"Grafana", `<td width="4" bgcolor="#bcb6b0">`, "только fallback &lt;b&gt;",

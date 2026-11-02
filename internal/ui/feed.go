@@ -663,6 +663,10 @@ func (f *Feed) post(id string) *model.Post {
 	return nil
 }
 
+// attachmentMax — ширина вложения интеграции (Grafana и т. п.) не больше этой:
+// по колонке ленты, а на широком окне строки не растягиваются бесконечно.
+const attachmentMax = 800
+
 // highlightFor — сколько держится подсветка поста, к которому перешли, мс.
 const highlightFor = 4000
 
@@ -981,7 +985,7 @@ func (f *Feed) bodyHTML(p *model.Post) string {
 			body += `<p style="margin:0">` + edited + `</p>`
 		}
 	}
-	return body + f.md.Attachments(p.Attachments())
+	return body + f.md.Attachments(p.Attachments(), min(f.columnWidth(), attachmentMax))
 }
 
 // jumboEmoji — сообщение из одних эмодзи (до восьми) показываем крупно.
@@ -1663,7 +1667,8 @@ func (f *Feed) fitImages() {
 	f.lastWidth = w
 	f.edit(func() {
 		for i, it := range f.items {
-			if it.post.Metadata != nil && (len(it.post.Metadata.Embeds) > 0 ||
+			// Картинки, видео и вложения интеграций — по ширине колонки.
+			if len(it.post.Attachments()) > 0 || it.post.Metadata != nil && (len(it.post.Metadata.Embeds) > 0 ||
 				slices.ContainsFunc(it.post.Metadata.Files, func(fi *model.FileInfo) bool { return isImage(fi) || isVideo(fi) })) {
 				f.render(i)
 			}

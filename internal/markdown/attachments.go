@@ -24,19 +24,20 @@ func (r *Renderer) attachmentColor(c string) string {
 }
 
 // Attachments рисует вложения интеграций (props.attachments, «Slack-вложения»):
-// так шлют сообщения боты вроде Grafana, и без этого их посты пустые.
-func (r *Renderer) Attachments(atts []*model.MessageAttachment) string {
+// так шлют сообщения боты вроде Grafana, и без этого их посты пустые. width —
+// ширина карточки в пикселях (по колонке ленты).
+func (r *Renderer) Attachments(atts []*model.MessageAttachment, width int) string {
 	var b strings.Builder
 	for _, a := range atts {
 		if a.Pretext != "" {
 			b.WriteString(r.Render(a.Pretext))
 		}
-		// width="520" у таблицы внутри ячейки поста Qt не соблюдает и растягивает
-		// её на всю ленту; ширину держит ячейка внешней таблицы с пустой соседкой.
-		fmt.Fprintf(&b, `<table cellspacing="0" cellpadding="0" style="margin-top:6px;margin-bottom:2px"><tr><td width="520">`+
+		// width у таблицы внутри ячейки поста Qt не соблюдает и растягивает её на
+		// всю ленту; ширину держит ячейка внешней таблицы с пустой соседкой.
+		fmt.Fprintf(&b, `<table cellspacing="0" cellpadding="0" style="margin-top:6px;margin-bottom:2px"><tr><td width="%d">`+
 			`<table cellspacing="0" cellpadding="0" width="100%%"><tr>`+
 			`<td width="4" bgcolor="%s"></td><td bgcolor="%s" style="padding-top:8px;padding-left:12px;padding-right:12px;padding-bottom:10px">`,
-			r.attachmentColor(a.Color), r.pal.Surf2)
+			width, r.attachmentColor(a.Color), r.pal.Surf2)
 		body := r.attachmentBody(a)
 		if body == "" {
 			body = html.EscapeString(a.Fallback)

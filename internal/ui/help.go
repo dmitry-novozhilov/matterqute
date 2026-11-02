@@ -28,6 +28,10 @@ type helpWindow struct {
 // buildHelpMenu — меню «Справка»: статьи и «О программе».
 func (s *Shell) buildHelpMenu() {
 	menu := s.w.MenuBar().AddMenuWithTitle("Сп&равка")
+	keys := menu.QWidget.AddActionWithText("Сочетания клавиш")
+	keys.SetShortcut(qt.NewQKeySequence2("Ctrl+/"))
+	keys.OnTriggered(s.showShortcuts)
+	menu.AddSeparator()
 	for _, a := range help.Articles() {
 		act := menu.QWidget.AddActionWithText(a.Title + "…")
 		act.OnTriggered(func() { s.showHelp(a.Name) })

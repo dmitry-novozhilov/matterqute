@@ -46,6 +46,7 @@ type Shell struct {
 	alertAct   *qt.QAction    // «Вид → Мигать на панели задач»
 	spellAct   *qt.QAction    // «Вид → Проверка орфографии»
 	help       *helpWindow    // окно справки; nil — не открывали
+	shortcuts  *qt.QWidget    // окно «Сочетания клавиш»; nil — закрыто
 	about      *dialog        // «О программе»
 	serverMenu *qt.QMenu
 

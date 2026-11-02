@@ -27,7 +27,8 @@ func TestHelpMenu(t *testing.T) {
 				}
 			}
 		}
-		if want := help.Articles()[0].Title + "…"; len(menu) != len(help.Articles())+1 || menu[0] != want || menu[len(menu)-1] != "О программе…" {
+		// Сочетания клавиш, статьи, «О программе».
+		if want := help.Articles()[0].Title + "…"; len(menu) != len(help.Articles())+2 || menu[0] != "Сочетания клавиш" || menu[1] != want || menu[len(menu)-1] != "О программе…" {
 			t.Errorf("help menu %q", menu)
 		}
 

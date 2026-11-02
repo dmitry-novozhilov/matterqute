@@ -7,11 +7,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"matterqute/internal/markdown"
 	"matterqute/internal/mm"
 	"matterqute/internal/mmfake"
 	"matterqute/internal/store"
@@ -202,4 +205,40 @@ func TestPostsOfThreadOrder(t *testing.T) {
 	if ps := store.PostsOf(list); ps[0].Id != "root" || ps[2].Id != "r2" {
 		t.Errorf("thread order: %s..%s", ps[0].Id, ps[2].Id)
 	}
+}
+
+// В списке тредов первая строка корня — с оформлением, без markdown-символов.
+func TestThreadPreviewMarkdown(t *testing.T) {
+	_, s := startFake(t, model.CollapsedThreadsAlwaysOn)
+	onMain(func() {
+		m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
+		defer m.Close()
+		root := openTown(t, m)
+		if root == nil {
+			return
+		}
+		m.selectChannel(threadsID)
+		th := m.st.Thread(root.Id)
+		if !waitFor(t, "threads list", func() bool { return m.threadsList.Count() == 1 }) || th == nil || th.Post == nil {
+			return
+		}
+		// Засеянный корень — простым текстом; подменяем на разметку.
+		th.Post.Message = "**Релиз** `v2.1` готов :+1: — [заметки](https://example.com/notes) и очень длинный хвост, который в строку списка тредов никак не влезет"
+		got := markdown.PreviewLine(th.Post.Message, markdown.Options{Palette: Pal()})
+		if !strings.Contains(got, "<strong>Релиз</strong>") || strings.Contains(got, "**") || !strings.Contains(got, "👍") {
+			t.Errorf("thread preview %q", got)
+		}
+		m.threadsList.Viewport().Update()
+		shot(t, m, "threads-markdown")
+
+		// Не влезает — обрезано с «…», оформление в начале цело.
+		doc := richLineDoc(got, 160, pixelFont(14, qt.QFont__Normal))
+		defer doc.Delete()
+		if text := doc.ToPlainText(); doc.IdealWidth() > 160 || !strings.HasPrefix(text, "Релиз") || !strings.HasSuffix(text, "…") {
+			t.Errorf("elided preview %q, %.0f px wide", text, doc.IdealWidth())
+		}
+		if html := doc.ToHtml(); !strings.Contains(html, "font-weight") {
+			t.Error("elided preview lost the bold")
+		}
+	})
 }

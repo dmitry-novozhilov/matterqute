@@ -11,6 +11,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"matterqute/internal/markdown"
 	"matterqute/internal/store"
 )
 
@@ -330,7 +331,7 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 		} else {
 			head += m.st.Username(root.UserId)
 		}
-		msg = firstLine(root.Message, 200)
+		msg = markdown.PreviewLine(root.Message, markdown.Options{Me: m.s.Me.Username, Palette: pal})
 	}
 	timeW := text(time.UnixMilli(t.LastReplyAt).Format("15:04"), x, y+10, w, 16, mono, pal.Tx2, qt.AlignRight)
 	text(head, x, y+10, w-timeW-8, 16, small, pal.Tx2, qt.AlignLeft)
@@ -338,7 +339,7 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 	if unread {
 		weight = qt.QFont__DemiBold
 	}
-	text(msg, x, y+28, w, 22, pixelFont(14, weight), pal.Tx, qt.AlignLeft)
+	drawRichLine(p, msg, x, y+28, w, 22, pixelFont(14, weight))
 
 	meta, metaColor := pluralReplies(t.ReplyCount)+" · последний "+time.UnixMilli(t.LastReplyAt).Format("15:04"), pal.Tx2
 	mx := x
@@ -379,6 +380,50 @@ func firstLine(s string, n int) string {
 		return s + " …"
 	}
 	return s
+}
+
+// drawRichLine — строка rich (HTML с оформлением — жирный, код, ссылки,
+// эмодзи) в прямоугольнике x, y, w×h, по вертикали по центру. Цвет текста —
+// из палитры приложения.
+func drawRichLine(p *qt.QPainter, rich string, x, y, w, h int, f *qt.QFont) {
+	if rich == "" {
+		return
+	}
+	doc := richLineDoc(rich, w, f)
+	defer doc.Delete()
+	p.Save()
+	p.Translate2(float64(x), float64(y)+(float64(h)-doc.Size().Height())/2)
+	doc.DrawContents2(p, qt.NewQRectF4(0, 0, float64(w), float64(h)))
+	p.Restore()
+}
+
+// richLineDoc — документ из rich в одну строку не шире w: не влезает —
+// обрезан с «…» (оформление до обреза остаётся).
+func richLineDoc(rich string, w int, f *qt.QFont) *qt.QTextDocument {
+	doc := qt.NewQTextDocument()
+	doc.SetDefaultFont(f)
+	doc.SetDocumentMargin(0)
+	doc.SetDefaultStyleSheet(fmt.Sprintf("a { color: %s; text-decoration: none; }", Pal().Acc))
+	opt := doc.DefaultTextOption()
+	opt.SetWrapMode(qt.QTextOption__NoWrap)
+	doc.SetDefaultTextOption(opt)
+	doc.SetHtml(rich)
+	if doc.IdealWidth() <= float64(w) {
+		return doc
+	}
+	const ell = "…"
+	at := float64(w - qt.NewQFontMetrics(f).HorizontalAdvance(ell))
+	pos := doc.DocumentLayout().HitTest(qt.NewQPointF3(at, doc.Size().Height()/2), qt.FuzzyHit)
+	cur := qt.NewQTextCursor2(doc)
+	for ; pos > 0; pos-- {
+		cur.SetPosition(pos)
+		cur.MovePosition2(qt.QTextCursor__End, qt.QTextCursor__KeepAnchor)
+		cur.InsertText(ell)
+		if doc.IdealWidth() <= float64(w) {
+			break
+		}
+	}
+	return doc
 }
 
 // threadPostAuthors — авторы корней тредов, чтобы показать их имена.

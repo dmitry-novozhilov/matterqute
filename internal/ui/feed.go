@@ -124,6 +124,7 @@ type Feed struct {
 	OnRemovePreview  func(p *model.Post)               // автор убирает предпросмотр ссылки
 	OnEditPost       func(p *model.Post)               // «Изменить» своё сообщение
 	OnDeletePost     func(p *model.Post)               // «Удалить…» своё сообщение
+	OnCopyLink       func(p *model.Post)               // «Копировать ссылку на сообщение»
 	OnLink           func(url string)                  // клик по ссылке в тексте
 	OnIntegration    func(p *model.Post)               // клик по имени или аватару интеграции
 	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
@@ -1454,6 +1455,10 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 		menu.AddSeparator()
 		ct := menu.QWidget.AddActionWithText("Копировать текст сообщения")
 		ct.OnTriggered(func() { qt.QGuiApplication_Clipboard().SetText(p.Message) })
+		if !p.IsSystemMessage() && f.OnCopyLink != nil {
+			pl := menu.QWidget.AddActionWithText("Копировать ссылку на сообщение")
+			pl.OnTriggered(func() { f.OnCopyLink(p) })
+		}
 	} else {
 		menu.AddSeparator()
 	}

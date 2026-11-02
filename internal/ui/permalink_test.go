@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/config"
@@ -80,6 +81,23 @@ func TestPermalinks(t *testing.T) {
 			ch := m.st.Channel(m.current)
 			return ch != nil && ch.Type == model.ChannelTypeDirect && m.st.DMPeer(ch) == m.st.UserByName("carol").Id
 		})
+
+		// «Копировать ссылку на сообщение» — ссылка как у веб-клиента, и она ведёт сюда же.
+		var inDM *model.Post // открыта личка с carol: у её постов команды нет
+		if ch := m.st.Channel(m.current); ch != nil {
+			inDM = &model.Post{Id: model.NewId(), ChannelId: ch.Id}
+		}
+		m.copyPostLink(&model.Post{Id: reply, ChannelId: town})
+		if got, want := qt.QGuiApplication_Clipboard().Text(), link("/dev/pl/"+reply); got != want {
+			t.Errorf("copied %q, want %q", got, want)
+		}
+		if inDM != nil {
+			if got := m.postLink(inDM); got != link("/"+m.st.Teams()[0].Name+"/pl/"+inDM.Id) {
+				t.Errorf("DM post link %q", got)
+			}
+		}
+		m.handleLink(qt.QGuiApplication_Clipboard().Text())
+		waitFor(t, "copied link opens the reply", func() bool { return m.current == town && m.panel.feed.highlight == reply })
 
 		// Путь своего сервера, который приложение не открывает, — не его дело.
 		if path, ok := m.ownPath(link("/admin_console")); !ok || m.openServerPath(path) {

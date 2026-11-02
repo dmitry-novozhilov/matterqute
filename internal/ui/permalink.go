@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
@@ -24,6 +25,31 @@ var (
 
 // revealPages — сколько старых страниц ленты догружать в поисках сообщения.
 const revealPages = 50
+
+// postLink — ссылка на сообщение, как у веб-клиента: адрес сервера/команда/pl/id.
+// У личек команды нет — подходит любая, берём первую.
+func (m *MainWindow) postLink(p *model.Post) string {
+	team := ""
+	if ch := m.st.Channel(p.ChannelId); ch != nil {
+		team = ch.TeamId
+	}
+	if team == "" {
+		team = m.teamOf("")
+	}
+	name := ""
+	for _, t := range m.st.Teams() {
+		if t.Id == team {
+			name = t.Name
+		}
+	}
+	return strings.TrimSuffix(m.s.ServerURL, "/") + "/" + name + "/pl/" + p.Id
+}
+
+// copyPostLink — «Копировать ссылку на сообщение»: в буфер обмена.
+func (m *MainWindow) copyPostLink(p *model.Post) {
+	qt.QGuiApplication_Clipboard().SetText(m.postLink(p))
+	m.message("Ссылка на сообщение скопирована")
+}
 
 // ownPath — путь ссылки link на этом сервере (http(s) или mattermost:// с его
 // адресом, или путь без адреса); false — ссылка не на него.

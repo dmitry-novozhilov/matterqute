@@ -78,8 +78,8 @@ func (m *MainWindow) applyEphemeral(p *model.Post) {
 	}
 	if tl := m.st.Timeline(p.ChannelId); tl != nil && tl.Loaded && (p.RootId == "" || !m.st.CRT()) {
 		tl.Upsert(p)
-		if p.ChannelId == m.current {
-			m.feed.Upsert(p)
+		if f := m.feeds[p.ChannelId]; f != nil {
+			f.Upsert(p)
 		}
 	}
 	if t := m.thread; t != nil && p.RootId == t.rootID && t.tl.Loaded {

@@ -11,6 +11,7 @@ type Timeline struct {
 	Posts   []*model.Post // от старых к новым
 	HasMore bool          // на сервере есть посты старше Posts[0]
 	Loaded  bool          // первая страница пришла; до этого в Posts только посты из WebSocket
+	Stale   bool          // был обрыв связи: события могли потеряться, сверить с сервером (Sync)
 }
 
 // PostsOf раскладывает PostList (Order — от новых к старым) в порядке от
@@ -108,4 +109,46 @@ func (t *Timeline) index(id string) int {
 		}
 	}
 	return -1
+}
+
+// Sync сверяет загруженное со свежей последней страницей с сервера (после
+// обрыва связи): новые и изменённые посты заменяются, а те, что в её
+// промежутке времени, но в ней нет, — удалены. Старше страницы — не трогаем.
+// Возвращает, что поменялось: ленте на экране перерисовать только это.
+func (t *Timeline) Sync(page []*model.Post, hasMore bool) (changed, removed []*model.Post) {
+	fresh := make(map[string]bool, len(page))
+	for _, p := range page {
+		fresh[p.Id] = true
+		if old := t.Get(p.Id); old == nil || differs(old, p) {
+			t.Upsert(p)
+			changed = append(changed, p)
+		}
+	}
+	from := int64(0) // пустая страница — в канале ничего не осталось
+	if len(page) > 0 {
+		from = page[0].CreateAt
+	}
+	for _, p := range slices.Clone(t.Posts) {
+		if p.CreateAt >= from && !fresh[p.Id] {
+			t.Remove(p.Id)
+			removed = append(removed, p)
+		}
+	}
+	if len(t.Posts) == 0 || (len(page) > 0 && t.Posts[0].Id == page[0].Id) {
+		t.HasMore = hasMore // старше страницы ничего не загружено
+	}
+	t.Stale = false
+	return changed, removed
+}
+
+// differs — пост на сервере не тот, что у нас: правка, реакции, ответы, закрепление.
+func differs(a, b *model.Post) bool {
+	reactions := func(p *model.Post) int {
+		if p.Metadata == nil {
+			return 0
+		}
+		return len(p.Metadata.Reactions)
+	}
+	return a.UpdateAt != b.UpdateAt || a.EditAt != b.EditAt || a.Message != b.Message || a.IsPinned != b.IsPinned ||
+		a.ReplyCount != b.ReplyCount || a.LastReplyAt != b.LastReplyAt || reactions(a) != reactions(b)
 }

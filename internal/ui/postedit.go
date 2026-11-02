@@ -127,12 +127,12 @@ func (m *MainWindow) applyDeleted(p *model.Post) {
 	if !first {
 		return
 	}
-	if p.ChannelId == m.current {
+	if f := m.feeds[p.ChannelId]; f != nil {
 		if removed {
-			m.feed.Remove(p.Id)
+			f.Remove(p.Id)
 		}
-		if root != nil && m.feed.Has(root.Id) {
-			m.feed.Upsert(root)
+		if root != nil && f.Has(root.Id) {
+			f.Upsert(root)
 		}
 	}
 	if t := m.thread; t != nil {

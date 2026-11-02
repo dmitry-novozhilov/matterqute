@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -26,6 +27,7 @@ type Assets struct {
 
 	waiting map[string][]func()
 	failed  map[string]error // не грузим повторно до Retry
+	jobs    sync.WaitGroup   // загрузки в фоне: пишут в каталог кэша
 
 	anims   map[string]*emojiAnim // анимированные кастомные эмодзи
 	nextSub int
@@ -95,12 +97,27 @@ func (a *Assets) WantIcon(rawURL string, done func()) {
 
 // Download качает вложение целиком; done получает путь на диске.
 func (a *Assets) Download(fi *model.FileInfo, done func(path string, err error)) {
-	go func() {
+	a.jobs.Go(func() {
 		ctx, cancel := context.WithTimeout(a.ctx, 10*time.Minute)
 		defer cancel()
 		path, err := a.c.FetchFile(ctx, fi)
 		a.ui(func() { done(path, err) })
+	})
+}
+
+// wait — окно закрыто (контекст загрузок отменён): дождаться, пока они
+// выйдут, не дольше d, чтобы после закрытия в каталог кэша никто не писал.
+func (a *Assets) wait(d time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		a.jobs.Wait()
+		close(done)
 	}()
+	select {
+	case <-done:
+	case <-time.After(d):
+		a.log.Warn("asset downloads still running after close", "waited", d)
+	}
 }
 
 // Later выполняет f в главном потоке после текущих событий.
@@ -125,7 +142,7 @@ func (a *Assets) want(key string, done func(), fetch func(context.Context) error
 		return
 	}
 	a.waiting[key] = []func(){done}
-	go func() {
+	a.jobs.Go(func() {
 		ctx, cancel := context.WithTimeout(a.ctx, time.Minute)
 		defer cancel()
 		err := fetch(ctx)
@@ -143,7 +160,7 @@ func (a *Assets) want(key string, done func(), fetch func(context.Context) error
 				f()
 			}
 		})
-	}()
+	})
 }
 
 // isImage — вложение показываем картинкой (превью есть у растровых картинок).

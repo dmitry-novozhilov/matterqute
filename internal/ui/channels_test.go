@@ -144,5 +144,8 @@ func TestChannels(t *testing.T) {
 		m.confirmLeave(created)
 		labelled(m.channelDialog.w.QObject, "Покинуть").Click()
 		waitFor(t, "left", func() bool { return m.items[created] == nil && m.current == town })
+		if m.feeds[created] != nil {
+			t.Error("feed of the left channel is still kept")
+		}
 	})
 }

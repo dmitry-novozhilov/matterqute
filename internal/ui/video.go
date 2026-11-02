@@ -59,6 +59,9 @@ func (a *Assets) WantVideo(fi *model.FileInfo, done func()) {
 			return
 		}
 		probeVideo(path, func(img *qt.QImage, duration int64, err error) {
+			if a.ctx.Err() != nil {
+				return // окно закрыто, пока разбирали: в кэш больше не пишем
+			}
 			if err != nil {
 				finish(fmt.Errorf("%s: %w", fi.Name, err))
 				return

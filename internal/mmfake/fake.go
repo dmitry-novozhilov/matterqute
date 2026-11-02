@@ -625,6 +625,18 @@ func (s *Server) Post(p *model.Post) *model.Post {
 	return p
 }
 
+// PostMissed публикует пост без события по WebSocket — как пост, о котором
+// клиент не узнал, пока был без связи.
+func (s *Server) PostMissed(p *model.Post) *model.Post {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p.Id = model.NewId()
+	p.CreateAt = model.GetMillis()
+	p.UpdateAt = p.CreateAt
+	s.addPost(p)
+	return p
+}
+
 // Chatter раз в interval пишет от bob в Town Square команды dev — для проверки realtime.
 func (s *Server) Chatter(interval time.Duration) {
 	s.mu.Lock()

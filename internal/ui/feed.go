@@ -80,6 +80,13 @@ type FeedDeps struct {
 	EmojiImage func(name string, size int, done func()) *qt.QPixmap
 }
 
+// savedScroll — где была лента, когда её убрали с экрана.
+type savedScroll struct {
+	stick  bool
+	anchor string // пост у верхнего края
+	top    int    // и где его верх
+}
+
 // pill — плашка реакции: обычная и под курсором. render рисует её заново —
 // для анимированного эмодзи на каждом кадре.
 type pill struct {
@@ -136,6 +143,16 @@ type Feed struct {
 	// канала рисуется по частям); drainTimer дорисовывает их порциями.
 	pending    []*model.Post
 	drainTimer *qt.QTimer
+	stale      map[string]bool // посты перерисовать порциями (тема, ширина, профиль)
+
+	// Ленты каналов готовы заранее, на экране — одна (MainWindow.showFeed).
+	// Скрытая не прокручивается и не крутит анимации; её порции рисует окно
+	// (OnWork), место прокрутки — запомнено при уходе.
+	shown       bool
+	ready       bool // в ленте посты канала (или «пока нет сообщений»), а не загрузка
+	saved       savedScroll
+	pausedAnims []string
+	OnWork      func() // у скрытой ленты есть порции для отрисовки
 
 	OnNeedOlder      func()                            // докрутили до верха, а на сервере есть ещё
 	OnOpenThread     func(rootID string)               // открыть тред поста
@@ -162,7 +179,7 @@ func NewFeed(d FeedDeps) *Feed {
 		d.Users = func(string) *model.User { return nil }
 	}
 	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{},
-		animSubs: map[string]func(){}, dirty: map[string]bool{}}
+		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, shown: true}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.doc.SetDefaultFont(feedFont())
@@ -267,7 +284,7 @@ func (f *Feed) restyle() {
 		v.restyle()
 	}
 	f.quick.restyle()
-	f.renderAll()
+	f.invalidateAll()
 }
 
 // Reset очищает ленту; msg — текст вместо постов.
@@ -277,6 +294,7 @@ func (f *Feed) Reset(msg string) {
 		f.Placeholder("", msg, "")
 	}
 	f.stick, f.keepFromBottom, f.hasMore, f.loadingOlder = true, -1, false, false
+	f.saved = savedScroll{stick: true} // скрытая покажется с конца
 	f.pinToBottom()
 }
 
@@ -331,6 +349,8 @@ func (f *Feed) clearDoc() {
 	f.spin.stop()
 	f.items = nil
 	f.pending = nil
+	f.stale = map[string]bool{}
+	f.ready = false
 	f.drainTimer.Stop()
 	f.history = nil
 	f.placeholder = false
@@ -350,22 +370,48 @@ func (f *Feed) stopMovies() {
 	}
 }
 
-// SetNewSince — посты новее ts (не свои) отмечаются «Новые сообщения»;
-// звать до SetPosts. 0 — без отметки.
-func (f *Feed) SetNewSince(ts int64) { f.newSince = ts }
+// SetNewSince — посты новее ts (не свои) отмечаются «Новые сообщения»
+// (0 — без отметки). Готовая лента переносит отметку сразу.
+func (f *Feed) SetNewSince(ts int64) {
+	f.newSince = ts
+	old := f.newMarker
+	f.newMarker = f.markerFor(append(slices.Clone(f.pending), f.posts()...))
+	if old != f.newMarker {
+		f.edit(func() {
+			for _, id := range []string{old, f.newMarker} {
+				if i := f.index(id); i >= 0 && id != "" {
+					f.render(i)
+				}
+			}
+		})
+	}
+}
+
+// markerFor — над каким постом из posts (от старых к новым) «Новые сообщения».
+func (f *Feed) markerFor(posts []*model.Post) string {
+	if f.newSince > 0 {
+		for _, p := range posts {
+			if p.CreateAt > f.newSince && p.UserId != f.d.Me.Id && !p.IsSystemMessage() {
+				return p.Id
+			}
+		}
+	}
+	return ""
+}
+
+// posts — отрисованные посты по порядку.
+func (f *Feed) posts() []*model.Post {
+	out := make([]*model.Post, len(f.items))
+	for i, it := range f.items {
+		out[i] = it.post
+	}
+	return out
+}
 
 func (f *Feed) SetPosts(posts []*model.Post, hasMore bool) {
 	f.Reset("")
 	f.hasMore = hasMore
-	f.newMarker = ""
-	if f.newSince > 0 {
-		for _, p := range posts {
-			if p.CreateAt > f.newSince && p.UserId != f.d.Me.Id && !p.IsSystemMessage() {
-				f.newMarker = p.Id
-				break
-			}
-		}
-	}
+	f.newMarker = f.markerFor(posts)
 	if f.d.Thread || f.d.Search {
 		// Тред держит корень первым, поиск — новые сверху: рисуем целиком.
 		for _, p := range posts {
@@ -374,9 +420,10 @@ func (f *Feed) SetPosts(posts []*model.Post, hasMore bool) {
 		return
 	}
 	// Снизу вверх, пока посты не займут окно с запасом; остальное — drain.
+	// Скрытая лента — вся порциями.
 	f.pending = slices.Clone(posts)
 	want := float64(f.view.Viewport().Height()) * 1.5
-	for len(f.pending) > 0 && (len(f.items) == 0 || f.contentHeight() < want) {
+	for f.shown && len(f.pending) > 0 && (len(f.items) == 0 || f.contentHeight() < want) {
 		f.insertPending()
 	}
 	f.drainSoon()
@@ -397,25 +444,161 @@ func (f *Feed) insertPending() {
 	f.insert(0, p)
 }
 
+// hasWork — есть порции: перерисовать устаревшие или дорисовать старые.
+func (f *Feed) hasWork() bool { return len(f.pending) > 0 || len(f.stale) > 0 }
+
 func (f *Feed) drainSoon() {
-	if len(f.pending) > 0 {
+	switch {
+	case !f.hasWork():
+	case f.shown:
 		f.drainTimer.Start(0)
+	case f.OnWork != nil:
+		f.OnWork()
 	}
 }
 
-// drain — порция неотрисованных постов: не дольше drainSlice, но хотя бы
-// один. Видимое не сдвигается (edit), лента у низа остаётся у низа.
+// drain — порция: сначала устаревшие посты (снизу вверх), потом
+// неотрисованные над лентой; не дольше drainSlice, но хотя бы один пост.
+// Видимое не сдвигается (edit), лента у низа остаётся у низа.
 func (f *Feed) drain() {
 	start := time.Now()
 	f.edit(func() {
+		// На экране — снизу вверх (там обычно смотрят); скрытую — сверху:
+		// перерисовка внизу заставила бы Qt разложить весь документ выше сразу,
+		// а не лениво.
+		for k := range f.items {
+			if len(f.stale) == 0 {
+				break
+			}
+			i := k
+			if f.shown {
+				i = len(f.items) - 1 - k
+			}
+			if id := f.items[i].post.Id; f.stale[id] {
+				delete(f.stale, id)
+				f.render(i)
+				if time.Since(start) >= drainSlice {
+					return
+				}
+			}
+		}
+		clear(f.stale) // остались посты, которых в ленте уже нет
 		for len(f.pending) > 0 {
 			f.insertPending()
 			if time.Since(start) >= drainSlice {
-				break
+				return
 			}
 		}
 	})
+	if !f.shown {
+		// Полоса прокрутки появилась — viewport уже: раскладка — сейчас, пока
+		// документ мал, а не при показе.
+		f.fitTo(f.view.Size())
+	}
 	f.drainSoon()
+}
+
+// invalidate — перерисовать посты, где match: видимые на экране — сразу,
+// остальные — порциями (drain). Длинная лента так не вешает окно.
+func (f *Feed) invalidate(match func(p *model.Post) bool) {
+	for _, it := range f.items {
+		if match(it.post) {
+			f.stale[it.post.Id] = true
+		}
+	}
+	if len(f.stale) == 0 {
+		return
+	}
+	if f.shown && len(f.items) > 0 {
+		lo, hi := 0, len(f.items)-1
+		if it := f.postAtY(0); it != nil {
+			lo = f.index(it.post.Id)
+		}
+		if it := f.postAtY(f.view.Viewport().Height() - 1); it != nil {
+			hi = f.index(it.post.Id)
+		}
+		f.edit(func() {
+			for i := lo; i <= hi && i < len(f.items); i++ {
+				if id := f.items[i].post.Id; f.stale[id] {
+					delete(f.stale, id)
+					f.render(i)
+				}
+			}
+		})
+	}
+	f.drainSoon()
+}
+
+// SetShown — лента на экране или убрана (на экране другой канал). Скрытая
+// запоминает место, не крутит GIF и эмодзи и не держит ролики.
+func (f *Feed) SetShown(on bool) {
+	if f.shown == on {
+		return
+	}
+	f.shown = on
+	if !on {
+		id, top := f.topPost()
+		f.saved = savedScroll{stick: f.stick, anchor: id, top: top}
+		f.drainTimer.Stop()
+		f.stopVideos()
+		f.quick.hide()
+		for _, mv := range f.movies {
+			if mv.State() == qt.QMovie__Running {
+				mv.SetPaused(true)
+			}
+		}
+		for name, cancel := range f.animSubs {
+			cancel()
+			delete(f.animSubs, name)
+			f.pausedAnims = append(f.pausedAnims, name)
+		}
+		// Наверх: смена ширины, пока лента скрыта, раскладывает документ
+		// лениво (Qt — от видимого места), а не весь сразу.
+		f.programmatic = true
+		f.bar.SetValue(0)
+		f.programmatic = false
+		f.drainSoon()
+		return
+	}
+	for _, mv := range f.movies {
+		if mv.State() == qt.QMovie__Paused {
+			mv.SetPaused(false)
+		}
+	}
+	for _, name := range f.pausedAnims {
+		f.animateEmoji(name)
+	}
+	f.pausedAnims = nil
+	f.doc.Size() // раскладка до конца, если не успела
+	f.pinToBottom()
+	f.programmatic = true
+	switch sv := f.saved; {
+	case sv.stick:
+		f.bar.SetValue(f.bar.Maximum())
+	case sv.anchor != "":
+		if i := f.index(sv.anchor); i >= 0 {
+			f.bar.SetValue(f.bar.Value() + f.postTop(i) - sv.top)
+		}
+	}
+	f.programmatic = false
+	f.stick, f.keepFromBottom = f.saved.stick, -1
+	f.drainSoon()
+}
+
+// fitTo — размер скрытой ленты. Qt отдаёт resize скрытому виджету (и его
+// viewport, по которому QTextEdit раскладывает документ) только при показе —
+// и тогда на показе весь документ раскладывается заново. Отдаём сразу.
+func (f *Feed) fitTo(size *qt.QSize) {
+	w := f.view.QWidget
+	if w.Width() != size.Width() || w.Height() != size.Height() {
+		w.ResizeWithQSize(size)
+	}
+	for _, x := range []*qt.QWidget{w, f.view.Viewport()} {
+		if x.TestAttribute(qt.WA_PendingResizeEvent) {
+			qt.QCoreApplication_SendEvent(x.QObject, qt.NewQResizeEvent(x.Size(), qt.NewQSize()).QEvent)
+			x.SetAttribute2(qt.WA_PendingResizeEvent, false)
+		}
+	}
 }
 
 // flushPending дорисовывает всё сразу: нужен пост, который ещё не отрисован.
@@ -456,10 +639,12 @@ func (f *Feed) PrependOlder(posts []*model.Post, hasMore bool) {
 	f.hideHistoryLoading()
 	f.loadingOlder = false
 	f.hasMore = hasMore
+	// Лента могла пережить обрыв связи с историей старше той, что знает store.
+	posts = slices.DeleteFunc(slices.Clone(posts), func(p *model.Post) bool { return f.Has(p.Id) })
 	if len(posts) == 0 {
 		return
 	}
-	f.pending = append(slices.Clone(posts), f.pending...)
+	f.pending = append(posts, f.pending...)
 	// Верхний пост был первым — теперь над ним есть предыдущий.
 	if len(f.items) > 0 && f.items[0].prev != f.pending[len(f.pending)-1].Id {
 		f.edit(func() { f.render(0) })
@@ -519,21 +704,51 @@ func (f *Feed) Upsert(p *model.Post) {
 			f.pending[j] = p // отрисуется, когда до него дойдёт очередь
 			return
 		}
-		i := len(f.items)
-		for i > 0 && f.items[i-1].post.CreateAt > p.CreateAt {
-			i--
-		}
-		if n := len(f.pending); i == 0 && n > 0 && f.pending[n-1].CreateAt > p.CreateAt {
-			j := n
-			for j > 0 && f.pending[j-1].CreateAt > p.CreateAt {
-				j--
-			}
-			f.pending = slices.Insert(f.pending, j, p) // среди неотрисованных
-			return
-		}
-		f.keepFromBottom = -1
-		f.insert(i, p)
+		f.insertByTime(p)
 	})
+}
+
+// insertByTime — нового поста в ленте нет: на его место по времени (старше
+// отрисованных — в очередь неотрисованных).
+func (f *Feed) insertByTime(p *model.Post) {
+	i := len(f.items)
+	for i > 0 && f.items[i-1].post.CreateAt > p.CreateAt {
+		i--
+	}
+	if n := len(f.pending); i == 0 && n > 0 && f.pending[n-1].CreateAt > p.CreateAt {
+		j := n
+		for j > 0 && f.pending[j-1].CreateAt > p.CreateAt {
+			j--
+		}
+		f.pending = slices.Insert(f.pending, j, p) // среди неотрисованных
+		return
+	}
+	f.keepFromBottom = -1
+	f.insert(i, p)
+}
+
+// Merge — лента сверена с сервером после обрыва связи (Timeline.Sync): новые
+// посты — на места, пропавшие — прочь, изменённые — перерисовать (видимые
+// сразу, остальные порциями).
+func (f *Feed) Merge(changed, removed []*model.Post) {
+	redraw := map[string]bool{}
+	f.edit(func() {
+		for _, p := range removed {
+			f.remove(p.Id)
+		}
+		for _, p := range changed {
+			switch i, j := f.index(p.Id), f.pendingIndex(p.Id); {
+			case i >= 0:
+				f.items[i].post = p
+				redraw[p.Id] = true
+			case j >= 0:
+				f.pending[j] = p
+			default:
+				f.insertByTime(p)
+			}
+		}
+	})
+	f.invalidate(func(p *model.Post) bool { return redraw[p.Id] })
 }
 
 func (f *Feed) Remove(id string) {
@@ -564,15 +779,12 @@ func (f *Feed) remove(id string) {
 	f.renderThreadRoot()
 }
 
+// invalidateAll — перерисовать всё (видимое сразу, остальное порциями).
+func (f *Feed) invalidateAll() { f.invalidate(func(*model.Post) bool { return true }) }
+
 // RefreshUser перерисовывает посты пользователя: изменился профиль (имя, свой статус у имени).
 func (f *Feed) RefreshUser(id string) {
-	f.edit(func() {
-		for i, it := range f.items {
-			if it.post.UserId == id {
-				f.render(i)
-			}
-		}
-	})
+	f.invalidate(func(p *model.Post) bool { return p.UserId == id })
 }
 
 // renderAll перерисовывает все посты: догрузились картинки или имена, сменилась тема.
@@ -590,8 +802,8 @@ func (f *Feed) renderAll() {
 // к концу. Поэтому на время правки прокрутка «наша», а после неё лента у низа
 // остаётся у низа, иначе пост у верхнего края остаётся на своём месте.
 func (f *Feed) edit(do func()) {
-	if f.editing {
-		do()
+	if f.editing || !f.shown {
+		do() // скрытую не прокручиваем: место вернёт SetShown
 		return
 	}
 	f.editing = true
@@ -717,17 +929,7 @@ func (f *Feed) refreshSoon(id string) {
 		f.refreshPending = false
 		all, dirty := f.dirtyAll, f.dirty
 		f.dirtyAll, f.dirty = false, map[string]bool{}
-		if all {
-			f.renderAll()
-			return
-		}
-		f.edit(func() {
-			for i, it := range f.items {
-				if dirty[it.post.Id] {
-					f.render(i)
-				}
-			}
-		})
+		f.invalidate(func(p *model.Post) bool { return all || dirty[p.Id] })
 	})
 }
 
@@ -774,6 +976,12 @@ func (f *Feed) emojiPixmap(name, path string, size int) *qt.QPixmap {
 // тех же ресурсах документа.
 func (f *Feed) animateEmoji(name string) {
 	if _, ok := f.animSubs[name]; ok || f.d.Assets == nil {
+		return
+	}
+	if !f.shown {
+		if !slices.Contains(f.pausedAnims, name) {
+			f.pausedAnims = append(f.pausedAnims, name) // запустим при показе
+		}
 		return
 	}
 	f.animSubs[name] = f.d.Assets.OnEmojiFrame(name, func() { f.emojiFrame(name) })
@@ -858,7 +1066,9 @@ func (f *Feed) itemAt(pos int) *postItem {
 
 func (f *Feed) insert(i int, p *model.Post) {
 	if f.placeholder {
+		ready := f.ready // «пока нет сообщений» — и вот первое
 		f.clearDoc()
+		f.ready = ready
 	}
 	c := qt.NewQTextCursor2(f.doc)
 	switch {
@@ -1320,6 +1530,9 @@ func (f *Feed) animate(fi *model.FileInfo, name string, w, h int) {
 			f.view.Viewport().Update()
 		})
 		mv.Start()
+		if !f.shown {
+			mv.SetPaused(true) // пойдёт при показе
+		}
 	})
 }
 
@@ -1816,9 +2029,11 @@ func newTextLabel(format qt.TextFormat) *qt.QLabel {
 // трогает фреймы, которые та уже удалила. Заодно при перетаскивании
 // разделителя перерисовываем один раз, а не на каждый пиксель.
 func (f *Feed) onResize() {
-	f.pinToBottom()
-	f.placeVideos()
-	f.quick.follow()
+	if f.shown {
+		f.pinToBottom()
+		f.placeVideos()
+		f.quick.follow()
+	}
 	if abs(f.view.Viewport().Width()-f.lastWidth) >= 24 {
 		f.refit.Start2()
 	}
@@ -1830,14 +2045,10 @@ func (f *Feed) fitImages() {
 		return
 	}
 	f.lastWidth = w
-	f.edit(func() {
-		for i, it := range f.items {
-			// Картинки, видео и вложения интеграций — по ширине колонки.
-			if len(it.post.Attachments()) > 0 || it.post.Metadata != nil && (len(it.post.Metadata.Embeds) > 0 ||
-				slices.ContainsFunc(it.post.Metadata.Files, func(fi *model.FileInfo) bool { return isImage(fi) || isVideo(fi) })) {
-				f.render(i)
-			}
-		}
+	// Картинки, видео и вложения интеграций — по ширине колонки.
+	f.invalidate(func(p *model.Post) bool {
+		return len(p.Attachments()) > 0 || p.Metadata != nil && (len(p.Metadata.Embeds) > 0 ||
+			slices.ContainsFunc(p.Metadata.Files, func(fi *model.FileInfo) bool { return isImage(fi) || isVideo(fi) }))
 	})
 }
 
@@ -1851,6 +2062,9 @@ func abs(x int) int {
 // pinToBottom прижимает короткую ленту к низу, как в чатах (заглушку — к
 // середине): верхнее поле документа растягивается на свободное место.
 func (f *Feed) pinToBottom() {
+	if !f.shown {
+		return // доделает SetShown: раскладка всего документа скрытой ленте ни к чему
+	}
 	root := f.doc.RootFrame()
 	ff := root.FrameFormat()
 	cur := ff.TopMargin()
@@ -1868,7 +2082,7 @@ func (f *Feed) pinToBottom() {
 }
 
 func (f *Feed) onScroll(v int) {
-	if f.programmatic || f.editing {
+	if f.programmatic || f.editing || !f.shown {
 		return
 	}
 	f.keepFromBottom = -1
@@ -1884,7 +2098,7 @@ func (f *Feed) onScroll(v int) {
 // переносы): держим низ или место, на котором был пользователь.
 func (f *Feed) onRange(_, max int) {
 	f.pinToBottom()
-	if f.editing {
+	if f.editing || !f.shown {
 		return // прокрутку выставит edit, когда правка закончится
 	}
 	f.programmatic = true

@@ -45,7 +45,14 @@ type MainWindow struct {
 	channelPage   *qt.QWidget
 	head          *header
 	banner        *banner
-	feed          *Feed
+	feed          *Feed              // лента на экране: канала или blank (feeds.go)
+	feeds         map[string]*Feed   // ленты каналов, готовые заранее
+	feedOrder     []string           // в порядке появления: фоном рисуются по нему
+	blank         *Feed              // пока канал не выбран
+	feedStack     *qt.QStackedWidget // все ленты, на экране — feed
+	feedDeps      FeedDeps
+	buildTimer    *qt.QTimer // порция фоновой отрисовки скрытых лент
+	fitTimer      *qt.QTimer // размер скрытых — когда размер ленты на экране устоится
 	composer      *Composer
 	threadsPage   *qt.QWidget
 	schedPage     *qt.QWidget // «Отложенные»
@@ -162,10 +169,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 
 	deps := FeedDeps{Names: m.st.Username, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists,
 		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage}
-	m.feed = NewFeed(deps)
-	m.feed.OnNeedOlder = m.loadOlder
-	m.feed.OnOpenThread = m.openThread
-	m.wireFeed(m.feed)
+	m.initFeeds(deps)
 
 	// Свои статусы со сроком истекают сами: раз в минуту перерисовываем, где они видны.
 	statusTimer := qt.NewQTimer2(m.w.QObject)
@@ -185,7 +189,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.composer = NewComposer()
 	m.composer.Suggest = m.suggester(func() string { return m.current })
 	m.composer.OnSend = m.send
-	m.composer.OnEdit = m.saveEdit(m.feed)
+	m.composer.OnEdit = func(id, text string, blocks []markdown.Block) { m.saveEdit(m.feed)(id, text, blocks) }
 	m.composer.OnEditLast = func() { m.editLast(m.feed) }
 	m.composer.OnCommand = func(text string) { m.runCommand(m.composer, m.current, "", text) }
 	m.sched = newScheduler(m, filepath.Join(cacheDir, "scheduled.json"))
@@ -208,7 +212,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	cl.SetSpacing(0)
 	cl.AddWidget(m.head.f.QWidget)
 	cl.AddWidget(m.banner.f.QWidget)
-	cl.AddWidget2(m.feed.Widget(), 1)
+	cl.AddWidget2(m.feedStack.QWidget, 1)
 	cl.AddWidget(m.composer.Widget())
 
 	m.threadsPage = qt.NewQWidget2()
@@ -380,7 +384,7 @@ func (m *MainWindow) Close() {
 	m.unsubscribe()
 	m.panel.dispose()
 	m.search.dispose()
-	m.feed.dispose()
+	m.eachFeed((*Feed).dispose)
 	m.composer.dispose()
 	for _, pl := range m.players {
 		pl.w.Close()
@@ -389,6 +393,7 @@ func (m *MainWindow) Close() {
 		m.viewer.w.Close()
 	}
 	m.assets.stopAnimations()
+	m.assets.wait(2 * time.Second)
 	m.w.Close()
 }
 
@@ -494,13 +499,19 @@ func (m *MainWindow) reloadSidebar() {
 					}
 				}
 				m.ownStatusChanged()
+				for id := range m.feeds {
+					if m.st.Channel(id) == nil {
+						m.dropFeed(id) // канала больше нет
+					}
+				}
 				if previewsChanged && !crtChanged {
-					m.feed.renderAll()
+					m.eachFeed((*Feed).invalidateAll)
 					m.panel.feed.renderAll()
 				}
 				if crtChanged {
 					// Ленты загружены в другом режиме (с ответами или без).
 					m.st.DropTimelines()
+					m.resetFeeds()
 					m.thread = nil
 					m.panel.w.SetVisible(false)
 					if ch := m.st.Channel(m.current); ch != nil {
@@ -632,21 +643,23 @@ func (m *MainWindow) openChannel(id string) {
 	m.refreshHeader()
 	m.composer.SetEnabled(true)
 	m.composer.Focus()
-	m.feed.OnRetry = func() {
-		m.feed.Loading()
-		m.loadTimeline(id)
-	}
+	f := m.feedFor(id)
+	m.showFeed(f)
 	// «Новые сообщения» — от прошлого прочтения: запоминаем до markViewed.
-	m.feed.SetNewSince(m.st.LastViewed(id))
+	f.SetNewSince(m.st.LastViewed(id))
 
 	switch tl := m.st.Timeline(id); {
 	case tl == nil:
-		m.feed.Loading()
+		f.Loading()
 		m.loadTimeline(id)
-	case tl.Loaded:
+	case !tl.Loaded:
+		f.Loading() // уже грузится
+	case !f.ready:
 		m.showTimeline(id, tl)
-	default:
-		m.feed.Loading() // уже грузится
+	case m.scrollTo != "":
+		to := m.scrollTo
+		m.scrollTo = ""
+		m.reveal(to) // перешли по ссылке на сообщение
 	}
 	m.markViewed(id, prev)
 	if m.OnChannelOpened != nil {
@@ -689,8 +702,10 @@ func (m *MainWindow) refreshHeader() {
 // чтобы посты из WebSocket, пришедшие во время загрузки, не потерялись.
 // showTimeline показывает загруженную ленту канала или заглушку пустого канала.
 func (m *MainWindow) showTimeline(id string, tl *store.Timeline) {
-	m.feed.SetPosts(tl.Posts, tl.HasMore)
-	if to := m.scrollTo; to != "" {
+	f := m.feedFor(id)
+	f.SetPosts(tl.Posts, tl.HasMore)
+	f.ready = true
+	if to := m.scrollTo; to != "" && id == m.current {
 		m.scrollTo = ""
 		m.reveal(to) // перешли по ссылке на сообщение
 	}
@@ -708,7 +723,8 @@ func (m *MainWindow) showTimeline(id string, tl *store.Timeline) {
 	case model.ChannelTypeDirect, model.ChannelTypeGroup:
 		iconName = "message-circle"
 	}
-	m.feed.Placeholder(iconName, "В канале «"+m.st.Title(ch)+"» пока нет сообщений", text)
+	f.Placeholder(iconName, "В канале «"+m.st.Title(ch)+"» пока нет сообщений", text)
+	f.ready = true
 }
 
 func (m *MainWindow) loadTimeline(id string) { m.fetchTimeline(id, false, nil) }
@@ -717,9 +733,18 @@ func (m *MainWindow) loadTimeline(id string) { m.fetchTimeline(id, false, nil) }
 // сразу: посты из WebSocket, пришедшие во время загрузки, не теряются.
 // background — фоновая загрузка заранее: ошибка только в лог (откроют канал —
 // загрузится обычным порядком). done — в главном потоке, когда закончили.
+//
+// Загруженная лента после обрыва связи (Stale) сверяется со свежей страницей:
+// Timeline.Sync, а в ленте на экране меняется только изменившееся (Merge).
 func (m *MainWindow) fetchTimeline(id string, background bool, done func()) {
-	tl := &store.Timeline{}
-	m.st.SetTimeline(id, tl)
+	tl := m.st.Timeline(id)
+	resync := tl != nil && tl.Loaded
+	if resync {
+		tl.Stale = false // уже сверяем: preload второй раз не попросит
+	} else {
+		tl = &store.Timeline{}
+		m.st.SetTimeline(id, tl)
+	}
 	crt := m.st.CRT()
 	finish := func() {
 		if done != nil {
@@ -734,6 +759,12 @@ func (m *MainWindow) fetchTimeline(id string, background bool, done func()) {
 			if m.st.Timeline(id) != tl {
 				finish()
 				return // ленты сбросили (переподключение), загрузку начнут заново
+			}
+			if err != nil && resync {
+				tl.Stale = true // сверим после следующего переподключения
+				m.log.Warn("resync timeline", "channel", id, "err", err)
+				finish()
+				return
 			}
 			if err != nil {
 				m.st.SetTimeline(id, nil)
@@ -756,11 +787,14 @@ func (m *MainWindow) fetchTimeline(id string, background bool, done func()) {
 				if m.st.Timeline(id) != tl {
 					return
 				}
+				if resync {
+					changed, removed := tl.Sync(posts, len(list.Order) >= pageSize)
+					m.mergeFeed(id, changed, removed)
+					return
+				}
 				tl.Prepend(posts, len(list.Order) >= pageSize)
 				tl.Loaded = true
-				if m.current == id {
-					m.showTimeline(id, tl)
-				}
+				m.showTimeline(id, tl) // и скрытой ленте: рисуется фоном
 			})
 		})
 	}()
@@ -773,7 +807,8 @@ const preloadWorkers = 3
 // preload — последние страницы всех каналов и личек заранее, в фоне: переход в
 // канал без ожидания, а дальше их держит свежими WebSocket. Сначала каналы с
 // непрочитанным, потом лички по свежести, потом остальные. Зовётся после
-// загрузки сайдбара — значит, и после переподключения, когда ленты сброшены.
+// загрузки сайдбара — значит, и после переподключения: загруженные тогда
+// сверяются с сервером (Stale).
 func (m *MainWindow) preload() {
 	var unread, direct, rest []string
 	add := func(id string) {
@@ -803,7 +838,7 @@ func (m *MainWindow) preloadNext() bool {
 	for len(m.preloadQueue) > 0 && !m.closed {
 		id := m.preloadQueue[0]
 		m.preloadQueue = m.preloadQueue[1:]
-		if m.st.Timeline(id) != nil || m.st.Channel(id) == nil {
+		if tl := m.st.Timeline(id); (tl != nil && !tl.Stale) || m.st.Channel(id) == nil {
 			continue // уже загружена или грузится, канала больше нет
 		}
 		m.preloading++
@@ -836,8 +871,8 @@ func (m *MainWindow) loadOlderThen(done func()) {
 		m.ui(func() {
 			if err != nil {
 				m.fail("load older posts", fmt.Errorf("load posts before %s in channel %s: %w", oldest, id, err))
-				if m.current == id {
-					m.feed.OlderFailed()
+				if f := m.feeds[id]; f != nil {
+					f.OlderFailed()
 				}
 				return
 			}
@@ -847,8 +882,9 @@ func (m *MainWindow) loadOlderThen(done func()) {
 					return
 				}
 				added := tl.Prepend(posts, len(list.Order) >= pageSize)
-				if m.current == id {
-					m.feed.PrependOlder(added, tl.HasMore)
+				// И если уже ушли из канала: лента и store не должны разойтись.
+				if f := m.feeds[id]; f != nil {
+					f.PrependOlder(added, tl.HasMore)
 				}
 				if done != nil {
 					done()
@@ -919,20 +955,21 @@ func (m *MainWindow) applyPosted(e store.NewPost) {
 	} else {
 		m.refreshItem(p.ChannelId)
 	}
-	if p.ChannelId != m.current {
-		return
-	}
-	tl := m.st.Timeline(p.ChannelId)
-	if r.Root != nil && tl.Loaded && m.feed.Has(r.Root.Id) {
-		m.feed.Upsert(r.Root) // счётчик ответов под корнем
-	}
-	if unread, _ := m.st.Unread(p.ChannelId); unread && m.w.IsActiveWindow() {
+	if unread, _ := m.st.Unread(p.ChannelId); unread && p.ChannelId == m.current && m.w.IsActiveWindow() {
 		m.markViewed(p.ChannelId, "")
 	}
-	if r.Timeline && tl.Loaded {
+	// В ленту своего канала — и скрытую: она готова к показу.
+	tl, f := m.st.Timeline(p.ChannelId), m.feeds[p.ChannelId]
+	if f == nil || tl == nil || !tl.Loaded {
+		return
+	}
+	if r.Root != nil && f.Has(r.Root.Id) {
+		f.Upsert(r.Root) // счётчик ответов под корнем
+	}
+	if r.Timeline {
 		m.withUsers([]string{p.UserId}, func() {
-			if m.current == p.ChannelId && m.st.Timeline(p.ChannelId) == tl {
-				m.feed.Upsert(p)
+			if m.st.Timeline(p.ChannelId) == tl {
+				f.Upsert(p)
 			}
 		})
 	}
@@ -951,17 +988,20 @@ func (m *MainWindow) OnConnected() {
 			m.connectedOnce = true // сайдбар уже грузится из Start
 			return
 		}
-		// События за время обрыва потеряны: перечитываем всё, что показываем.
-		m.st.DropTimelines()
+		// События за время обрыва потеряны: загруженные ленты сверяем с
+		// сервером (открытую — первой), остальные — preload после сайдбара.
+		m.st.MarkTimelinesStale()
+		if id := m.current; m.st.Channel(id) != nil {
+			if tl := m.st.Timeline(id); tl == nil || !tl.Loaded {
+				m.feed.Loading()
+			}
+			m.loadTimeline(id)
+		}
 		m.reloadSidebar()
 		m.assets.Retry()
 		m.sched.reload()
 		if t := m.thread; t != nil {
 			m.openThread(t.rootID)
-		}
-		if id := m.current; m.st.Channel(id) != nil {
-			m.feed.Loading()
-			m.loadTimeline(id)
 		}
 	})
 }

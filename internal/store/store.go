@@ -335,6 +335,15 @@ func (s *Store) Timeline(channelID string) *Timeline { return s.timelines[channe
 
 func (s *Store) SetTimeline(channelID string, t *Timeline) { s.timelines[channelID] = t }
 
+// MarkTimelinesStale — был обрыв связи: загруженные ленты сверить с сервером.
+func (s *Store) MarkTimelinesStale() {
+	for _, t := range s.timelines {
+		if t.Loaded {
+			t.Stale = true
+		}
+	}
+}
+
 // DropTimelines забывает ленты: после обрыва WebSocket в них могут быть дыры.
 func (s *Store) DropTimelines() { s.timelines = map[string]*Timeline{} }
 

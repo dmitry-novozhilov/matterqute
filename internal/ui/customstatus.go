@@ -259,7 +259,7 @@ func (m *MainWindow) saveCustomStatus(cs *model.CustomStatus) {
 // applyUser — профиль изменился (свой статус, имя): перерисовать, где он виден.
 func (m *MainWindow) applyUser(u *model.User) {
 	m.st.AddUsers([]*model.User{u})
-	m.feed.RefreshUser(u.Id)
+	m.eachFeed(func(f *Feed) { f.RefreshUser(u.Id) })
 	m.panel.feed.RefreshUser(u.Id)
 	m.refreshItem("")
 	if u.Id == m.s.Me.Id {

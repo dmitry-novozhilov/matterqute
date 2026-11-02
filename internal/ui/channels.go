@@ -146,6 +146,7 @@ func (m *MainWindow) leaveChannel(channelID string) {
 				m.closeThread()
 			}
 			m.st.RemoveChannel(channelID)
+			m.dropFeed(channelID)
 			m.fillSidebar()
 			m.reloadSidebar()
 		})

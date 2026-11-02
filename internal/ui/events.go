@@ -219,8 +219,10 @@ func truncate(s string, n int) string {
 
 // applyEdited — пост изменили (здесь или в другом клиенте).
 func (m *MainWindow) applyEdited(p *model.Post) {
-	if m.st.ApplyEdited(p) && p.ChannelId == m.current && m.feed.Has(p.Id) {
-		m.feed.Upsert(p)
+	if m.st.ApplyEdited(p) {
+		if f := m.feedWith(p.ChannelId, p.Id); f != nil {
+			f.Upsert(p)
+		}
 	}
 	if t := m.thread; t != nil && t.tl.Replace(p) && t.tl.Loaded {
 		m.panel.feed.Upsert(p)

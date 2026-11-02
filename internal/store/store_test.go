@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -55,6 +56,28 @@ func TestTimeline(t *testing.T) {
 	}
 	if got := ids(tl.Posts); len(got) != 4 || got[0] != "a" || got[3] != "d" {
 		t.Errorf("posts = %v, want [a b c d]", got)
+	}
+}
+
+// После обрыва: свежая страница — новое и изменённое заменяется, пропавшее в
+// её промежутке удаляется, старше — остаётся.
+func TestTimelineSync(t *testing.T) {
+	tl := &Timeline{Loaded: true, Stale: true, HasMore: true, Posts: []*model.Post{
+		post("old", "ch", "u", 5), post("a", "ch", "u", 10), post("b", "ch", "u", 20), post("gone", "ch", "u", 25), post("c", "ch", "u", 30)}}
+	b := post("b", "ch", "u", 20)
+	b.Message, b.EditAt, b.UpdateAt = "исправлено", 21, 21
+	changed, removed := tl.Sync([]*model.Post{post("a", "ch", "u", 10), b, post("c", "ch", "u", 30), post("d", "ch", "u", 40)}, true)
+	if got := ids(changed); len(got) != 2 || got[0] != "b" || got[1] != "d" {
+		t.Errorf("changed %v, want [b d]", got)
+	}
+	if got := ids(removed); len(got) != 1 || got[0] != "gone" {
+		t.Errorf("removed %v, want [gone]", got)
+	}
+	if got := ids(tl.Posts); strings.Join(got, " ") != "old a b c d" || tl.Posts[2].Message != "исправлено" {
+		t.Errorf("posts after sync %v", got)
+	}
+	if tl.Stale || !tl.HasMore {
+		t.Errorf("stale %v, has more %v", tl.Stale, tl.HasMore)
 	}
 }
 

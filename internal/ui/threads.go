@@ -235,8 +235,10 @@ func (m *MainWindow) toggleReaction(p *model.Post, name string) {
 }
 
 func (m *MainWindow) applyReaction(channelID string, r *model.Reaction, added bool) {
-	if p, _ := m.st.ApplyReaction(channelID, r, added); p != nil && channelID == m.current && m.feed.Has(p.Id) {
-		m.withUsers([]string{r.UserId}, func() { m.feed.Upsert(p) })
+	if p, _ := m.st.ApplyReaction(channelID, r, added); p != nil {
+		if f := m.feedWith(channelID, p.Id); f != nil {
+			m.withUsers([]string{r.UserId}, func() { f.Upsert(p) })
+		}
 	}
 	if t := m.thread; t != nil {
 		if p := t.tl.Get(r.PostId); p != nil {

@@ -167,13 +167,11 @@ func testFilesAndMarkdown(t *testing.T, fake *mmfake.Server, s *mm.Session, uplo
 	if i := m.feed.index(alert.post.Id); i+1 < len(m.feed.items) && m.feed.items[i+1].post.UserId == bob.Id && !m.feed.startsGroup(i+1) {
 		t.Error("bob's own post is grouped under the Grafana header")
 	}
-	for _, bad := range []string{markdown.UserLinkScheme + "bob", "avatar:" + bob.Id} {
-		if strings.Contains(alert.html, bad) {
-			t.Errorf("Grafana post links to its creator (%s):\n%s", bad, alert.html)
-		}
+	if strings.Contains(alert.html, markdown.UserLinkScheme+"bob") || strings.Contains(alert.avatar, bob.Id) {
+		t.Errorf("Grafana post links to its creator (avatar %s):\n%s", alert.avatar, alert.html)
 	}
-	if !strings.Contains(alert.html, hookLink+alert.post.Id) || !strings.Contains(alert.html, "avatar-hook:") || !strings.Contains(alert.html, ">Grafana</a>") {
-		t.Errorf("Grafana post lacks integration name, avatar or link:\n%s", alert.html)
+	if !strings.Contains(alert.html, hookLink+alert.post.Id) || !strings.HasPrefix(alert.avatar, "avatar-hook:") || alert.link != hookLink+alert.post.Id || !strings.Contains(alert.html, ">Grafana</a>") {
+		t.Errorf("Grafana post lacks integration name, avatar (%s) or link (%s):\n%s", alert.avatar, alert.link, alert.html)
 	}
 	m.feed.onAnchor(hookLink + alert.post.Id)
 	var card *qt.QWidget

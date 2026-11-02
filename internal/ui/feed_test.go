@@ -13,6 +13,8 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"matterqute/internal/markdown"
 )
 
 // Qt привязан к потоку, где создан QApplication, а go test гоняет тесты в своих
@@ -262,6 +264,7 @@ func testFeedClearWithImagesAfterResize(t *testing.T) {
 	}
 	f.SetPosts(withImages(100), true)
 	drained(f)
+	settleFor(100 * time.Millisecond) // картинки вписаны в ширину (refit)
 	if !f.bar.IsVisible() {
 		t.Error("30 image posts fit into 300px: no scroll bar, test is meaningless")
 		return
@@ -273,6 +276,7 @@ func testFeedClearWithImagesAfterResize(t *testing.T) {
 	f.Widget().Resize(600, 300)
 	f.SetPosts(withImages(200), true)
 	drained(f)
+	settleFor(100 * time.Millisecond)
 	widen()
 	for len(f.items) > 1 {
 		f.Remove(f.items[len(f.items)-1].post.Id)
@@ -367,10 +371,17 @@ func testFeedRerenderKeepsScroll(t *testing.T) {
 		if f.itemAt(f.view.CursorForPosition(qt.NewQPoint2(x, y-3)).Position()) == f.items[i] && i > 0 {
 			t.Errorf("post %d: Qt finds it 3 px above postTop %d", i, y)
 		}
+		// Первая строка поста — ниже верха фрейма на его поле (у поста без
+		// разделителя поля задаёт сам фрейм).
+		it := f.items[i]
+		want := y
+		if it.content == it.frame {
+			want += int(it.frame.FrameFormat().TopMargin())
+		}
 		c := qt.NewQTextCursor2(f.doc)
-		c.SetPosition(f.items[i].frame.FirstPosition())
-		if r := f.cursorRect(c); r.Top() != y {
-			t.Errorf("post %d: cursorRect top %d, postTop %d", i, r.Top(), y)
+		c.SetPosition(it.frame.FirstPosition())
+		if r := f.cursorRect(c); r.Top() != want {
+			t.Errorf("post %d: cursorRect top %d, want %d (postTop %d)", i, r.Top(), want, y)
 		}
 	}
 }
@@ -523,5 +534,54 @@ func testFeedThreadInParts(t *testing.T) {
 	drained(f)
 	if len(f.stale) != 0 {
 		t.Errorf("%d posts left stale after drawing", len(f.stale))
+	}
+}
+
+// Аватара нет в документе: лента рисует его сама слева от строки автора;
+// клик по нему — как по имени, рядом с ним — нет. Подсветка строки — тоже рисунком.
+func TestFeedAvatarOverlay(t *testing.T) { onMain(func() { testFeedAvatarOverlay(t) }) }
+
+func testFeedAvatarOverlay(t *testing.T) {
+	f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+	f.Widget().Resize(500, 400)
+	f.Widget().Show()
+	defer f.Widget().Close()
+	var links []string
+	f.OnLink = func(u string) { links = append(links, u) }
+	posts := makePosts(1, 3)
+	posts[2].Message = "@me глянь"
+	f.SetPosts(posts, false)
+	settle()
+	it := f.items[1]
+	if it.avatar == "" || strings.Contains(it.html, "<img src=\"avatar:") {
+		t.Errorf("avatar %q, html %s: want avatar drawn by the feed, not in the document", it.avatar, it.html)
+		return
+	}
+	top := f.contentRect(it).Y() + int(it.content.FrameFormat().TopMargin())
+	if f.avatarAt(qt.NewQPoint2(30, top+16)) != it || f.avatarAt(qt.NewQPoint2(60, top+16)) != nil || f.avatarAt(qt.NewQPoint2(30, top+40)) == it {
+		t.Error("avatar hit area is not the 32×32 square left of the author line")
+	}
+	press := func(x, y int) {
+		e := qt.NewQMouseEvent(qt.QEvent__MouseButtonPress, qt.NewQPointF3(float64(x), float64(y)), qt.LeftButton, qt.LeftButton, qt.NoModifier)
+		qt.QCoreApplication_SendEvent(f.view.Viewport().QObject, e.QEvent)
+	}
+	press(30, top+16)
+	if len(links) != 1 || links[0] != markdown.UserLinkScheme+"u2" {
+		t.Errorf("click on avatar: links %v, want the author card of u2", links)
+	}
+
+	img := f.Widget().Grab().ToImage()
+	bg := img.PixelColor(8, top+16).Name()
+	if c := img.PixelColor(16+16, top+16).Name(); c == bg {
+		t.Errorf("no avatar painted at its place (pixel %s, background %s)", c, bg)
+	}
+	men := f.items[2]
+	if men.bg != Pal().MenRow {
+		t.Errorf("post mentioning me: row color %q, want %s", men.bg, Pal().MenRow)
+		return
+	}
+	y := f.contentRect(men).Y() + 2
+	if c := img.PixelColor(4, y).Name(); c != Pal().MenRow {
+		t.Errorf("mention row not highlighted under the avatar column: pixel %s, want %s", c, Pal().MenRow)
 	}
 }

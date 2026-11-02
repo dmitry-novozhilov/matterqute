@@ -53,11 +53,28 @@ const (
 	spinnerSrc    = "spinner:24"     // ресурс с текущим кадром крутилки
 )
 
+// Пост в документе — фрейм (frame) с полями под колонку аватара и справа.
+// С разделителем над текстом (день, «Новые сообщения», где в поиске) или
+// «N ответов» под ним (корень треда) он на всю ширину, а текст — во
+// вложенном фрейме (content); у обычного content == frame. Аватар и подсветку строки
+// рисует лента поверх (paintUnder): таблица вокруг поста вдвое удорожала
+// раскладку, а вложенные в неё таблицы (вложения, цитаты, код) — ещё больше.
 type postItem struct {
-	post  *model.Post
-	frame *qt.QTextFrame
-	html  string // последняя отрисовка — для тестов и отладки
-	prev  string // id поста перед ним, с которым он отрисован (заголовок, разделитель дня)
+	post    *model.Post
+	frame   *qt.QTextFrame
+	content *qt.QTextFrame // текст поста
+	html    string         // последняя отрисовка — для тестов и отладки
+	prev    string         // id поста перед ним, с которым он отрисован (заголовок, разделитель дня)
+	avatar  string         // аватар у строки автора: ключ в Feed.avatars; "" — без аватара
+	link    string         // клик по аватару — как по имени автора
+	bg      string         // подсветка строки (переход по ссылке, упоминание меня); "" — нет
+}
+
+// postParts — пост для вставки в документ: над текстом, текст, под ним.
+type postParts struct {
+	head, body, tail string
+	top              int // поле над текстом: у первого в группе 6, у продолжения 0
+	avatar, link, bg string
 }
 
 // FeedDeps — что ленте нужно от окна.
@@ -108,9 +125,11 @@ type Feed struct {
 	bar   *qt.QScrollBar
 	items []*postItem
 	// Картинки, уже добавленные ресурсами документа (сбрасываются с документом).
-	resources   map[string][2]int // имя → логический размер
-	pills       map[string]pill   // имя ресурса реакции → обычная и при наведении
-	hovered     string            // ресурс реакции под курсором
+	resources   map[string][2]int      // имя → логический размер
+	pills       map[string]pill        // имя ресурса реакции → обычная и при наведении
+	avatars     map[string]*qt.QPixmap // аватары у строк автора (рисует paintUnder)
+	onAvatar    bool                   // курсор над аватаром (рука)
+	hovered     string                 // ресурс реакции под курсором
 	movies      map[string]*qt.QMovie
 	placeholder bool                    // в документе заглушка вместо постов
 	history     *qt.QTextFrame          // строка «Загружаем историю…» над постами
@@ -194,9 +213,21 @@ func NewFeed(d FeedDeps) *Feed {
 		super(e)
 		if e.Buttons() == qt.NoButton {
 			f.quick.hover(e.Pos())
+			f.hoverAvatar(e.Pos())
 		} else {
 			f.quick.hide() // выделяют текст
 		}
+	})
+	f.view.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+		if it := f.avatarAt(e.Pos()); it != nil && e.Button() == qt.LeftButton {
+			f.onAnchor(it.link) // как клик по имени автора
+			return
+		}
+		super(e)
+	})
+	f.view.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) {
+		f.paintUnder()
+		super(e)
 	})
 	f.view.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) {
 		super(e)
@@ -277,6 +308,7 @@ func (f *Feed) restyle() {
 	f.doc.SetDefaultFont(feedFont())
 	f.resources = map[string][2]int{}
 	f.pills = map[string]pill{}
+	f.avatars = map[string]*qt.QPixmap{}
 	if f.spin.timer.IsActive() {
 		f.spin.start(Pal().Tx3, 24)
 	}
@@ -356,6 +388,7 @@ func (f *Feed) clearDoc() {
 	f.placeholder = false
 	f.resources = map[string][2]int{}
 	f.pills = map[string]pill{}
+	f.avatars = map[string]*qt.QPixmap{}
 	f.hovered = ""
 	f.quick.hide()
 	f.doc.Clear()
@@ -540,6 +573,72 @@ func (f *Feed) invalidate(match func(p *model.Post) bool) {
 		})
 	}
 	f.drainSoon()
+}
+
+// paintUnder — под текстом ленты: подсветка строк и аватары у строк автора
+// (их нет в документе — см. postItem).
+func (f *Feed) paintUnder() {
+	lo, hi, ok := f.visibleRange()
+	if !ok {
+		return
+	}
+	p := qt.NewQPainter2(f.view.Viewport().QPaintDevice)
+	defer p.End()
+	w := f.view.Viewport().Width()
+	for _, it := range f.items[lo : hi+1] {
+		if it.content == nil {
+			continue
+		}
+		r := f.contentRect(it)
+		if it.bg != "" {
+			p.FillRect5(0, r.Y(), w, r.Height(), qt.NewQColor6(it.bg))
+		}
+		if pm := f.avatars[it.avatar]; pm != nil {
+			p.DrawPixmap9(16, r.Y()+int(it.content.FrameFormat().TopMargin()), pm)
+		}
+	}
+}
+
+// contentRect — фрейм текста поста в координатах viewport (с полями).
+func (f *Feed) contentRect(it *postItem) *qt.QRect {
+	r := f.doc.DocumentLayout().FrameBoundingRect(it.content)
+	return qt.NewQRect4(int(r.Left()), int(r.Top())-f.bar.Value(), int(r.Width()), int(r.Height()))
+}
+
+// avatarAt — пост, на чей аватар показывает pos (viewport); nil — не на аватаре.
+func (f *Feed) avatarAt(pos *qt.QPoint) *postItem {
+	if pos.X() < 16 || pos.X() >= 48 {
+		return nil
+	}
+	lo, hi, ok := f.visibleRange()
+	if !ok {
+		return nil
+	}
+	for _, it := range f.items[lo : hi+1] {
+		if it.avatar == "" || it.content == nil {
+			continue
+		}
+		top := f.contentRect(it).Y() + int(it.content.FrameFormat().TopMargin())
+		if pos.Y() >= top && pos.Y() < top+32 {
+			return it
+		}
+	}
+	return nil
+}
+
+// hoverAvatar — над аватаром курсор-рука, как над ссылкой; ушли — снова
+// текстовый (QTextBrowser сам его не вернёт: над пустым полем ссылки не было).
+func (f *Feed) hoverAvatar(pos *qt.QPoint) {
+	on := f.avatarAt(pos) != nil
+	if on == f.onAvatar {
+		return
+	}
+	f.onAvatar = on
+	if on {
+		f.view.Viewport().SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
+	} else {
+		f.view.Viewport().SetCursor(qt.NewQCursor2(qt.IBeamCursor))
+	}
 }
 
 // visibleRange — индексы первого и последнего поста, видимых в окне (по
@@ -1157,14 +1256,55 @@ func (f *Feed) write(i int, c *qt.QTextCursor) {
 		it.prev = prev.Id
 	}
 	f.rendering = it.post.Id
-	it.html = f.postHTML(i)
+	pp := f.parts(i)
 	f.rendering = ""
-	c.InsertHtml(scaleFonts(it.html))
-	f.applyMarkers(it.frame)
+	it.html = pp.head + pp.body + pp.tail
+	it.avatar, it.link, it.bg = pp.avatar, pp.link, pp.bg
+	// Обычный пост — один фрейм с полями; с разделителем над текстом или
+	// «N ответов» под ним — фрейм на всю ширину и в нём фрейм текста.
+	nested := pp.head != "" || pp.tail != ""
+	if nested {
+		it.frame.SetFrameFormat(frameFormat())
+		if pp.head != "" {
+			c.InsertHtml(scaleFonts(pp.head))
+		}
+		it.content = c.InsertFrame(contentFormat(pp.top))
+	} else {
+		it.frame.SetFrameFormat(contentFormat(pp.top))
+		it.content = it.frame
+	}
+	c.InsertHtml(scaleFonts(pp.body))
 	// После таблицы Qt оставляет пустой абзац — он даёт лишнюю строку под сообщением.
-	if c.Position() > it.frame.FirstPosition() {
+	if c.Position() > it.content.FirstPosition() {
 		f.squash(c.Position())
 	}
+	f.applyMarkers(it.content)
+	if !nested {
+		return
+	}
+	if pp.tail != "" {
+		c.SetPosition(it.content.LastPosition() + 1)
+		c.InsertHtml(scaleFonts(pp.tail))
+		f.squash(c.Position())
+	}
+	// Вокруг фрейма текста Qt держит пустые абзацы: до него — под таблицей
+	// разделителя (как под любой таблицей), после — 0 px, чтобы пост с
+	// разделителем был той же высоты, что в ячейке таблицы.
+	f.squash(it.content.FirstPosition() - 1)
+	if pp.tail == "" {
+		f.squashTo(it.content.LastPosition()+1, 0)
+	}
+}
+
+// contentFormat — фрейм текста поста: слева колонка аватара, справа поле;
+// сверху top (у продолжения группы 0), снизу 4.
+func contentFormat(top int) *qt.QTextFrameFormat {
+	ff := frameFormat()
+	ff.SetLeftMargin(feedAvatarCol)
+	ff.SetRightMargin(feedPadRight)
+	ff.SetTopMargin(float64(top))
+	ff.SetBottomMargin(4)
+	return ff
 }
 
 // applyMarkers — чек-листы: «☑ »/«☐ » в начале пункта списка становятся
@@ -1192,7 +1332,10 @@ func (f *Feed) applyMarkers(fr *qt.QTextFrame) {
 }
 
 // squash ужимает пустой абзац в позиции pos до 1 px; непустой не трогает.
-func (f *Feed) squash(pos int) {
+func (f *Feed) squash(pos int) { f.squashTo(pos, 1) }
+
+// squashTo — пустой абзац в pos высотой px.
+func (f *Feed) squashTo(pos, px int) {
 	if pos < 0 || pos >= f.doc.CharacterCount() {
 		return
 	}
@@ -1202,7 +1345,7 @@ func (f *Feed) squash(pos int) {
 		return
 	}
 	bf := qt.NewQTextBlockFormat()
-	bf.SetLineHeight(1, int(qt.QTextBlockFormat__FixedHeight))
+	bf.SetLineHeight(float64(px), int(qt.QTextBlockFormat__FixedHeight))
 	c.SetBlockFormat(bf)
 }
 
@@ -1224,9 +1367,16 @@ func (f *Feed) startsGroup(i int) bool {
 	return !continues(prev, p)
 }
 
+// postHTML — пост целиком одной строкой (как он вставлен): для тестов и сравнения.
 func (f *Feed) postHTML(i int) string {
+	pp := f.parts(i)
+	return pp.head + pp.body + pp.tail
+}
+
+func (f *Feed) parts(i int) postParts {
 	pal := Pal()
 	p, prev := f.items[i].post, f.prevPost(i)
+	var pp postParts
 	var b strings.Builder
 	switch {
 	case f.d.Search:
@@ -1238,27 +1388,21 @@ func (f *Feed) postHTML(i int) string {
 		b.WriteString(f.separatorHTML("Новые сообщения", pal.Dang, pal.Dang, true))
 	}
 
+	pp.head = b.String()
+	b.Reset()
+
 	group := f.startsGroup(i)
-	bg := ""
 	switch {
 	case p.Id == f.highlight:
-		bg = ` bgcolor="` + pal.AccW + `"`
+		pp.bg = pal.AccW
 	case f.mentionsMe(p):
-		bg = ` bgcolor="` + pal.MenRow + `"`
+		pp.bg = pal.MenRow
 	}
-	top := 6
-	if !group {
-		top = 0
+	if group {
+		pp.top = 6
 	}
-	avatar := ""
 	if group && !p.IsSystemMessage() {
-		avatar = fmt.Sprintf(`<a href="%s"><img src="%s" width="32" height="32"></a>`, f.authorLink(p), f.authorAvatar(p))
-	}
-	fmt.Fprintf(&b, `<table width="100%%" cellspacing="0" cellpadding="0"%s><tr>`+
-		`<td width="%d" valign="top" style="padding-top:%dpx;padding-left:16px;padding-bottom:4px">%s</td>`+
-		`<td valign="top" style="padding-top:%dpx;padding-right:%dpx;padding-bottom:4px">`,
-		bg, feedAvatarCol, top, avatar, top, feedPadRight)
-	if group && !p.IsSystemMessage() {
+		pp.avatar, pp.link = f.authorAvatar(p), f.authorLink(p)
 		b.WriteString(f.authorHTML(p))
 	}
 	b.WriteString(f.replyHTML(p))
@@ -1267,11 +1411,14 @@ func (f *Feed) postHTML(i int) string {
 	b.WriteString(f.embedsHTML(p))
 	b.WriteString(f.reactionsHTML(p))
 	b.WriteString(f.threadHTML(p))
-	b.WriteString("</td></tr></table>")
+	// Картинки в строке (эмодзи, плашки реакций, иконки) — по верху строки,
+	// как было в ячейке таблицы с valign="top" (его наследовало всё в ней):
+	// по базовой линии строка выше на свисание букв.
+	pp.body = `<div style="vertical-align:top">` + b.String() + `</div>`
 	if n := len(f.items) + len(f.pending); f.isRoot(p) && n > 1 {
-		b.WriteString(f.separatorHTML(pluralReplies(int64(n-1)), pal.Tx2, pal.Line, false))
+		pp.tail = f.separatorHTML(pluralReplies(int64(n-1)), pal.Tx2, pal.Line, false)
 	}
-	return b.String()
+	return pp
 }
 
 // whereHTML — над результатом поиска: где и когда, «Перейти» к нему.
@@ -1336,14 +1483,14 @@ func (f *Feed) authorAvatar(p *model.Post) string {
 	// Имя и адрес иконки — чужой текст: в имя ресурса только хэш (ASCII, QUrl его не тронет).
 	sum := sha256.Sum256(fmt.Appendf(nil, "%s\x00%s\x00%t\x00%s", p.UserId, name, in.CreatorIcon, in.IconURL))
 	src := "avatar-hook:" + hex.EncodeToString(sum[:12])
-	if _, ok := f.resources[src]; ok {
+	if _, ok := f.avatars[src]; ok {
 		return src
 	}
 	reload := func() {
-		f.addResource(src, integrationAvatar(f.d.Assets, in, f.d.Users(p.UserId), name, 32, nil), 32, 32)
+		f.avatars[src] = integrationAvatar(f.d.Assets, in, f.d.Users(p.UserId), name, 32, nil)
 		f.view.Viewport().Update()
 	}
-	f.addResource(src, integrationAvatar(f.d.Assets, in, f.d.Users(p.UserId), name, 32, reload), 32, 32)
+	f.avatars[src] = integrationAvatar(f.d.Assets, in, f.d.Users(p.UserId), name, 32, reload)
 	return src
 }
 
@@ -1602,18 +1749,18 @@ func (f *Feed) iconSrc(name, color string, size int) string {
 	return src
 }
 
-// avatarSrc — аватар 32 px ресурсом документа. Фото догружается фоном и
-// подменяет инициалы в том же ресурсе.
+// avatarSrc — аватар 32 px (рисует paintUnder): ключ в f.avatars. Фото
+// догружается фоном и подменяет инициалы под тем же ключом.
 func (f *Feed) avatarSrc(u *model.User, userID, name string, bot bool) string {
 	src := fmt.Sprintf("avatar:%s:%s", userID, url.PathEscape(name))
-	if _, ok := f.resources[src]; ok {
+	if _, ok := f.avatars[src]; ok {
 		return src
 	}
 	reload := func() {
-		f.addResource(src, avatarPixmap(f.d.Assets, f.d.Users(userID), name, bot, 32, nil), 32, 32)
+		f.avatars[src] = avatarPixmap(f.d.Assets, f.d.Users(userID), name, bot, 32, nil)
 		f.view.Viewport().Update()
 	}
-	f.addResource(src, avatarPixmap(f.d.Assets, u, name, bot, 32, reload), 32, 32)
+	f.avatars[src] = avatarPixmap(f.d.Assets, u, name, bot, 32, reload)
 	return src
 }
 

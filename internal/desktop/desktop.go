@@ -40,7 +40,7 @@ func Entry(exe string) string {
 	return "[Desktop Entry]\n" +
 		"Type=Application\n" +
 		"Name=Matterqute\n" +
-		"GenericName=Mattermost\n" +
+		"GenericName=Чат Mattermost\n" +
 		"Comment=Клиент Mattermost\n" +
 		"Exec=" + quoteExec(exe) + " %u\n" +
 		"Icon=matterqute\n" +
@@ -92,13 +92,19 @@ func Install(dataDir, exe string, saveIcon func(path string, px int) error) ([]s
 }
 
 // SchemeCommands — команды, после которых ссылки mattermost:// открывает
-// приложение: обновить базу ярлыков и сделать его обработчиком по умолчанию.
+// приложение: обновить базу ярлыков и сделать его обработчиком по
+// умолчанию — и для xdg-open (xdg-mime), и для браузеров, которые спрашивают
+// окружение (xdg-settings: GNOME — через gio, KDE — своё).
 func SchemeCommands(dataDir string) [][]string {
 	return [][]string{
 		{"update-desktop-database", filepath.Join(dataDir, "applications")},
 		{"xdg-mime", "default", ID, Scheme},
+		{"xdg-settings", "set", "default-url-scheme-handler", "mattermost", ID},
 	}
 }
+
+// SchemeQuery — команда: какой ярлык открывает ссылки mattermost://.
+var SchemeQuery = []string{"xdg-mime", "query", "default", Scheme}
 
 // Uninstall убирает то, что поставил Install; возвращает удалённое.
 func Uninstall(dataDir string) ([]string, error) {

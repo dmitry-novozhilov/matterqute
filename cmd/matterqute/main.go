@@ -184,12 +184,24 @@ func registerScheme(dataDir string, log *slog.Logger) {
 	}
 	for _, c := range desktop.SchemeCommands(dataDir) {
 		if _, err := exec.LookPath(c[0]); err != nil {
-			fmt.Printf("Нет %s — ссылки mattermost:// может открывать другое приложение\n", c[0])
+			fmt.Printf("Нет %s — пропускаю\n", c[0])
 			continue
 		}
 		if out, err := exec.Command(c[0], c[1:]...).CombinedOutput(); err != nil {
 			log.Warn("register mattermost:// links", "command", strings.Join(c, " "), "err", err, "output", strings.TrimSpace(string(out)))
 		}
 	}
-	fmt.Println("Ссылки mattermost:// открывает matterqute")
+	// Что вышло: кто теперь открывает ссылки. Не мы — сказать, где искать.
+	out, err := exec.Command(desktop.SchemeQuery[0], desktop.SchemeQuery[1:]...).Output()
+	switch handler := strings.TrimSpace(string(out)); {
+	case err != nil:
+		fmt.Println("Не удалось проверить, кто открывает ссылки mattermost://:", err)
+	case handler == desktop.ID:
+		fmt.Println("Ссылки mattermost:// открывает matterqute.")
+		fmt.Println("Если браузер всё равно предлагает другое приложение, он помнит прежний выбор:")
+		fmt.Println("  Firefox — Настройки → Основные → Приложения → mattermost → «Использовать Matterqute»;")
+		fmt.Println("  Chrome/Chromium — спрашивает окружение; если предлагает другое — перезапустите браузер.")
+	default:
+		fmt.Printf("Ссылки mattermost:// открывает %q, а не matterqute: проверьте ~/.config/*mimeapps.list\n", handler)
+	}
 }

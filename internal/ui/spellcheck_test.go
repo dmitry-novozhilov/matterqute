@@ -18,6 +18,9 @@ func TestSpellcheck(t *testing.T) {
 	if sc == nil {
 		t.Skip(err)
 	}
+	if len(sc.Loaded) < len(spell.Langs) {
+		t.Skipf("dictionaries loaded %v, want %v (hunspell-ru, hunspell-en-us)", sc.Loaded, spell.Langs)
+	}
 	onMain(func() {
 		defer func() {
 			spellState.checker = nil

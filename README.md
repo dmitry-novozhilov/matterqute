@@ -76,5 +76,5 @@ Tested on Linux (Debian 13, X11, XFCE) with Mattermost server 11.6.2. The interf
 Mattermost is a trademark of Mattermost, Inc. Matterqute is an independent project, not affiliated with Mattermost, Inc.
 
 <!-- CC-TOKENS:START -->
-<abbr title="opus: 1.2 G ток, $367.70&#10;fable: 73.8 M ток, $97.29&#10;итого: 1.3 G ток, $464.99&#10;обновлено 2026-11-03 19:09 UTC · сессий: 2 (хостов: 1)&#10;прайс от 2026-11-03"><img src=".llm-tokens-badge.svg" alt="AI: $464.99"></abbr>
+<abbr title="opus: 1.2 G ток, $367.70&#10;fable: 76 M ток, $98.45&#10;итого: 1.3 G ток, $466.15&#10;обновлено 2026-11-03 19:28 UTC · сессий: 2 (хостов: 1)&#10;прайс от 2026-11-03"><img src=".llm-tokens-badge.svg" alt="AI: $466.15"></abbr>
 <!-- CC-TOKENS:END -->

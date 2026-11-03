@@ -39,6 +39,9 @@ func TestChecker(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
+	if len(c.Loaded) < len(Langs) {
+		t.Skipf("dictionaries loaded %v, want %v (hunspell-ru, hunspell-en-us)", c.Loaded, Langs)
+	}
 	for _, w := range []string{"привет", "сообщения", "кто-нибудь", "hello", "deploy", "Москва"} {
 		if !c.Correct(w) {
 			t.Errorf("%q marked wrong (dicts %v)", w, c.Loaded)

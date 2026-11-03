@@ -251,6 +251,7 @@ func NewFeed(d FeedDeps) *Feed {
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.doc.SetDefaultFont(feedFont())
+	f.setTabs()
 	f.view.SetOpenLinks(false)
 	f.view.SetFrameShape(qt.QFrame__NoFrame)
 	f.view.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
@@ -357,6 +358,7 @@ func (f *Feed) SetMarks(terms []string) {
 func (f *Feed) restyle() {
 	f.restyleRenderer()
 	f.doc.SetDefaultFont(feedFont())
+	f.setTabs()
 	f.resources = map[string][2]int{}
 	f.pills = map[string]pill{}
 	f.avatars = map[string]*qt.QPixmap{}
@@ -368,6 +370,12 @@ func (f *Feed) restyle() {
 	}
 	f.quick.restyle()
 	f.invalidateAll()
+}
+
+// setTabs — табуляция в коде — 4 знака моноширинного (по умолчанию у Qt —
+// 80 px: код с табами в узкой колонке треда переносился).
+func (f *Feed) setTabs() {
+	f.view.SetTabStopDistance(4 * qt.NewQFontMetricsF(font(style.fonts.Mono, style.fonts.Mono.Size, qt.QFont__Normal)).HorizontalAdvance(" "))
 }
 
 // Reset очищает ленту; msg — текст вместо постов.

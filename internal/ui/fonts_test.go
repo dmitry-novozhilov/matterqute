@@ -89,7 +89,8 @@ func TestFonts(t *testing.T) {
 }
 
 // Масштаб: «Вид → Масштаб» (Ctrl+= и Ctrl++, Ctrl+−, Ctrl+0) — шагами поверх
-// выбранных шрифтов, выбранные не меняются; у края шагов — ничего.
+// выбранных шрифтов, выбранные не меняются; у края шагов — ничего. Шаг
+// табуляции в коде ленты — 4 знака моноширинного и растёт с масштабом.
 func TestZoom(t *testing.T) {
 	onMain(func() {
 		defer SetZoom(100)
@@ -126,7 +127,16 @@ func TestZoom(t *testing.T) {
 		if strings.Join(keys, " ") != "Ctrl+= Ctrl++" || out.Shortcut().ToString() != "Ctrl+-" || reset.Shortcut().ToString() != "Ctrl+0" {
 			t.Errorf("keys: in %v, out %q, reset %q", keys, out.Shortcut().ToString(), reset.Shortcut().ToString())
 		}
+		f := NewFeed(FeedDeps{Names: func(id string) string { return id }, Me: &model.User{Id: "me", Username: "me"}})
+		defer f.dispose()
+		mono := qt.NewQFontMetricsF(font(style.fonts.Mono, style.fonts.Mono.Size, qt.QFont__Normal)).HorizontalAdvance(" ")
+		if d := f.view.TabStopDistance(); d != 4*mono {
+			t.Errorf("tab stop %.1f px, want 4 monospace spaces (%.1f)", d, 4*mono)
+		}
 		in.Trigger()
+		if d := f.view.TabStopDistance(); d <= 4*mono {
+			t.Errorf("tab stop %.1f px after zoom in, was %.1f", d, 4*mono)
+		}
 		if style.zoom != 110 || style.fonts.Feed.Size != 18 || style.fonts.Sidebar.Size != 15 || style.chosen.Feed.Size != 16 || feedFont().PixelSize() != 18 {
 			t.Errorf("110%%: zoom %d, feed %d, sidebar %d, chosen feed %d", style.zoom, style.fonts.Feed.Size, style.fonts.Sidebar.Size, style.chosen.Feed.Size)
 		}

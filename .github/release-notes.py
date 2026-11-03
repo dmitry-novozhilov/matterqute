@@ -61,9 +61,9 @@ def main():
         out.append(f"Полный список: [{prev}…{tag}](https://github.com/{repo}/compare/{prev}...{tag})\n")
 
     out.append("## Сборки\n")
-    out.append("- **Linux x86_64** — `matterqute-…-linux-x86_64`: один бинарник (после скачивания `chmod +x`), "
-               "собран на Debian 13 (Qt 6.8); нужны системные пакеты `libqt6widgets6 libqt6svg6 qt6-image-formats-plugins "
-               "libqt6multimedia6` с Qt 6.8+ (Debian 13, Ubuntu 25.04+); `./matterqute --install` добавит ярлык в меню.")
+    out.append("- **Linux x86_64** — `matterqute-…-linux-x86_64.AppImage`: один файл с Qt внутри (после скачивания "
+               "`chmod +x`), ставить ничего не нужно; Ubuntu 22.04+, Debian 12+ и другие дистрибутивы с glibc 2.35+; "
+               "`./matterqute-….AppImage --install` добавит ярлык в меню и обработчик ссылок `mattermost://`.")
     out.append("- **macOS (Apple Silicon)** — `matterqute-…-macos-arm64.dmg`: приложение не подписано — "
                "после копирования в «Программы» снять карантин: `xattr -dr com.apple.quarantine /Applications/Matterqute.app`.")
     out.append("- **Windows x86_64** — `matterqute-…-windows-x86_64-setup.exe`: установщик (без прав администратора, "

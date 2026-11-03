@@ -157,6 +157,9 @@ func installDesktop(install bool, log *slog.Logger) int {
 			log.Error("install", "err", fmt.Errorf("path to the binary: %w", err))
 			return 1
 		}
+		if img := os.Getenv("APPIMAGE"); img != "" {
+			exe = img // внутри AppImage os.Executable — путь в точке монтирования, он у каждого запуска свой
+		}
 		if strings.Contains(exe, "go-build") {
 			log.Warn("install: binary is a temporary go run build, the shortcut will break", "exe", exe)
 		}

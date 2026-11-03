@@ -33,7 +33,7 @@
 
 ## Downloads
 
-Prebuilt binaries are attached to each [release](https://github.com/dmitry-novozhilov/matterqute/releases): Linux x86_64 (a single binary built on Debian 13 — `chmod +x` after downloading; needs the system packages `libqt6widgets6 libqt6svg6 qt6-image-formats-plugins libqt6multimedia6`, Qt 6.8+), macOS on Apple Silicon (an unsigned `.dmg`: after copying the app run `xattr -dr com.apple.quarantine /Applications/Matterqute.app`) and Windows x86_64 (a `setup.exe` installer — no admin rights needed, registers `mattermost://` links — or a portable `.zip`; both unsigned). macOS and Windows builds are produced by CI but have not been tried by hand.
+Prebuilt binaries are attached to each [release](https://github.com/dmitry-novozhilov/matterqute/releases): Linux x86_64 (an AppImage with Qt inside — `chmod +x` after downloading, nothing to install; Ubuntu 22.04+, Debian 12+; `--install` adds a menu entry), macOS on Apple Silicon (an unsigned `.dmg`: after copying the app run `xattr -dr com.apple.quarantine /Applications/Matterqute.app`) and Windows x86_64 (a `setup.exe` installer — no admin rights needed, registers `mattermost://` links — or a portable `.zip`; both unsigned). macOS and Windows builds are produced by CI but have not been tried by hand.
 
 ## Building
 
@@ -76,5 +76,5 @@ Tested on Linux (Debian 13, X11, XFCE) with Mattermost server 11.6.2. The interf
 Mattermost is a trademark of Mattermost, Inc. Matterqute is an independent project, not affiliated with Mattermost, Inc.
 
 <!-- CC-TOKENS:START -->
-<abbr title="opus: 1.2 G ток, $367.70&#10;fable: 69.5 M ток, $94.84&#10;итого: 1.3 G ток, $462.54&#10;обновлено 2026-11-03 18:59 UTC · сессий: 2 (хостов: 1)&#10;прайс от 2026-11-03"><img src=".llm-tokens-badge.svg" alt="AI: $462.54"></abbr>
+<abbr title="opus: 1.2 G ток, $367.70&#10;fable: 73.8 M ток, $97.29&#10;итого: 1.3 G ток, $464.99&#10;обновлено 2026-11-03 19:09 UTC · сессий: 2 (хостов: 1)&#10;прайс от 2026-11-03"><img src=".llm-tokens-badge.svg" alt="AI: $464.99"></abbr>
 <!-- CC-TOKENS:END -->

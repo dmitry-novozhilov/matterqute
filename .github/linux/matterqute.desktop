@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Matterqute
+GenericName=Чат Mattermost
+Comment=Клиент Mattermost
+Exec=matterqute %u
+Icon=matterqute
+Terminal=false
+Categories=Network;InstantMessaging;Chat;
+StartupWMClass=matterqute
+StartupNotify=true
+MimeType=x-scheme-handler/mattermost;

@@ -412,6 +412,21 @@ func (c *Composer) newLine() {
 	c.syncFormat()
 }
 
+// pasteText — вставка текстом: строки — абзацами того же вида, что абзац
+// курсора (строки кода — в блоке кода, цитаты — в цитате, пункты — в списке),
+// как при Enter. Qt вставлял первую строку в абзац, а остальные — обычными
+// абзацами (шрифт от курсора — моноширинный, но не код).
+func (c *Composer) pasteText(text string) {
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+	cur := c.edit.TextCursor()
+	cur.BeginEditBlock() // одна правка для Ctrl+Z
+	cur.InsertText(text) // \n — InsertBlock с форматом текущего абзаца
+	cur.EndEditBlock()
+	c.edit.SetTextCursor(cur)
+	c.edit.EnsureCursorVisible()
+	c.syncFormat()
+}
+
 // backspaceAtStart — Backspace в начале цитаты, кода или пункта списка делает
 // абзац обычным (а не склеивает его с предыдущим).
 func (c *Composer) backspaceAtStart() bool {

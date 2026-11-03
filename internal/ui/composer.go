@@ -223,6 +223,10 @@ func NewComposer() *Composer {
 		if m.HasImage() && c.pasteImage() {
 			return
 		}
+		if m.HasText() {
+			c.pasteText(m.Text())
+			return
+		}
 		super(m)
 	})
 

@@ -158,6 +158,26 @@ func TestComposerFormatting(t *testing.T) {
 		typeText("готово")
 		check("code block", send(), "```\nx := **1**\ny()\n```\nготово")
 
+		// Вставка нескольких строк остаётся в блоке кода (в цитате, в
+		// списке), а не только первая.
+		paste := func(text string) {
+			qt.QGuiApplication_Clipboard().SetText(text)
+			c.edit.Paste()
+		}
+		typeText("```")
+		paste("a := 1\r\nb := 2\nc()")
+		shotWidget(t, c.w, "composer-pasted-code")
+		press(qt.Key_Return, qt.NoModifier, "\r")
+		press(qt.Key_Return, qt.NoModifier, "\r")
+		typeText("готово")
+		check("pasted code", send(), "```\na := 1\nb := 2\nc()\n```\nготово")
+		typeText("> ")
+		paste("раз\nдва")
+		check("pasted quote", send(), "> раз\n> два")
+		typeText("- ")
+		paste("раз\nдва")
+		check("pasted list", send(), "- раз\n- два")
+
 		// Ссылка через окно: на выделенный текст, адрес без схемы — https.
 		typeText("see docs")
 		selectText(4, 8)

@@ -169,7 +169,7 @@ func (s *Server) channelsAutocomplete(w http.ResponseWriter, r *http.Request, me
 	q := strings.ToLower(r.URL.Query().Get("name"))
 	out := []*model.Channel{}
 	for _, c := range s.channels {
-		if c.TeamId != r.PathValue("tid") || (c.Type != model.ChannelTypeOpen && s.members[me.Id][c.Id] == nil) {
+		if c.TeamId != r.PathValue("tid") || c.DeleteAt > 0 || (c.Type != model.ChannelTypeOpen && s.members[me.Id][c.Id] == nil) {
 			continue
 		}
 		if strings.Contains(strings.ToLower(c.Name), q) || strings.Contains(strings.ToLower(c.DisplayName), q) {

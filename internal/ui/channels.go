@@ -334,6 +334,22 @@ func (m *MainWindow) showBrowseChannels(team string) {
 	hint := qt.NewQLabel3("Загружаем…")
 	hint.SetProperty("role", qt.NewQVariant11("hint"))
 	hint.SetWordWrap(true)
+	// Вкладки: открытые каналы (войти) и архивные (открыть для чтения).
+	archived := false
+	tabs := qt.NewQHBoxLayout2()
+	tabs.SetSpacing(4)
+	var tabBtns []*qt.QPushButton
+	for _, title := range []string{"Открытые", "Архивные"} {
+		b := qt.NewQPushButton3(title)
+		b.SetProperty("role", qt.NewQVariant11("tab"))
+		b.SetCheckable(true)
+		b.SetAutoExclusive(true)
+		tabs.AddWidget(b.QWidget)
+		tabBtns = append(tabBtns, b)
+	}
+	tabBtns[0].SetChecked(true)
+	tabs.AddStretch()
+	d.lay.AddLayout(tabs.QLayout)
 	d.lay.AddWidget(filter.QWidget)
 	d.lay.AddWidget2(list.QWidget, 1)
 	d.lay.AddWidget(hint.QWidget)
@@ -350,7 +366,7 @@ func (m *MainWindow) showBrowseChannels(team string) {
 			if ch.Purpose != "" {
 				text += " · " + ch.Purpose
 			}
-			if m.items[ch.Id] != nil {
+			if m.items[ch.Id] != nil && !archived || archived && m.st.IsMember(ch.Id) {
 				text += " · вы здесь"
 			}
 			it := qt.NewQListWidgetItem7(text, list)
@@ -370,6 +386,12 @@ func (m *MainWindow) showBrowseChannels(team string) {
 		id := it.Data(int(qt.UserRole)).ToString()
 		i := slices.IndexFunc(all, func(c *model.Channel) bool { return c.Id == id })
 		if i < 0 {
+			return
+		}
+		if archived { // в архив не входят — его читают
+			ch := all[i]
+			d.w.Close()
+			m.openArchived(ch, func() { m.selectChannel(ch.Id) })
 			return
 		}
 		hint.SetText("Входим…")
@@ -404,38 +426,67 @@ func (m *MainWindow) showBrowseChannels(team string) {
 	d.w.Show()
 	filter.SetFocus()
 
-	go func() {
-		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
-		defer cancel()
-		var chs []*model.Channel
-		var err error
-		for page := 0; page < 10; page++ {
-			batch, _, e := m.s.Client.GetPublicChannelsForTeam(ctx, team, page, 200, "")
-			if e != nil {
-				err = e
-				break
-			}
-			chs = append(chs, batch...)
-			if len(batch) < 200 {
-				break
-			}
+	load := func() {
+		want := archived
+		all = nil
+		list.Clear()
+		hint.SetText("Загружаем…")
+		ok.SetText("Войти")
+		if archived {
+			ok.SetText("Открыть")
 		}
-		m.ui(func() {
-			if d.closed {
-				return
+		go func() {
+			ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
+			defer cancel()
+			var chs []*model.Channel
+			var err error
+			for page := 0; page < 10; page++ {
+				var batch []*model.Channel
+				var e error
+				if want {
+					batch, _, e = m.s.Client.GetDeletedChannelsForTeam(ctx, team, page, 200, "")
+				} else {
+					batch, _, e = m.s.Client.GetPublicChannelsForTeam(ctx, team, page, 200, "")
+				}
+				if e != nil {
+					err = e
+					break
+				}
+				chs = append(chs, batch...)
+				if len(batch) < 200 {
+					break
+				}
 			}
-			if err != nil {
-				hint.SetText("Не удалось загрузить каналы: " + commandError(err))
-				return
-			}
-			slices.SortFunc(chs, func(a, b *model.Channel) int {
-				return strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName))
+			m.ui(func() {
+				if d.closed || archived != want {
+					return // окно закрыли или вкладку сменили
+				}
+				if err != nil {
+					hint.SetText("Не удалось загрузить каналы: " + commandError(err))
+					return
+				}
+				slices.SortFunc(chs, func(a, b *model.Channel) int {
+					return strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName))
+				})
+				all = chs
+				if want {
+					hint.SetText(fmt.Sprintf("Архивных каналов: %d. Enter или двойной щелчок — открыть для чтения.", len(all)))
+				} else {
+					hint.SetText(fmt.Sprintf("Открытых каналов: %d. Enter или двойной щелчок — войти.", len(all)))
+				}
+				fill()
 			})
-			all = chs
-			hint.SetText(fmt.Sprintf("Открытых каналов: %d. Enter или двойной щелчок — войти.", len(all)))
-			fill()
+		}()
+	}
+	for i, b := range tabBtns {
+		b.OnClicked(func() {
+			if archived != (i == 1) {
+				archived = i == 1
+				load()
+			}
 		})
-	}()
+	}
+	load()
 }
 
 // showCreateChannel — новый канал: название, адрес (из названия, можно

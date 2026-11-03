@@ -159,6 +159,8 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("GET /api/v4/users/{a}/{b}", s.auth(s.userRoute))
 	s.mux.HandleFunc("POST /api/v4/channels/direct", s.auth(s.createDirect))
 	s.mux.HandleFunc("GET /api/v4/teams/{tid}/channels", s.auth(s.publicChannels))
+	s.mux.HandleFunc("GET /api/v4/teams/{tid}/channels/deleted", s.auth(s.deletedChannels))
+	s.mux.HandleFunc("GET /api/v4/channels/{cid}", s.auth(s.getChannel))
 	s.mux.HandleFunc("POST /api/v4/channels", s.auth(s.createChannel))
 	s.mux.HandleFunc("POST /api/v4/channels/{cid}/members", s.auth(s.joinChannel))
 	s.mux.HandleFunc("DELETE /api/v4/channels/{cid}/members/{uid}", s.auth(s.leaveChannel))
@@ -372,6 +374,37 @@ func (s *Server) seed() {
 	s.members[alice.Id][withBob.Id].MentionCount = 1
 	s.seedPost(alerts, bob, now.Add(-2*time.Hour), "[FIRING] DiskSpaceLow on db-2")
 	s.members[alice.Id][alerts.Id].MsgCount = s.channels[alerts.Id].TotalMsgCount
+
+	// Архив: old-project — alice участница, legacy — открытый, alice в нём нет.
+	oldProject := ch(dev, model.ChannelTypeOpen, "old-project", "Старый проект", "Закрыт в прошлом году")
+	s.seedPost(oldProject, carol, now.Add(-400*24*time.Hour), "Проект закрываем, всё переехало в backend.")
+	s.members[alice.Id][oldProject.Id].MsgCount = oldProject.TotalMsgCount
+	legacy := &model.Channel{Id: model.NewId(), TeamId: dev.Id, Type: model.ChannelTypeOpen, Name: "legacy", DisplayName: "legacy", Purpose: "Старый монолит"}
+	s.addChannel(legacy, []*model.User{bob, carol})
+	s.seedPost(legacy, bob, now.Add(-500*24*time.Hour), "Монолит выключен.")
+	oldProject.DeleteAt = now.Add(-300 * 24 * time.Hour).UnixMilli()
+	legacy.DeleteAt = oldProject.DeleteAt
+}
+
+// Archive — архивировать канал, как администратор: событие channel_deleted участникам.
+func (s *Server) Archive(channelID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.channels[channelID]
+	c.DeleteAt = model.GetMillis()
+	for uid, chs := range s.members {
+		if chs[channelID] != nil {
+			ev := model.NewWebSocketEvent(model.WebsocketEventChannelDeleted, c.TeamId, "", uid, nil, "")
+			ev = ev.SetData(map[string]any{"channel_id": channelID, "delete_at": c.DeleteAt})
+			s.sendTo(uid, ev)
+		}
+	}
+}
+
+// readable — канал можно читать: участник или открытый архивный (смотреть
+// архив открытых каналов сервер разрешает и без членства).
+func (s *Server) readable(me *model.User, c *model.Channel) bool {
+	return c != nil && (s.members[me.Id][c.Id] != nil || c.Type == model.ChannelTypeOpen && c.DeleteAt > 0)
 }
 
 // seedReply — ответ в тред при заполнении: счётчики и подписки как у живого.
@@ -526,10 +559,44 @@ func (s *Server) myChannels(teamID string, me *model.User) []*model.Channel {
 	return out
 }
 
+// teamChannels — свои каналы команды; архивные — с include_deleted=true.
 func (s *Server) teamChannels(w http.ResponseWriter, r *http.Request, me *model.User) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.json(w, s.myChannels(r.PathValue("tid"), me))
+	out := []*model.Channel{}
+	for _, c := range s.myChannels(r.PathValue("tid"), me) {
+		if c.DeleteAt == 0 || r.URL.Query().Get("include_deleted") == "true" {
+			out = append(out, c)
+		}
+	}
+	s.json(w, out)
+}
+
+// deletedChannels — GET /teams/{tid}/channels/deleted: архивные открытые
+// каналы команды и приватные, где пользователь есть.
+func (s *Server) deletedChannels(w http.ResponseWriter, r *http.Request, me *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []*model.Channel{}
+	for _, c := range s.channels {
+		if c.TeamId == r.PathValue("tid") && c.DeleteAt > 0 && (c.Type == model.ChannelTypeOpen || s.members[me.Id][c.Id] != nil) {
+			out = append(out, c)
+		}
+	}
+	slices.SortFunc(out, func(a, b *model.Channel) int { return strings.Compare(a.Name, b.Name) })
+	s.json(w, out)
+}
+
+// getChannel — GET /channels/{cid}: свой или открытый архивный.
+func (s *Server) getChannel(w http.ResponseWriter, r *http.Request, me *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.channels[r.PathValue("cid")]
+	if !s.readable(me, c) {
+		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
+		return
+	}
+	s.json(w, c)
 }
 
 func (s *Server) teamMembers(w http.ResponseWriter, r *http.Request, me *model.User) {
@@ -570,7 +637,7 @@ func (s *Server) channelPosts(w http.ResponseWriter, r *http.Request, me *model.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cid := r.PathValue("cid")
-	if s.members[me.Id][cid] == nil {
+	if !s.readable(me, s.channels[cid]) {
 		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
 		return
 	}
@@ -630,6 +697,11 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request, me *model.Us
 	if s.members[me.Id][p.ChannelId] == nil {
 		s.mu.Unlock()
 		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")
+		return
+	}
+	if s.channels[p.ChannelId].DeleteAt > 0 {
+		s.mu.Unlock()
+		s.failMessage(w, http.StatusBadRequest, "api.post.create_post.can_not_post_to_deleted.error", "Can not post to deleted channel.")
 		return
 	}
 	if p.RootId != "" && s.post(p.RootId) == nil {

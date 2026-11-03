@@ -43,12 +43,18 @@ type Store struct {
 	// был непрочитанным: остаётся в ней, пока его не покинут.
 	unreadSection bool
 	keepUnread    string
+	// Архивные каналы (DeleteAt > 0): где мы есть и открытые для чтения. Не в
+	// channels — значит, не в сайдбаре, счётчиках, быстром переходе; в
+	// сайдбаре — только открытый (openArchived), как в веб-клиенте.
+	archived     map[string]*model.Channel
+	openArchived string
 }
 
 func New(me *model.User) *Store {
 	return &Store{
 		me:        me,
 		channels:  map[string]*model.Channel{},
+		archived:  map[string]*model.Channel{},
 		members:   map[string]*model.ChannelMember{},
 		users:     map[string]*model.User{me.Id: me},
 		timelines: map[string]*Timeline{},
@@ -116,9 +122,14 @@ func (s *Store) SetSidebar(sb *Sidebar) {
 	for team, c := range sb.Categories {
 		s.categories[team] = c
 	}
+	open := s.archived[s.openArchived] // открытый для чтения — и без членства
 	s.channels = make(map[string]*model.Channel, len(sb.Channels))
+	s.archived = map[string]*model.Channel{}
 	for _, ch := range sb.Channels {
-		s.channels[ch.Id] = ch
+		s.putChannel(ch)
+	}
+	if open != nil && s.Channel(open.Id) == nil {
+		s.archived[open.Id] = open
 	}
 	s.members = make(map[string]*model.ChannelMember, len(sb.Members))
 	for _, m := range sb.Members {
@@ -172,7 +183,36 @@ func (s *Store) SetStatus(userID, status string) { s.statuses[userID] = status }
 
 func (s *Store) Teams() []*model.Team { return s.teams }
 
-func (s *Store) Channel(id string) *model.Channel { return s.channels[id] }
+// Channel — канал по id, и архивный.
+func (s *Store) Channel(id string) *model.Channel {
+	if ch := s.channels[id]; ch != nil {
+		return ch
+	}
+	return s.archived[id]
+}
+
+// Archived — канал в архиве: только для чтения.
+func (s *Store) Archived(id string) bool { return s.archived[id] != nil }
+
+// IsMember — мы участник канала (архивный открывают и без этого).
+func (s *Store) IsMember(id string) bool { return s.members[id] != nil }
+
+// SetOpenArchived — архивный канал id открыт: он в сайдбаре, пока открыт; "" — никакой.
+func (s *Store) SetOpenArchived(id string) { s.openArchived = id }
+
+// OpenArchived — открытый архивный канал или "".
+func (s *Store) OpenArchived() string { return s.openArchived }
+
+// putChannel — канал в свою карту: архивный — в archived.
+func (s *Store) putChannel(ch *model.Channel) {
+	delete(s.channels, ch.Id)
+	delete(s.archived, ch.Id)
+	if ch.DeleteAt > 0 {
+		s.archived[ch.Id] = ch
+	} else {
+		s.channels[ch.Id] = ch
+	}
+}
 
 // TeamFor — команда, от имени которой работать с тредами канала: у личных
 // каналов своей команды нет, сервер принимает любую из команд пользователя.
@@ -195,6 +235,11 @@ func (s *Store) ChannelByName(name, preferTeam string) *model.Channel {
 			if ch.TeamId == preferTeam {
 				return ch
 			}
+			found = ch
+		}
+	}
+	for _, ch := range s.archived {
+		if found == nil && ch.Name == name && (ch.TeamId == preferTeam || preferTeam == "") {
 			found = ch
 		}
 	}
@@ -298,7 +343,7 @@ func (s *Store) SetMuted(channelID string, muted bool) {
 // AddChannel — вошли в канал или создали его: в сайдбаре сразу, не дожидаясь
 // перезагрузки. member nil — пока без счётчиков (их принесёт перезагрузка).
 func (s *Store) AddChannel(ch *model.Channel, member *model.ChannelMember) {
-	s.channels[ch.Id] = ch
+	s.putChannel(ch)
 	if member != nil {
 		s.members[ch.Id] = member
 	}
@@ -307,6 +352,7 @@ func (s *Store) AddChannel(ch *model.Channel, member *model.ChannelMember) {
 // RemoveChannel — вышли из канала: из сайдбара сразу, вместе с лентой.
 func (s *Store) RemoveChannel(id string) {
 	delete(s.channels, id)
+	delete(s.archived, id)
 	delete(s.members, id)
 	delete(s.timelines, id)
 }
@@ -342,7 +388,7 @@ func (s *Store) LastViewed(channelID string) int64 {
 
 // MarkViewed — локально то же, что делает сервер на ViewChannel.
 func (s *Store) MarkViewed(channelID string) {
-	ch, m := s.channels[channelID], s.members[channelID]
+	ch, m := s.Channel(channelID), s.members[channelID]
 	if ch == nil || m == nil {
 		return
 	}
@@ -674,6 +720,11 @@ func (s *Store) Snapshot(tail int) (*Sidebar, map[string]*Timeline) {
 	for _, ch := range s.channels {
 		sb.Channels = append(sb.Channels, ch)
 	}
+	for _, ch := range s.archived {
+		if s.members[ch.Id] != nil { // открытые для чтения без членства — нет
+			sb.Channels = append(sb.Channels, ch)
+		}
+	}
 	for _, m := range s.members {
 		sb.Members = append(sb.Members, m)
 	}
@@ -686,7 +737,7 @@ func (s *Store) Snapshot(tail int) (*Sidebar, map[string]*Timeline) {
 	users := map[string]bool{}
 	tls := map[string]*Timeline{}
 	for id, t := range s.timelines {
-		if !t.Loaded || s.channels[id] == nil {
+		if !t.Loaded || s.channels[id] == nil { // архивные — нет: их откроют редко
 			continue
 		}
 		posts, cut := t.Posts, len(t.Posts) > tail

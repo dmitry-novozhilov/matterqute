@@ -125,6 +125,9 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 				m.panel.head.set(nil, m.threadTitleHTML(t), "")
 				m.updateThreadWindowTitle()
 				m.updateFollowButton()
+				archived := m.st.Archived(t.channelID)
+				m.panel.feed.ReadOnly = archived
+				m.panel.composer.SetArchived(archived)
 				m.panel.feed.SetPosts(t.tl.Posts, false)
 				m.panel.composer.SetEnabled(t.channelID != "")
 				m.panel.composer.Focus()

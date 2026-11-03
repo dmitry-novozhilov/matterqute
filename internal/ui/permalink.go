@@ -129,17 +129,27 @@ func (m *MainWindow) openChannelByName(teamName, name string) {
 			team = t.Id
 		}
 	}
-	if ch := m.st.ChannelByName(name, team); ch != nil && (team == "" || ch.TeamId == team) && m.items[ch.Id] != nil {
-		m.selectChannel(ch.Id)
-		return
+	if ch := m.st.ChannelByName(name, team); ch != nil && (team == "" || ch.TeamId == team) {
+		if m.items[ch.Id] != nil {
+			m.selectChannel(ch.Id)
+			return
+		}
+		if ch.DeleteAt > 0 {
+			m.openArchived(ch, func() { m.selectChannel(ch.Id) })
+			return
+		}
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
-		ch, _, err := m.s.Client.GetChannelByNameForTeamName(ctx, name, teamName, "")
+		ch, _, err := m.s.Client.GetChannelByNameForTeamNameIncludeDeleted(ctx, name, teamName, "")
 		m.ui(func() {
 			if err != nil {
 				m.fail("open channel", fmt.Errorf("channel %s in team %s: %w", name, teamName, err))
+				return
+			}
+			if ch.DeleteAt > 0 {
+				m.openArchived(ch, func() { m.selectChannel(ch.Id) })
 				return
 			}
 			m.selectAfterLoad = ch.Id
@@ -207,7 +217,7 @@ func (m *MainWindow) knownPost(channelID, postID string) *model.Post {
 // — ещё и в панели треда (при CRT в ленте канала — его корень).
 func (m *MainWindow) goToPost(p *model.Post) {
 	if m.items[p.ChannelId] == nil {
-		m.message("Канал этого сообщения вам недоступен")
+		m.withArchived(p.ChannelId, func() { m.goToPost(p) }) // в архиве — только читать
 		return
 	}
 	inChannel := p.Id

@@ -63,7 +63,7 @@ func (s *Server) executeCommand(w http.ResponseWriter, r *http.Request, me *mode
 		s.mu.Lock()
 		var ch *model.Channel
 		for _, c := range s.channels {
-			if c.Name == name && c.TeamId == args.TeamId && c.Type == model.ChannelTypeOpen {
+			if c.Name == name && c.TeamId == args.TeamId && c.Type == model.ChannelTypeOpen && c.DeleteAt == 0 {
 				ch = c
 			}
 		}
@@ -144,6 +144,9 @@ func (s *Server) channelByName(w http.ResponseWriter, r *http.Request, me *model
 		}
 	}
 	for _, c := range s.channels {
+		if c.DeleteAt > 0 && r.URL.Query().Get("include_deleted") != "true" {
+			continue
+		}
 		if c.TeamId == team && c.Name == r.PathValue("channel") && (c.Type == model.ChannelTypeOpen || s.members[me.Id][c.Id] != nil) {
 			s.json(w, c)
 			return
@@ -157,7 +160,7 @@ func (s *Server) getPost(w http.ResponseWriter, r *http.Request, me *model.User)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.post(r.PathValue("pid"))
-	if p == nil || s.members[me.Id][p.ChannelId] == nil {
+	if p == nil || !s.readable(me, s.channels[p.ChannelId]) {
 		s.fail(w, http.StatusNotFound, "app.post.get.app_error")
 		return
 	}

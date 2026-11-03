@@ -120,7 +120,8 @@ func TestSidebarCategories(t *testing.T) {
 		}
 		if !waitFor(t, "manual order on server", func() bool {
 			c := server(model.SidebarCategoryChannels)
-			return c.Sorting == model.SidebarCategorySortManual && slices.Equal(c.Channels, []string{releases, town})
+			shown := slices.DeleteFunc(slices.Clone(c.Channels), m.st.Archived) // архивные — в конце, их не видно
+			return c.Sorting == model.SidebarCategorySortManual && slices.Equal(shown, []string{releases, town})
 		}) {
 			return
 		}

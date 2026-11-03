@@ -69,6 +69,7 @@ type Composer struct {
 
 	placeholder string
 	offline     bool
+	archived    bool // канал в архиве: только чтение
 	key         string
 	files       []*attachment
 	drafts      map[string]*draft
@@ -391,7 +392,10 @@ func (c *Composer) SetPlaceholder(text string) {
 // тогда её убираем.
 func (c *Composer) updatePlaceholder() {
 	text := c.placeholder
-	if c.offline {
+	switch {
+	case c.archived:
+		text = "Канал в архиве — новые сообщения сюда не отправить"
+	case c.offline:
 		text = "Нет соединения — отправка недоступна"
 	}
 	if doc := c.edit.Document(); doc.BlockCount() == 1 && blockKind(doc.FirstBlock()) != markdown.Para {
@@ -407,7 +411,14 @@ func (c *Composer) SetEnabled(on bool) { c.w.SetEnabled(on) }
 // SetOffline — нет соединения: поле неактивно и говорит об этом.
 func (c *Composer) SetOffline(offline bool) {
 	c.offline = offline
-	c.frame.SetEnabled(!offline)
+	c.frame.SetEnabled(!c.offline && !c.archived)
+	c.updatePlaceholder()
+}
+
+// SetArchived — канал в архиве: писать нельзя, поле неактивно и говорит об этом.
+func (c *Composer) SetArchived(archived bool) {
+	c.archived = archived
+	c.frame.SetEnabled(!c.offline && !c.archived)
 	c.updatePlaceholder()
 }
 

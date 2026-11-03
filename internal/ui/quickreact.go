@@ -130,9 +130,9 @@ func (q *quickBar) setIcon(b *qt.QToolButton, name string) {
 	})))
 }
 
-// wants — панель у поста: не системного и уже отправленного.
+// wants — панель у поста: не системного, уже отправленного и не в архиве.
 func (q *quickBar) wants(p *model.Post) bool {
-	return p.Id != "" && !p.IsSystemMessage()
+	return p.Id != "" && !p.IsSystemMessage() && !q.f.ReadOnly
 }
 
 // hover — курсор в точке pos viewport: панель у поста под ним или прочь.

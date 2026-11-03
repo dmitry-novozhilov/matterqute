@@ -218,6 +218,10 @@ type Feed struct {
 	OnRemind         func(p *model.Post, at time.Time)           // «Напомнить»; at нулевое — спросить время
 	OnForward        func(p *model.Post)                         // «Переслать…»
 	OnQuote          func(p *model.Post, selected string)        // «Цитировать»: выделенное в нём или ("") всё сообщение
+
+	// ReadOnly — канал в архиве: без панели реакций, реакций, цитаты,
+	// правки, удаления и закрепления в меню.
+	ReadOnly bool
 	OnPin            func(p *model.Post, pin bool)               // «Закрепить в канале» / «Открепить»
 	OnSave           func(p *model.Post, save bool)              // «Сохранить» / «Убрать из сохранённых»
 	OnMarkUnread     func(p *model.Post)                         // «Пометить непрочитанным»
@@ -2019,13 +2023,16 @@ func (f *Feed) reactionsHTML(p *model.Post) string {
 }
 
 // threadHTML — под корнем треда в ленте канала: «3 ответа последний 08:35»;
-// у сообщения, из которого тред ещё не начат, — «Ответить».
+// у сообщения, из которого тред ещё не начат, — «Ответить» (не в архиве).
 func (f *Feed) threadHTML(p *model.Post) string {
 	if f.d.Thread || f.d.Search || p.RootId != "" || p.IsSystemMessage() {
 		return ""
 	}
 	pal := Pal()
 	if p.ReplyCount == 0 {
+		if f.ReadOnly {
+			return ""
+		}
 		return fmt.Sprintf(`<p style="margin-top:4px;margin-bottom:0"><a href="%s%s" style="text-decoration:none"><img src="%s" width="16" height="16">&nbsp;<span style="font-size:13px;color:%s">Ответить</span></a></p>`,
 			threadLink, p.Id, f.iconSrc("reply", pal.Tx2, 16), pal.Tx2)
 	}
@@ -2303,18 +2310,20 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 					win.OnTriggered(func() { f.OnThreadWindow(threadRoot(p)) })
 				}
 			}
-			if sel := f.selectionIn(it); f.OnQuote != nil && (p.Message != "" || sel != "") {
+			if sel := f.selectionIn(it); f.OnQuote != nil && !f.ReadOnly && (p.Message != "" || sel != "") {
 				q := menu.QWidget.AddActionWithText("Цитировать")
 				q.OnTriggered(func() { f.OnQuote(p, sel) })
 			}
 			// Эмодзи в QMenu не кладём: шрифт меню выбирает система, и они
 			// бывают чёрно-белыми. Выбор — в своём окне, эмодзи там картинками.
-			react := menu.QWidget.AddActionWithText("Реакция…")
-			react.OnTriggered(func() {
-				if f.OnPickReaction != nil {
-					f.OnPickReaction(p)
-				}
-			})
+			if !f.ReadOnly {
+				react := menu.QWidget.AddActionWithText("Реакция…")
+				react.OnTriggered(func() {
+					if f.OnPickReaction != nil {
+						f.OnPickReaction(p)
+					}
+				})
+			}
 			if f.OnForward != nil {
 				fw := menu.QWidget.AddActionWithText("Переслать…")
 				fw.OnTriggered(func() { f.OnForward(p) })
@@ -2353,7 +2362,7 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 					fl.OnTriggered(func() { f.OnFollowThread(root, channel, !following) })
 				}
 			}
-			if f.OnPin != nil {
+			if f.OnPin != nil && !f.ReadOnly {
 				label := "Закрепить в канале"
 				if p.IsPinned {
 					label = "Открепить"
@@ -2366,11 +2375,11 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 				rm := menu.QWidget.AddActionWithText("Убрать предпросмотр ссылки")
 				rm.OnTriggered(func() { f.OnRemovePreview(p) })
 			}
-			if editable(p, f.d.Me.Id) && f.OnEditPost != nil {
+			if editable(p, f.d.Me.Id) && f.OnEditPost != nil && !f.ReadOnly {
 				edit := menu.QWidget.AddActionWithText("Изменить")
 				edit.OnTriggered(func() { f.OnEditPost(p) })
 			}
-			if p.UserId == f.d.Me.Id && f.OnDeletePost != nil {
+			if p.UserId == f.d.Me.Id && f.OnDeletePost != nil && !f.ReadOnly {
 				del := menu.QWidget.AddActionWithText("Удалить…")
 				del.OnTriggered(func() { f.OnDeletePost(p) })
 			}
@@ -2405,6 +2414,14 @@ func (f *Feed) copySelection(super func() *qt.QMimeData) *qt.QMimeData {
 	out := qt.NewQMimeData()
 	out.SetText(copiedText(text))
 	return out
+}
+
+// setReadOnly — канал в архиве (или вернули): посты заново — без «Ответить».
+func (f *Feed) setReadOnly(on bool) {
+	if f.ReadOnly != on {
+		f.ReadOnly = on
+		f.invalidateAll()
+	}
 }
 
 // copiedText — выделенный текст ленты без заглушек картинок и хвостовых пробелов.

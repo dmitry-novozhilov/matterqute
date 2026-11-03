@@ -327,14 +327,16 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 		unread, mentions = m.st.Unread(id)
 		muted = m.st.Muted(id)
 		label = m.st.Title(ch)
-		switch ch.Type {
-		case model.ChannelTypeOpen:
+		switch {
+		case ch.DeleteAt > 0:
+			iconName = "archive"
+		case ch.Type == model.ChannelTypeOpen:
 			iconName = "hash"
-		case model.ChannelTypePrivate:
+		case ch.Type == model.ChannelTypePrivate:
 			iconName = "lock"
-		case model.ChannelTypeGroup:
+		case ch.Type == model.ChannelTypeGroup:
 			iconName = "users"
-		case model.ChannelTypeDirect:
+		case ch.Type == model.ChannelTypeDirect:
 			peer := m.st.DMPeer(ch)
 			avatar, presence = m.st.User(peer), m.st.Status(peer)
 			label = m.st.Name(peer)

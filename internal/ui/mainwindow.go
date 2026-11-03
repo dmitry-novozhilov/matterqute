@@ -634,7 +634,8 @@ func (m *MainWindow) reloadSidebar() {
 						m.current, m.initialChannel = "", ch.Id
 					}
 				}
-				m.fillSidebar() // открытый канал начинает грузиться первым
+				m.applyArchived() // открытый канал могли архивировать или вернуть
+				m.fillSidebar()   // открытый канал начинает грузиться первым
 				m.preload()
 				m.drafts.sidebarLoaded(sb.SyncDrafts)
 				m.composer.SetPriorities(m.st.PostPriority())
@@ -673,7 +674,13 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 	sb.AwayTimeout = settings.AwayTimeout
 	peers := map[string]bool{}
 	for _, t := range teams {
-		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")
+		// С архивными: в сайдбаре их нет, но ссылки и поиск ведут и туда. Не
+		// отдал сервер (запрещено смотреть архив) — без них.
+		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, true, "")
+		if err != nil {
+			m.log.Warn("load channels with archived", "team", t.Name, "err", err)
+			chs, _, err = c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")
+		}
 		if err != nil {
 			return nil, fmt.Errorf("load channels of team %s (%s): %w", t.Name, t.Id, err)
 		}
@@ -774,6 +781,7 @@ func (m *MainWindow) openChannel(id string) {
 		m.st.KeepUnread("")
 	}
 	m.current = id
+	m.applyArchived()
 	m.center.SetCurrentWidget(m.channelPage)
 	m.composer.SwitchTo(id)
 	m.composer.SetPlaceholder("Сообщение в " + channelPrefix(ch) + m.st.Title(ch))
@@ -783,6 +791,7 @@ func (m *MainWindow) openChannel(id string) {
 	m.composer.SetEnabled(true)
 	m.composer.Focus()
 	f := m.feedFor(id)
+	f.setReadOnly(m.st.Archived(id))
 	m.showFeed(f)
 	// «Новые сообщения» — от прошлого прочтения: запоминаем до markViewed.
 	f.SetNewSince(m.st.LastViewed(id))
@@ -851,6 +860,10 @@ func (m *MainWindow) refreshHeader() {
 		icon = avatarPixmap(m.assets, m.st.User(peer), m.st.Username(peer), false, 16, m.refreshHeader)
 	}
 	var sub []string
+	if ch.DeleteAt > 0 {
+		icon = iconPixmap("archive", p.Tx2, 16)
+		sub = append(sub, "В архиве")
+	}
 	if ch.Purpose != "" {
 		sub = append(sub, html.EscapeString(ch.Purpose))
 	}
@@ -1071,6 +1084,9 @@ func postAuthors(posts []*model.Post) []string {
 func (m *MainWindow) markViewed(id, prev string) {
 	m.st.MarkViewed(id)
 	m.refreshItem(id)
+	if !m.st.IsMember(id) {
+		return // архивный, открытый для чтения: отмечать нечего
+	}
 	view := &model.ChannelView{ChannelId: id, PrevChannelId: prev, CollapsedThreadsSupported: m.st.CRT()}
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)

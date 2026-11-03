@@ -165,3 +165,36 @@ func TestUnreadSection(t *testing.T) {
 		t.Errorf("section off: %s", got)
 	}
 }
+
+// Архивные каналы: не в сайдбаре и не в счётчиках; открытый для чтения — в
+// сайдбаре (в своей категории или «Каналах»), пока открыт, и переживает
+// перезагрузку сайдбара, даже без членства.
+func TestArchivedChannels(t *testing.T) {
+	s := sidebarStore(t)
+	old := &model.Channel{Id: "old", TeamId: "dev", DisplayName: "Старое", Name: "old", Type: model.ChannelTypeOpen, DeleteAt: 1, TotalMsgCount: 5}
+	s.AddChannel(old, &model.ChannelMember{ChannelId: "old", UserId: "me", MentionCount: 2})
+	base := "dev/Избранное:z | dev/Моё: | dev/Каналы:a,b | ops/Каналы:o | dev/Личные сообщения:d1,d2"
+	if got := sections(s); got != base {
+		t.Errorf("archived in the sidebar:\n got %s\nwant %s", got, base)
+	}
+	if s.Channel("old") != old || !s.Archived("old") || s.ChannelByName("old", "dev") != old || s.Mentions() != 0 {
+		t.Errorf("archived: channel %v, archived %v, by name %v, mentions %d", s.Channel("old") != nil, s.Archived("old"), s.ChannelByName("old", "dev") != nil, s.Mentions())
+	}
+	s.SetOpenArchived("old")
+	if got := sections(s); !strings.Contains(got, "dev/Каналы:a,b,old") {
+		t.Errorf("open archived: %s", got)
+	}
+	// Без членства (из обзора) — и после перезагрузки сайдбара.
+	legacy := &model.Channel{Id: "legacy", TeamId: "dev", DisplayName: "Наследие", Name: "legacy", Type: model.ChannelTypeOpen, DeleteAt: 1}
+	s.AddChannel(legacy, nil)
+	s.SetOpenArchived("legacy")
+	snap, _ := s.Snapshot(60)
+	s.SetSidebar(snap)
+	if s.Channel("legacy") == nil || !strings.Contains(sections(s), "legacy") || s.Channel("old") == nil {
+		t.Errorf("after reload: legacy %v, old %v, sections %s", s.Channel("legacy") != nil, s.Channel("old") != nil, sections(s))
+	}
+	s.SetOpenArchived("")
+	if got := sections(s); got != base {
+		t.Errorf("closed archived:\n got %s\nwant %s", got, base)
+	}
+}

@@ -145,11 +145,11 @@ func (s *Store) sortChannels(ids []string, how model.SidebarCategorySorting) {
 	switch how {
 	case model.SidebarCategorySortAlphabetical:
 		slices.SortStableFunc(ids, func(a, b string) int {
-			return cmp.Compare(strings.ToLower(s.Title(s.channels[a])), strings.ToLower(s.Title(s.channels[b])))
+			return cmp.Compare(strings.ToLower(s.Title(s.Channel(a))), strings.ToLower(s.Title(s.Channel(b))))
 		})
 	case model.SidebarCategorySortRecent:
 		slices.SortStableFunc(ids, func(a, b string) int {
-			return cmp.Compare(s.lastActivity(s.channels[b]), s.lastActivity(s.channels[a]))
+			return cmp.Compare(s.lastActivity(s.Channel(b)), s.lastActivity(s.Channel(a)))
 		})
 	}
 }
@@ -203,7 +203,7 @@ func (s *Store) Sections() []Section {
 			}
 			sec := Section{Team: t.Id, Category: c, Title: CategoryTitle(c), Collapsed: c.Collapsed}
 			for _, id := range c.Channels {
-				ch := s.channels[id]
+				ch := s.sidebarChannel(id)
 				if ch == nil || placed[id] || unread[id] || (ch.IsGroupOrDirect() && !first) || (!ch.IsGroupOrDirect() && ch.TeamId != t.Id) {
 					continue
 				}
@@ -229,7 +229,11 @@ func (s *Store) Sections() []Section {
 				secs[j].Channels = append(secs[j].Channels, ch.Id)
 			}
 		}
-		orphan(model.SidebarCategoryChannels, "Каналы", s.TeamChannels(t.Id))
+		chs := s.TeamChannels(t.Id)
+		if a := s.archived[s.openArchived]; a != nil && a.TeamId == t.Id {
+			chs = append(chs, a)
+		}
+		orphan(model.SidebarCategoryChannels, "Каналы", chs)
 		if first {
 			orphan(model.SidebarCategoryDirectMessages, "Личные сообщения", s.DirectChannels())
 			dmsPlaced = true
@@ -392,6 +396,17 @@ func (s *Store) UnreadSection() bool { return s.unreadSection }
 
 // SetUnreadSection — настройку поменяли здесь.
 func (s *Store) SetUnreadSection(on bool) { s.unreadSection = on }
+
+// sidebarChannel — канал строки сайдбара: свой или открытый архивный.
+func (s *Store) sidebarChannel(id string) *model.Channel {
+	if ch := s.channels[id]; ch != nil {
+		return ch
+	}
+	if id == s.openArchived {
+		return s.archived[id]
+	}
+	return nil
+}
 
 // KeepUnread — открытый канал id был непрочитанным: в группе непрочитанных
 // он остаётся, пока открыт (иначе строка уезжала бы из-под курсора). "" — никакой.

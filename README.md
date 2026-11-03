@@ -4,63 +4,65 @@
 
 <h1 align="center">Matterqute</h1>
 
-<p align="center">Быстрый нативный клиент <a href="https://mattermost.com">Mattermost</a> для Linux на Go и Qt 6 — без Electron и браузера внутри.</p>
+<p align="center">A fast native <a href="https://mattermost.com">Mattermost</a> client for Linux, written in Go and Qt 6 — no Electron, no browser inside.</p>
 
-![Канал с кодом, реакциями и тредом в светлой теме](docs/screenshots/light.png)
+<p align="center"><b>English</b> · <a href="README.ru.md">Русский</a></p>
 
-## Чем хорош
+![A channel with highlighted code, reactions and an open thread, light theme](docs/screenshots/light.png)
 
-- **Открывается сразу.** Каналы и последние сообщения при старте берутся с диска, а с сервером приложение сверяется в фоне. Ленты всех каналов готовы заранее, поэтому переключение между ними ничего не грузит и не перерисовывает.
-- **Нативный.** Обычное окно Qt, значок в трее со счётчиком, уведомления рабочего стола, ссылки `mattermost://` из браузера открываются в приложении.
-- **В ладу с веб-клиентом.** Категории сайдбара, черновики, недавние эмодзи, сохранённые сообщения и формат имён общие с веб-клиентом. Свёрнутые треды (CRT) работают так же, как там.
-- **Не теряет написанное.** Без связи можно читать последние сообщения и писать: неотправленное уйдёт само, когда связь вернётся.
+## Why
 
-## Возможности
+- **Opens instantly.** Channels and recent messages come from disk at startup; syncing with the server happens in the background. Every channel's feed is prepared in advance, so switching channels loads and re-renders nothing.
+- **Native.** A regular Qt window, a tray icon with an unread counter, desktop notifications, and `mattermost://` links from the browser open right in the app.
+- **Plays well with the web client.** Sidebar categories, drafts, recent emoji, saved messages and the name display format are shared with the web client. Collapsed reply threads (CRT) work the same way they do there.
+- **Never loses what you wrote.** Offline, you can read recent messages and keep writing: unsent messages go out on their own once the connection is back.
 
-- **Сообщения:** редактор с оформлением (на экране без markdown-символов, на сервер уходит markdown), подсветка кода, реакции и окно выбора эмодзи (с анимированными эмодзи сервера), цитаты, правка и история правок, метки «Важно» и «Срочно», отложенная отправка, напоминания, пересылка, проверка орфографии.
-- **Треды:** свёрнутые треды, список «Треды», подписка, тред в отдельном окне.
-- **Каналы:** категории и избранное, непрочитанные отдельной группой, обзор, создание и выход, участники, архивные каналы, быстрый переход по Ctrl+K.
-- **Поиск:** по сообщениям и файлам; упоминания, закреплённые и сохранённые сообщения.
-- **Файлы и медиа:** превью картинок и просмотр во весь экран, GIF, видео прямо в ленте, предпросмотр ссылок.
-- **Интеграции:** вложения вебхуков, кнопки и списки ботов, окна интеграций с полями, слэш-команды.
-- **Статус и уведомления:** присутствие, свой статус с эмодзи и сроком, «Не беспокоить», автоматический «Отошёл» по простою. Уведомления приходят по тем же правилам, что в веб-клиенте.
-- **Несколько серверов** в одном окне, переключение по Ctrl+1…9.
-- **Вид:** светлая, тёмная или системная тема, шрифты, масштаб.
+## Features
 
-![Алерт Grafana с кнопками, панель реакций и тёмная тема](docs/screenshots/dark.png)
+- **Messages:** a rich-text editor (no markdown symbols on screen, markdown is sent to the server), code highlighting, reactions and an emoji picker (with animated custom emoji), quoting, editing with edit history, "Important" and "Urgent" labels, scheduled sending, reminders, forwarding, spell checking.
+- **Threads:** collapsed reply threads, the Threads list, following, a thread in its own window.
+- **Channels:** categories and favorites, a separate unread group, browse, create and leave, members, archived channels, quick switcher on Ctrl+K.
+- **Search:** messages and files; mentions, pinned and saved messages.
+- **Files and media:** image previews and a full-screen viewer, GIFs, video playing right in the feed, link previews.
+- **Integrations:** webhook attachments, bot buttons and menus, interactive dialogs, slash commands.
+- **Status and notifications:** presence, a custom status with emoji and expiry, Do Not Disturb, automatic "Away" when idle. Notifications follow the same rules as in the web client.
+- **Several servers** in one window, switching with Ctrl+1…9.
+- **Appearance:** light, dark or system theme, fonts, zoom.
 
-## Сборка
+![A Grafana alert with buttons, quick reactions and the dark theme](docs/screenshots/dark.png)
 
-Нужны Go 1.24 или новее (нужную версию тулчейна Go скачает сам) и Qt 6.4+. На Debian 13:
+## Building
+
+You need Go 1.24 or newer (it fetches the required toolchain by itself) and Qt 6.4+. On Debian 13:
 
 ```sh
 sudo apt install qt6-base-dev qt6-svg-dev qt6-image-formats-plugins qt6-multimedia-dev build-essential pkg-config
-sudo apt install libhunspell-1.7-0 hunspell-ru hunspell-en-us   # по желанию: проверка орфографии
+sudo apt install libhunspell-1.7-0 hunspell-ru hunspell-en-us   # optional: spell checking
 ```
 
 ```sh
-go build ./cmd/matterqute   # первая сборка — около 10 минут: компилируются биндинги Qt
-./matterqute --install      # ярлык в меню, иконки, обработчик ссылок mattermost://
+go build ./cmd/matterqute   # the first build takes about 10 minutes: the Qt bindings get compiled
+./matterqute --install      # menu entry, icons, mattermost:// link handler
 ./matterqute
 ```
 
-Шрифты (IBM Plex Sans, PT Mono, Noto Color Emoji) вшиты в бинарник, ставить их не нужно.
+The fonts (IBM Plex Sans, PT Mono, Noto Color Emoji) are embedded in the binary, no need to install them.
 
-## Разработка
+## Development
 
 ```sh
-go run ./cmd/mmfake   # фейковый сервер Mattermost на 127.0.0.1:8065, вход alice / secret
-go test ./...         # тесты интерфейса поднимают настоящий Qt (без дисплея — offscreen)
+go run ./cmd/mmfake   # a fake Mattermost server on 127.0.0.1:8065, sign in as alice / secret
+go test ./...         # UI tests start a real Qt (offscreen when there is no display)
 ```
 
-Устройство кода и соглашения описаны в [CLAUDE.md](CLAUDE.md), справка для пользователя лежит в [docs/help](docs/help). Скриншоты выше снимает тест на фейковом сервере: `QT_SCALE_FACTOR=2 MATTERQUTE_README_SHOTS=$PWD/docs/screenshots go test ./internal/ui -run TestReadmeScreenshots`.
+The code layout and conventions are described in [CLAUDE.md](CLAUDE.md), the user guide is in [docs/help](docs/help) (both in Russian). The screenshots above are taken by a test against the fake server: `QT_SCALE_FACTOR=2 MATTERQUTE_README_SHOTS=$PWD/docs/screenshots go test ./internal/ui -run TestReadmeScreenshots`.
 
-## Состояние
+## Status
 
-Проверено на Linux (Debian 13, X11, XFCE) с сервером Mattermost 11.6.2. Интерфейс на русском. Windows и macOS не проверялись.
+Tested on Linux (Debian 13, X11, XFCE) with Mattermost server 11.6.2. The interface is in Russian. Windows and macOS have not been tested.
 
-## Из чего сделано
+## Built with
 
-[MIQT](https://github.com/mappu/miqt) (MIT): Qt 6 для Go, Qt подключается динамически под LGPL. [Клиент API Mattermost](https://github.com/mattermost/mattermost/tree/master/server/public) (Apache-2.0). Разметка — [goldmark](https://github.com/yuin/goldmark) (MIT), подсветка кода — [chroma](https://github.com/alecthomas/chroma) (MIT). Шрифты под SIL OFL 1.1, значки — [Lucide](https://lucide.dev) (ISC).
+[MIQT](https://github.com/mappu/miqt) (MIT): Qt 6 for Go; Qt is linked dynamically under the LGPL. The [Mattermost API client](https://github.com/mattermost/mattermost/tree/master/server/public) (Apache-2.0). Markdown by [goldmark](https://github.com/yuin/goldmark) (MIT), code highlighting by [chroma](https://github.com/alecthomas/chroma) (MIT). Fonts under the SIL OFL 1.1, icons from [Lucide](https://lucide.dev) (ISC).
 
-Mattermost — товарный знак Mattermost, Inc. Matterqute — независимый проект, с Mattermost, Inc. не связан.
+Mattermost is a trademark of Mattermost, Inc. Matterqute is an independent project, not affiliated with Mattermost, Inc.

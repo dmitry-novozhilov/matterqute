@@ -124,7 +124,7 @@ func testThreadsCRT(t *testing.T, fake *mmfake.Server, s *mm.Session) {
 	}
 
 	// Свой ответ: в треде один раз, в канале — только счётчик у корня.
-	m.sendReply("ответ из теста", nil)
+	m.sendReply("ответ из теста", nil, "")
 	waitFor(t, "own reply in thread", func() bool { return len(m.panel.feed.items) == 5 })
 	waitFor(t, "reply count 4", func() bool { p := feedPost(m.feed, root.Id); return p != nil && p.ReplyCount == 4 })
 	settleFor(200 * time.Millisecond)

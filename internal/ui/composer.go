@@ -30,9 +30,10 @@ type attachment struct {
 
 // draft — недописанное сообщение канала или треда: абзацы с оформлением.
 type draft struct {
-	key    string
-	blocks []markdown.Block
-	files  []*attachment
+	key      string
+	blocks   []markdown.Block
+	files    []*attachment
+	priority string // метка «Важно»/«Срочно» (priority.go)
 }
 
 // Строк в поле ввода, после которых появляется прокрутка.
@@ -82,7 +83,8 @@ type Composer struct {
 	tokGen    int            // ответы для прежних слов отбрасываются
 	dismissed string         // Esc: для этого слова список больше не открывать
 
-	OnSend func(text string, fileIDs []string)
+	// OnSend — отправить; priority — метка сообщения (priority.go), "" — без неё.
+	OnSend func(text string, fileIDs []string, priority string)
 	// OnEdit — сохранить правку сообщения id (text пустой — сообщение стёрли).
 	OnEdit func(id, text string, blocks []markdown.Block)
 	// OnEditLast — ↑ в пустом поле: править последнее своё сообщение.
@@ -97,6 +99,10 @@ type Composer struct {
 	// OnShowScheduled — «показать» в подсказке об отложенных.
 	OnShowScheduled func()
 	later           *qt.QToolButton // «Отправить позже»
+	prioBtn         *qt.QToolButton // метка «Важно»/«Срочно»
+	prioNote        *qt.QLabel      // метка над текстом
+	priority        string          // метка следующего сообщения
+	priorities      bool            // сервер разрешает метки (только поле канала)
 	typingNote      *qt.QLabel      // «bob печатает…» под полем; место под неё есть всегда, если показ включён
 	keysHint        *qt.QLabel      // справа от неё: «Shift+Enter — новая строка», как у веб-клиента
 	// OnDraft — черновик key поменялся (набор, вставка, ушли из канала):
@@ -239,6 +245,7 @@ func NewComposer() *Composer {
 	c.chips.SetVisible(false)
 
 	c.buildFormatBar()
+	c.buildPriority()
 
 	row := qt.NewQHBoxLayout2()
 	row.SetContentsMargins(0, 0, 0, 0)
@@ -256,11 +263,13 @@ func NewComposer() *Composer {
 			c.OnLater()
 		}
 	})
+	row.AddWidget3(c.prioBtn.QWidget, 0, qt.AlignBottom)
 	row.AddWidget3(c.later.QWidget, 0, qt.AlignBottom)
 	row.AddWidget3(c.fmtShow.QWidget, 0, qt.AlignBottom)
 	fl := qt.NewQVBoxLayout(c.frame.QWidget)
 	fl.SetContentsMargins(4, 3, 4, 3)
 	fl.SetSpacing(4)
+	fl.AddWidget(c.prioNote.QWidget)
 	fl.AddWidget(c.chips)
 	fl.AddWidget(c.fmtBar)
 	fl.AddLayout(row.QLayout)
@@ -316,6 +325,7 @@ func (c *Composer) dispose() {
 func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
 	c.later.SetIcon(icon("clock", Pal().Tx2, 18))
+	c.updatePriority()
 	// Строка «печатает…» — всегда своей высоты: иначе поле прыгало бы, когда
 	// кто-то начинает и перестаёт печатать.
 	tf := pixelFont(12, qt.QFont__Normal)
@@ -413,8 +423,8 @@ func (c *Composer) SwitchTo(key string) {
 		return
 	}
 	c.CancelEdit()
-	if !c.empty() || len(c.files) > 0 {
-		c.drafts[c.key] = &draft{key: c.key, blocks: readBlocks(c.edit.Document()), files: c.files}
+	if !c.empty() || len(c.files) > 0 || c.priority != "" {
+		c.drafts[c.key] = &draft{key: c.key, blocks: readBlocks(c.edit.Document()), files: c.files, priority: c.priority}
 	}
 	d := c.drafts[key]
 	delete(c.drafts, key)
@@ -422,9 +432,13 @@ func (c *Composer) SwitchTo(key string) {
 	c.key, c.files = key, nil
 	c.setBlocks(nil)
 	c.hint.SetVisible(false)
+	c.setPriority("")
 	if d != nil {
 		c.setBlocks(d.blocks)
 		c.files = d.files
+		if c.priorities {
+			c.setPriority(d.priority)
+		}
 	}
 	c.renderChips()
 	if c.OnDraft != nil && old != "" {
@@ -741,8 +755,9 @@ func (c *Composer) send() {
 		return
 	}
 	c.asText = ""
+	priority := c.priority
 	c.commit(blocks, files)
-	c.OnSend(text, ids)
+	c.OnSend(text, ids, priority)
 }
 
 // pending — что отправить: текст (markdown Mattermost) и загруженные файлы.
@@ -765,7 +780,8 @@ func (c *Composer) pending() (text string, ids []string, blocks []markdown.Block
 
 // commit — отправляемое ушло из поля: запомнить его для Restore, поле очистить.
 func (c *Composer) commit(blocks []markdown.Block, files []*attachment) {
-	c.sent = &draft{key: c.key, blocks: blocks, files: files}
+	c.sent = &draft{key: c.key, blocks: blocks, files: files, priority: c.priority}
+	c.setPriority("")
 	c.setBlocks(nil)
 	c.files = slices.DeleteFunc(c.files, func(a *attachment) bool { return a.fileID != "" })
 	c.renderChips()
@@ -816,11 +832,17 @@ func (c *Composer) Restore() {
 		if blocksEmpty(d.blocks) {
 			d.blocks = s.blocks
 		}
+		if d.priority == "" {
+			d.priority = s.priority
+		}
 		d.files = append(s.files, d.files...)
 		return
 	}
 	if c.empty() {
 		c.setBlocks(s.blocks)
+	}
+	if c.priority == "" {
+		c.setPriority(s.priority)
 	}
 	c.files = append(s.files, c.files...)
 	c.renderChips()
@@ -1001,6 +1023,7 @@ func (c *Composer) StartEditWith(id, label string, blocks []markdown.Block) {
 	c.editBar.Show()
 	c.attach.SetEnabled(false)
 	c.hint.SetVisible(false)
+	c.updatePriority()
 	c.edit.SetFocus()
 }
 
@@ -1012,6 +1035,7 @@ func (c *Composer) CancelEdit() {
 	c.editID = ""
 	c.editBar.Hide()
 	c.attach.SetEnabled(true)
+	c.updatePriority()
 	st := c.stash
 	c.stash = nil
 	c.setBlocks(nil)

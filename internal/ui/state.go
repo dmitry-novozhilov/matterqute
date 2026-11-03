@@ -131,6 +131,7 @@ func (m *MainWindow) applyState(st *savedState) {
 	}
 	m.st.Restore(st.Sidebar, st.Timelines)
 	m.restored = true
+	m.composer.SetPriorities(m.st.PostPriority())
 	m.fillSidebar()
 	m.ownStatusChanged()
 	for id := range st.Timelines {

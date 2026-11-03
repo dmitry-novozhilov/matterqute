@@ -629,6 +629,7 @@ func (m *MainWindow) reloadSidebar() {
 				m.fillSidebar() // открытый канал начинает грузиться первым
 				m.preload()
 				m.drafts.sidebarLoaded(sb.SyncDrafts)
+				m.composer.SetPriorities(m.st.PostPriority())
 				if !m.sched.probed {
 					m.sched.start() // команды известны: отложенные с сервера и свои
 				}
@@ -659,6 +660,7 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 	}
 	sb.CRT, sb.MaxFileSize, sb.LinkPreviews, sb.SyncDrafts = settings.CRT, settings.MaxFileSize, settings.LinkPreviews, settings.SyncDrafts
 	sb.UnreadSection = settings.UnreadSection
+	sb.PostPriority = settings.PostPriority
 	peers := map[string]bool{}
 	for _, t := range teams {
 		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")
@@ -1070,7 +1072,7 @@ func (m *MainWindow) markViewed(id, prev string) {
 	}()
 }
 
-func (m *MainWindow) send(text string, fileIDs []string) {
+func (m *MainWindow) send(text string, fileIDs []string, priority string) {
 	id := m.current
 	if m.st.Channel(id) == nil {
 		return
@@ -1078,7 +1080,7 @@ func (m *MainWindow) send(text string, fileIDs []string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
-		p, _, err := m.s.Client.CreatePost(ctx, &model.Post{ChannelId: id, Message: text, FileIds: fileIDs})
+		p, _, err := m.s.Client.CreatePost(ctx, withPriority(&model.Post{ChannelId: id, Message: text, FileIds: fileIDs}, priority))
 		m.ui(func() {
 			if err != nil {
 				m.fail("send", fmt.Errorf("send to channel %s: %w", id, err))

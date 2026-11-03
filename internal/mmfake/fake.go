@@ -36,6 +36,8 @@ type Server struct {
 	NoScheduledPosts bool
 	// NoSyncedDrafts — сервер не хранит черновики (AllowSyncedDrafts=false).
 	NoSyncedDrafts bool
+	// NoPostPriority — метки «Важно» и «Срочно» выключены (PostPriority=false).
+	NoPostPriority bool
 	scheduled      map[string]*model.ScheduledPost
 	drafts         map[string]*model.Draft // user id/канал/корень → черновик
 	typed          []TypingEvent
@@ -628,6 +630,23 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request, me *model.Us
 		s.mu.Unlock()
 		s.fail(w, http.StatusBadRequest, "api.post.create_post.root_id.app_error")
 		return
+	}
+	// Метаданные от клиента сервер не берёт, кроме метки «Важно»/«Срочно» —
+	// и ту только у корня и если метки включены.
+	priority := p.GetPriority()
+	p.Metadata = nil
+	if priority != nil {
+		switch {
+		case s.NoPostPriority:
+			s.mu.Unlock()
+			s.fail(w, http.StatusForbidden, "api.post.post_priority.priority_post_not_allowed_for_user.request_error")
+			return
+		case p.RootId != "":
+			s.mu.Unlock()
+			s.fail(w, http.StatusBadRequest, "api.post.post_priority.priority_post_only_allowed_for_root_post.request_error")
+			return
+		}
+		p.Metadata = &model.PostMetadata{Priority: priority}
 	}
 	p.UserId = me.Id
 	for _, id := range p.FileIds {

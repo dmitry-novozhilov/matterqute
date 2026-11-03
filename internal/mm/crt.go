@@ -45,6 +45,9 @@ type Settings struct {
 	// UnreadSection — непрочитанные отдельной группой вверху сайдбара
 	// (sidebar_settings/show_unread_section, как в веб-клиенте).
 	UnreadSection bool
+	// PostPriority — метки «Важно» и «Срочно» у сообщений включены на
+	// сервере (ServiceSettings.PostPriority).
+	PostPriority bool
 }
 
 // Настройка «непрочитанные отдельно» — категория и имя, как у веб-клиента.
@@ -70,6 +73,7 @@ func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 		}
 	}
 	st.SyncDrafts = cfg["AllowSyncedDrafts"] != "false"
+	st.PostPriority = cfg["PostPriority"] == "true"
 	if st.SyncDrafts {
 		// Нет ни одной настройки в категории — сервер может ответить 404: значит, по умолчанию.
 		adv, resp, err := s.Client.GetPreferencesByCategory(ctx, s.Me.Id, model.PreferenceCategoryAdvancedSettings)

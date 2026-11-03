@@ -163,7 +163,7 @@ func (m *MainWindow) closeThread() {
 	m.updateTypingNotes()
 }
 
-func (m *MainWindow) sendReply(text string, fileIDs []string) {
+func (m *MainWindow) sendReply(text string, fileIDs []string, _ string) {
 	t := m.thread
 	if t == nil || t.channelID == "" {
 		return

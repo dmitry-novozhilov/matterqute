@@ -78,7 +78,7 @@ func testMainWindowFeed(t *testing.T, s *mm.Session, fake *mmfake.Server) {
 	}
 
 	// Свой пост приходит и ответом на CreatePost, и по WebSocket — в ленте он один.
-	m.send("привет из теста", nil)
+	m.send("привет из теста", nil, "")
 	mine := func() int {
 		n := 0
 		for _, it := range m.feed.items {

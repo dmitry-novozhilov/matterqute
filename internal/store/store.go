@@ -15,17 +15,18 @@ import (
 )
 
 type Store struct {
-	me          *model.User
-	crt         bool
-	noPreviews  bool // пользователь выключил предпросмотр ссылок
-	maxFileSize int64
-	teams       []*model.Team
-	channels    map[string]*model.Channel
-	members     map[string]*model.ChannelMember
-	users       map[string]*model.User
-	timelines   map[string]*Timeline
-	threads     map[string]*model.ThreadResponse // CRT: треды, на которые подписан пользователь
-	statuses    map[string]string                // присутствие: online, away, dnd, offline
+	me           *model.User
+	crt          bool
+	noPreviews   bool // пользователь выключил предпросмотр ссылок
+	postPriority bool
+	maxFileSize  int64
+	teams        []*model.Team
+	channels     map[string]*model.Channel
+	members      map[string]*model.ChannelMember
+	users        map[string]*model.User
+	timelines    map[string]*Timeline
+	threads      map[string]*model.ThreadResponse // CRT: треды, на которые подписан пользователь
+	statuses     map[string]string                // присутствие: online, away, dnd, offline
 	// Посты, уже учтённые в счётчиках: свой пост приходит дважды — ответом
 	// на CreatePost и по WebSocket.
 	applied map[string]bool
@@ -67,6 +68,9 @@ func (s *Store) CRT() bool { return s.crt }
 // LinkPreviews — показывать ли предпросмотр ссылок (настройка пользователя).
 func (s *Store) LinkPreviews() bool { return !s.noPreviews }
 
+// PostPriority — можно ли ставить сообщениям метки «Важно» и «Срочно».
+func (s *Store) PostPriority() bool { return s.postPriority }
+
 // MaxFileSize — лимит сервера на загрузку файла в байтах; 0 — неизвестен.
 func (s *Store) MaxFileSize() int64 { return s.maxFileSize }
 
@@ -87,6 +91,7 @@ type Sidebar struct {
 	Categories map[string]*model.OrderedSidebarCategories
 	// UnreadSection — непрочитанные отдельной группой вверху сайдбара.
 	UnreadSection bool
+	PostPriority  bool // метки «Важно», «Срочно» включены на сервере
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
@@ -96,6 +101,7 @@ func (s *Store) SetSidebar(sb *Sidebar) {
 	s.maxFileSize = sb.MaxFileSize
 	s.teams = sb.Teams
 	s.unreadSection = sb.UnreadSection
+	s.postPriority = sb.PostPriority
 	s.categories = map[string]*model.OrderedSidebarCategories{}
 	for team, c := range sb.Categories {
 		s.categories[team] = c
@@ -625,7 +631,7 @@ func (s *Store) ThreadsUnread() (unread bool, mentions int64) {
 // потоке: в нём те же объекты, что в store.
 func (s *Store) Snapshot(tail int) (*Sidebar, map[string]*Timeline) {
 	sb := &Sidebar{CRT: s.crt, MaxFileSize: s.maxFileSize, LinkPreviews: !s.noPreviews, Teams: s.teams,
-		Categories: s.categories, Saved: []string{}, UnreadSection: s.unreadSection}
+		Categories: s.categories, Saved: []string{}, UnreadSection: s.unreadSection, PostPriority: s.postPriority}
 	for _, ch := range s.channels {
 		sb.Channels = append(sb.Channels, ch)
 	}

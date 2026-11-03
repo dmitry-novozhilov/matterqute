@@ -82,6 +82,9 @@ func (m *MainWindow) notification(p *model.Post) notify.Notification {
 		}
 	}
 	title := author
+	if label, _, _ := priorityLook(postPriority(p)); label != "" {
+		title = label + " · " + title
+	}
 	switch {
 	case p.RootId != "" && where != "":
 		title += " в треде, " + where

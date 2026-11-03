@@ -1636,7 +1636,7 @@ func (f *Feed) authorHTML(p *model.Post) string {
 		marks = "&nbsp;&nbsp;" + marks
 	}
 	return fmt.Sprintf(`<p style="margin:0"><a href="%s" style="color:%s;font-weight:600;text-decoration:none">%s</a>%s&nbsp;&nbsp;<span style="font-family:'PT Mono';font-size:12px;color:%s" title="%s">%s</span>%s</p>`,
-		f.authorLink(p), pal.Tx, html.EscapeString(f.authorName(p)), bot+f.statusHTML(p),
+		f.authorLink(p), pal.Tx, html.EscapeString(f.authorName(p)), bot+f.statusHTML(p)+priorityHTML(postPriority(p)),
 		pal.Tx2, formatTime(p.CreateAt), time.UnixMilli(p.CreateAt).Format("15:04"), marks)
 }
 
@@ -2446,7 +2446,7 @@ func pluralReplies(n int64) string { return plural(n, "ответ", "ответ�
 func continues(prev, p *model.Post) bool {
 	return prev != nil && prev.UserId == p.UserId && sameAuthor(prev, p) &&
 		p.CreateAt-prev.CreateAt < groupMillis && sameDay(prev.CreateAt, p.CreateAt) &&
-		!prev.IsSystemMessage() && !p.IsSystemMessage()
+		!prev.IsSystemMessage() && !p.IsSystemMessage() && postPriority(p) == ""
 }
 
 // sameAuthor — у постов одного user_id разные авторы, если один из них от

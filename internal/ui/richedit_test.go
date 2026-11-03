@@ -20,7 +20,7 @@ func TestComposerFormatting(t *testing.T) {
 		defer c.w.Close()
 		defer c.dispose()
 		sent := "—"
-		c.OnSend = func(text string, _ []string) { sent = text }
+		c.OnSend = func(text string, _ []string, _ string) { sent = text }
 		c.w.Resize(700, 240)
 		c.w.Show()
 		c.edit.SetFocus()

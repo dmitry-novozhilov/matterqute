@@ -28,11 +28,12 @@ type quickBar struct {
 	btns  []*qt.QToolButton
 	names []string
 	more  *qt.QToolButton
-	post  string // id поста, у которого показана; пусто — спрятана
+	post  string            // id поста, у которого показана; пусто — спрятана
+	anims map[string]func() // подписки на кадры анимированных эмодзи, пока панель видна
 }
 
 func newQuickBar(f *Feed) *quickBar {
-	q := &quickBar{f: f, w: qt.NewQFrame(f.view.Viewport())}
+	q := &quickBar{f: f, w: qt.NewQFrame(f.view.Viewport()), anims: map[string]func(){}}
 	setName(q.w.QObject, "quickBar")
 	q.lay = qt.NewQHBoxLayout(q.w.QWidget)
 	q.lay.SetContentsMargins(3, 2, 3, 2)
@@ -93,6 +94,7 @@ func (q *quickBar) setNames(names []string) {
 	if slices.Equal(names, q.names) {
 		return
 	}
+	q.stopAnims()
 	q.names = slices.Clone(names)
 	for _, b := range q.btns {
 		q.lay.RemoveWidget(b.QWidget)
@@ -182,11 +184,37 @@ func (q *quickBar) place() {
 	q.w.Move(max(0, vp.Width()-size.Width()-feedPadRight), y)
 	q.w.Raise()
 	q.w.Show()
+	q.animate()
 }
 
 func (q *quickBar) hide() {
 	q.post = ""
 	q.w.Hide()
+	q.stopAnims()
+}
+
+// animate — анимированные эмодзи сервера в видимой панели крутятся: кадр —
+// новый значок кнопки. Ещё не скачанное подпишется в refresh → place, когда
+// догрузится.
+func (q *quickBar) animate() {
+	a := q.f.d.Assets
+	if a == nil || q.f.disposed {
+		return
+	}
+	for i, name := range q.names {
+		if _, ok := q.anims[name]; ok || a.EmojiMovie(name) == nil {
+			continue
+		}
+		b := q.btns[i]
+		q.anims[name] = a.OnEmojiFrame(name, func() { q.setIcon(b, name) })
+	}
+}
+
+func (q *quickBar) stopAnims() {
+	for name, cancel := range q.anims {
+		cancel()
+		delete(q.anims, name)
+	}
 }
 
 // quickReactions — эмодзи для панели у сообщения: недавние (самые частые

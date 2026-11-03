@@ -331,6 +331,7 @@ func (f *Feed) dispose() {
 	f.unsubscribe()
 	f.stopMovies()
 	f.stopEmojiAnimations()
+	f.quick.hide() // и её подписки на кадры — до stopAnimations окна
 }
 
 func (f *Feed) restyleRenderer() {

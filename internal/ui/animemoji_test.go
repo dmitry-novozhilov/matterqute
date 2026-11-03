@@ -3,12 +3,15 @@ package ui
 import (
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"matterqute/internal/emoji"
 )
 
 // Анимированное эмодзи сервера крутится в плашке реакции и в тексте; после
@@ -46,6 +49,34 @@ func TestAnimatedEmoji(t *testing.T) {
 		}
 		if len(seen) < 3 {
 			t.Errorf("pill emoji colours over 2 s: %v — not animating", seen)
+		}
+
+		// В панели недавних реакций у сообщения — тоже, пока она видна.
+		m.emojiLoaded = true // недавние — свои, не с сервера
+		m.recent = emoji.Recent{}.Add("partyparrot")
+		q := m.feed.quick
+		hoverPost(m.feed, m.feed.index(root.Id))
+		i := slices.Index(q.names, "partyparrot")
+		if _, sub := q.anims["partyparrot"]; !q.w.IsVisible() || i < 0 || !sub {
+			t.Errorf("quick bar: visible %v, names %v, subscribed %v", q.w.IsVisible(), q.names, sub)
+			return
+		}
+		btnColour := func() string {
+			img := q.btns[i].Icon().Pixmap2(20, 20).ToImage()
+			return img.PixelColor(int(10*img.DevicePixelRatio()), int(8*img.DevicePixelRatio())).Name()
+		}
+		seen = map[string]bool{btnColour(): true}
+		deadline = time.Now().Add(2 * time.Second)
+		for len(seen) < 3 && time.Now().Before(deadline) {
+			settleFor(50 * time.Millisecond)
+			seen[btnColour()] = true
+		}
+		if len(seen) < 3 {
+			t.Errorf("quick bar emoji colours over 2 s: %v — not animating", seen)
+		}
+		q.hide()
+		if len(q.anims) != 0 {
+			t.Errorf("hidden quick bar keeps %d frame subscriptions", len(q.anims))
 		}
 
 		// В тексте — ресурс документа, тоже с анимацией.

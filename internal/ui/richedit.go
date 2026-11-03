@@ -427,6 +427,42 @@ func (c *Composer) pasteText(text string) {
 	c.syncFormat()
 }
 
+// Quote — цитата в конец поля: text — строками цитаты (md — разметка
+// сообщения: оформление сохраняется; иначе — как есть), курсор — на новой
+// строке под ней.
+func (c *Composer) Quote(text string, md bool) {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
+	if text == "" {
+		return
+	}
+	lines := strings.Split(text, "\n")
+	var blocks []markdown.Block
+	if md {
+		for i, l := range lines {
+			lines[i] = "> " + l
+		}
+		blocks = markdown.ToBlocks(strings.Join(lines, "\n"))
+	} else {
+		for _, l := range lines {
+			blocks = append(blocks, markdown.Block{Kind: markdown.Quote, Spans: []markdown.Span{{Text: l}}})
+		}
+	}
+	blocks = append(blocks, markdown.Block{Kind: markdown.Para})
+	cur := c.edit.TextCursor()
+	cur.BeginEditBlock()
+	cur.MovePosition(qt.QTextCursor__End)
+	// Последняя строка — пустая обычная: цитата встаёт в неё, иначе — ниже.
+	if b := cur.Block(); b.Text() != "" || blockKind(b) != markdown.Para {
+		cur.InsertBlock2(blockFormat(markdown.Para), blockCharFormat(markdown.Para))
+	}
+	writeBlocks(cur, blocks)
+	cur.EndEditBlock()
+	c.edit.SetTextCursor(cur)
+	c.edit.EnsureCursorVisible()
+	c.edit.SetFocus()
+	c.syncFormat()
+}
+
 // backspaceAtStart — Backspace в начале цитаты, кода или пункта списка делает
 // абзац обычным (а не склеивает его с предыдущим).
 func (c *Composer) backspaceAtStart() bool {

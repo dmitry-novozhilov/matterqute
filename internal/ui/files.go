@@ -40,6 +40,21 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnEditHistory = func(p *model.Post) { m.showEditHistory(p) }
 	f.OnForward = func(p *model.Post) { m.showForward(p) }
 	f.OnAction = func(p *model.Post, a *model.PostAction) { m.postAction(f, p, a) }
+	f.OnQuote = func(p *model.Post, selected string) { m.quote(f, p, selected) }
+}
+
+// quote — «Цитировать»: в поле ввода колонки ленты f (тред — в поле треда,
+// канал — в поле канала) выделенное в сообщении или всё сообщение.
+func (m *MainWindow) quote(f *Feed, p *model.Post, selected string) {
+	c := m.composer
+	if f == m.panel.feed {
+		c = m.panel.composer
+	}
+	if selected != "" {
+		c.Quote(selected, false)
+	} else {
+		c.Quote(p.Message, true)
+	}
 }
 
 func (m *MainWindow) channelExists(name string) bool {

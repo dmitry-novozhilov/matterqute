@@ -217,6 +217,7 @@ type Feed struct {
 	OnCopyLink       func(p *model.Post)                         // «Копировать ссылку на сообщение»
 	OnRemind         func(p *model.Post, at time.Time)           // «Напомнить»; at нулевое — спросить время
 	OnForward        func(p *model.Post)                         // «Переслать…»
+	OnQuote          func(p *model.Post, selected string)        // «Цитировать»: выделенное в нём или ("") всё сообщение
 	OnPin            func(p *model.Post, pin bool)               // «Закрепить в канале» / «Открепить»
 	OnSave           func(p *model.Post, save bool)              // «Сохранить» / «Убрать из сохранённых»
 	OnMarkUnread     func(p *model.Post)                         // «Пометить непрочитанным»
@@ -2301,6 +2302,10 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 					win.OnTriggered(func() { f.OnThreadWindow(threadRoot(p)) })
 				}
 			}
+			if sel := f.selectionIn(it); f.OnQuote != nil && (p.Message != "" || sel != "") {
+				q := menu.QWidget.AddActionWithText("Цитировать")
+				q.OnTriggered(func() { f.OnQuote(p, sel) })
+			}
 			// Эмодзи в QMenu не кладём: шрифт меню выбирает система, и они
 			// бывают чёрно-белыми. Выбор — в своём окне, эмодзи там картинками.
 			react := menu.QWidget.AddActionWithText("Реакция…")
@@ -2396,14 +2401,28 @@ func (f *Feed) copySelection(super func() *qt.QMimeData) *qt.QMimeData {
 	md := super()
 	text := md.Text()
 	md.Delete()
+	out := qt.NewQMimeData()
+	out.SetText(copiedText(text))
+	return out
+}
+
+// copiedText — выделенный текст ленты без заглушек картинок и хвостовых пробелов.
+func copiedText(text string) string {
 	text = strings.NewReplacer("￼", "", " ", "\n", " ", "\n", " ", " ").Replace(text)
 	lines := strings.Split(text, "\n")
 	for i, l := range lines {
 		lines[i] = strings.TrimSpace(l)
 	}
-	out := qt.NewQMimeData()
-	out.SetText(strings.TrimSpace(strings.Join(lines, "\n")))
-	return out
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// selectionIn — выделенный текст, если выделение целиком внутри поста it; иначе "".
+func (f *Feed) selectionIn(it *postItem) string {
+	cur := f.view.TextCursor()
+	if it == nil || !cur.HasSelection() || cur.SelectionStart() < it.frame.FirstPosition() || cur.SelectionEnd() > it.frame.LastPosition() {
+		return ""
+	}
+	return copiedText(cur.Selection().ToPlainText())
 }
 
 func (f *Feed) openThread(rootID string) {

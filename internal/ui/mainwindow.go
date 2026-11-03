@@ -295,6 +295,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.panel.composer.OnDraft = func(key string) { m.drafts.changed(m.panel.composer, key) }
 	m.wireFeed(m.search.feed)
 	m.search.feed.OnOpenThread = m.openThread
+	m.search.feed.OnQuote = nil // поле ввода — у канала результата, а на экране может быть другой
 	m.panel.back = m.panel.head.addTool("Назад к результатам", func() {
 		m.closeThread()
 		m.showRight(m.search.w)

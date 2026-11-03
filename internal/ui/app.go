@@ -4,6 +4,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/url"
@@ -91,6 +92,14 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 	OnFontsChosen = func(f config.Fonts) {
 		a.cfg.Fonts = f
 		a.saveConfig()
+	}
+	OnZoomChosen = func(percent int) {
+		a.cfg.Zoom = percent
+		if percent == 100 {
+			a.cfg.Zoom = 0
+		}
+		a.saveConfig()
+		a.shell.ShowMessage(fmt.Sprintf("Масштаб: %d%%", percent))
 	}
 	OnFormatBarChosen = func(on bool) {
 		a.cfg.FormatBar = on

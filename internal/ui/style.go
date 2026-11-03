@@ -36,13 +36,15 @@ var style = struct {
 	nextID     int
 	icons      map[string]*qt.QPixmap
 	avatars    map[string]*qt.QPixmap
-	fonts      config.Fonts // выбранные шрифты, умолчания подставлены
+	fonts      config.Fonts // шрифты в деле: выбранные с масштабом
+	chosen     config.Fonts // выбранные в «Шрифтах», умолчания подставлены
+	zoom       int          // масштаб, % (Ctrl+= / Ctrl+− / Ctrl+0)
 	formatBar  bool         // панель оформления над полем ввода
 	typingShow bool         // показывать, кто печатает
 	typingSend bool         // сообщать, что печатаю я
 	alert      bool         // мигать значком окна на панели задач при уведомлении
 }{mode: ThemeSystem, pal: theme.Light, listeners: map[int]func(){}, icons: map[string]*qt.QPixmap{}, avatars: map[string]*qt.QPixmap{},
-	fonts: defaultFonts, typingShow: true, typingSend: true, alert: true}
+	fonts: defaultFonts, chosen: defaultFonts, zoom: 100, typingShow: true, typingSend: true, alert: true}
 
 // Pal — палитра текущей темы.
 func Pal() theme.Palette { return style.pal }

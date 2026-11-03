@@ -31,6 +31,7 @@ type Config struct {
 	Theme     string   `json:"theme,omitempty"`      // system, light, dark; пусто — system
 	Window    Window   `json:"window,omitzero"`      // окно и колонки, как их оставили
 	Fonts     Fonts    `json:"fonts,omitzero"`       // шрифты сайдбара, ленты, моноширинного; пусто — по дизайну
+	Zoom      int      `json:"zoom,omitempty"`       // масштаб шрифтов, %; 0 — 100
 	Tray      Tray     `json:"tray,omitzero"`        // цвета значка в трее; пусто — по панели
 	FormatBar bool     `json:"format_bar,omitempty"` // панель оформления над полем ввода
 	Typing    Typing   `json:"typing,omitzero"`      // «печатает…»: показывать ли и сообщать ли

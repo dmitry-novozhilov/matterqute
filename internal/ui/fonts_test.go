@@ -3,6 +3,8 @@ package ui
 import (
 	"io"
 	"log/slog"
+	"slices"
+	"strings"
 	"testing"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -83,5 +85,68 @@ func TestFonts(t *testing.T) {
 			t.Errorf("reset: saved %+v, feed %d px", last, m.feed.doc.DefaultFont().PixelSize())
 		}
 		dlg.Close()
+	})
+}
+
+// Масштаб: «Вид → Масштаб» (Ctrl+= и Ctrl++, Ctrl+−, Ctrl+0) — шагами поверх
+// выбранных шрифтов, выбранные не меняются; у края шагов — ничего.
+func TestZoom(t *testing.T) {
+	onMain(func() {
+		defer SetZoom(100)
+		defer SetFonts(config.Fonts{})
+		SetFonts(config.Fonts{Feed: config.Font{Size: 16}})
+		var got []int
+		OnZoomChosen = func(p int) { got = append(got, p) }
+		defer func() { OnZoomChosen = nil }()
+		s := NewShell()
+		defer s.w.Close()
+		acts := map[string]*qt.QAction{}
+		var menu *qt.QMenu
+		for _, o := range descendants(s.w.QObject) {
+			if !o.Inherits("QMenu") {
+				continue
+			}
+			m := qt.UnsafeNewQMenu(o.UnsafePointer())
+			for _, a := range m.Actions() {
+				acts[a.Text()] = a
+				if a.Text() == "Крупнее" {
+					menu = m
+				}
+			}
+		}
+		in, out, reset := acts["Крупнее"], acts["Мельче"], acts["Обычный размер"]
+		if in == nil || out == nil || reset == nil || menu == nil {
+			t.Errorf("zoom actions: %v %v %v", in != nil, out != nil, reset != nil)
+			return
+		}
+		var keys []string
+		for _, k := range in.Shortcuts() {
+			keys = append(keys, k.ToString())
+		}
+		if strings.Join(keys, " ") != "Ctrl+= Ctrl++" || out.Shortcut().ToString() != "Ctrl+-" || reset.Shortcut().ToString() != "Ctrl+0" {
+			t.Errorf("keys: in %v, out %q, reset %q", keys, out.Shortcut().ToString(), reset.Shortcut().ToString())
+		}
+		in.Trigger()
+		if style.zoom != 110 || style.fonts.Feed.Size != 18 || style.fonts.Sidebar.Size != 15 || style.chosen.Feed.Size != 16 || feedFont().PixelSize() != 18 {
+			t.Errorf("110%%: zoom %d, feed %d, sidebar %d, chosen feed %d", style.zoom, style.fonts.Feed.Size, style.fonts.Sidebar.Size, style.chosen.Feed.Size)
+		}
+		if menu.Title() != "Масштаб: 110%" {
+			t.Errorf("menu title %q", menu.Title())
+		}
+		out.Trigger()
+		out.Trigger()
+		reset.Trigger()
+		SetZoom(200)
+		in.Trigger() // у края — ничего
+		if style.zoom != 200 || style.fonts.Mono.Size != 26 {
+			t.Errorf("200%%: zoom %d, mono %d", style.zoom, style.fonts.Mono.Size)
+		}
+		if want := []int{110, 100, 90, 100}; !slices.Equal(got, want) {
+			t.Errorf("chosen %v, want %v", got, want)
+		}
+		SetZoom(33)
+		if style.zoom != 100 {
+			t.Errorf("unknown zoom 33 → %d, want 100", style.zoom)
+		}
 	})
 }

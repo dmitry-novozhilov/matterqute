@@ -166,6 +166,7 @@ func NewShell() *Shell {
 	themes := view.AddMenuWithTitle("Тема")
 	fontsAct := view.QWidget.AddActionWithText("Шрифты…")
 	fontsAct.OnTriggered(func() { showFontsDialog(s.w.QWidget) })
+	s.buildZoomMenu(view.AddMenuWithTitle("Масштаб"))
 	typing := view.AddMenuWithTitle("«Печатает…»")
 	showTyping := typing.QWidget.AddActionWithText("Показывать, кто печатает")
 	sendTyping := typing.QWidget.AddActionWithText("Сообщать, что печатаю я")
@@ -463,6 +464,29 @@ func (s *Shell) Raise() {
 // buildNamesMenu — «Вид → Имена людей»: отметки — по текущему серверу при
 // каждом открытии (у каждого сервера своя настройка); запретил сервер
 // менять — пункты серые.
+// buildZoomMenu — «Вид → Масштаб»: крупнее, мельче, обычный; сочетания
+// работают и в окне треда (ApplicationShortcut), в заголовке — текущий.
+func (s *Shell) buildZoomMenu(menu *qt.QMenu) {
+	for _, z := range []struct {
+		title string
+		keys  []string
+		dir   int
+	}{{"Крупнее", []string{"Ctrl+=", "Ctrl++"}, 1}, {"Мельче", []string{"Ctrl+-"}, -1}, {"Обычный размер", []string{"Ctrl+0"}, 0}} {
+		a := menu.QWidget.AddActionWithText(z.title)
+		var keys []qt.QKeySequence
+		for _, k := range z.keys {
+			keys = append(keys, *qt.NewQKeySequence2(k))
+		}
+		a.SetShortcuts(keys)
+		a.SetShortcutContext(qt.ApplicationShortcut)
+		dir := z.dir
+		a.OnTriggered(func() { zoomBy(dir) })
+	}
+	title := func() { menu.SetTitle(fmt.Sprintf("Масштаб: %d%%", style.zoom)) }
+	title()
+	s.w.OnDestroyed(OnThemeChanged(title)) // масштаб — через подписчиков темы
+}
+
 func (s *Shell) buildNamesMenu(menu *qt.QMenu) {
 	group := qt.NewQActionGroup(s.w.QObject)
 	acts := map[string]*qt.QAction{}

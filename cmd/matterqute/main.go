@@ -92,6 +92,7 @@ func main() {
 
 	ui.InitStyle(app, ui.ThemeMode(cfg.Theme), log)
 	ui.SetFonts(cfg.Fonts)
+	ui.SetZoom(cfg.Zoom)
 	ui.SetFormatBar(cfg.FormatBar)
 	ui.SetTyping(!cfg.Typing.Hide, !cfg.Typing.NoSend)
 	ui.SetTaskbarAlert(!cfg.NoTaskbarAlert)

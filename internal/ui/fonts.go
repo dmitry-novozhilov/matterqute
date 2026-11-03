@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -24,8 +25,8 @@ const minFontSize, maxFontSize = 9, 32
 // OnFontsChosen — шрифты выбрали в окне (сохранить в настройках).
 var OnFontsChosen func(config.Fonts)
 
-// SetFonts применяет шрифты сразу: всё, что подписано на смену темы
-// (OnThemeChanged), перерисуется. Пустое — по дизайну.
+// SetFonts применяет шрифты сразу (с масштабом): всё, что подписано на смену
+// темы (OnThemeChanged), перерисуется. Пустое — по дизайну.
 func SetFonts(f config.Fonts) {
 	fill := func(f, def config.Font) config.Font {
 		if f.Family == "" {
@@ -37,11 +38,58 @@ func SetFonts(f config.Fonts) {
 		f.Size = max(minFontSize, min(f.Size, maxFontSize))
 		return f
 	}
-	style.fonts = config.Fonts{
+	style.chosen = config.Fonts{
 		Sidebar: fill(f.Sidebar, defaultFonts.Sidebar),
 		Feed:    fill(f.Feed, defaultFonts.Feed),
 		Mono:    fill(f.Mono, defaultFonts.Mono),
 	}
+	applyFonts()
+}
+
+// zoomSteps — масштаб, %: шаги Ctrl+= и Ctrl+−.
+var zoomSteps = []int{80, 90, 100, 110, 125, 150, 175, 200}
+
+// OnZoomChosen — масштаб сменили (сохранить в настройках).
+var OnZoomChosen func(percent int)
+
+// SetZoom — масштаб в процентах поверх выбранных шрифтов: сайдбар, лента с
+// полем ввода, моноширинный разом; не из шагов (и 0) — 100.
+func SetZoom(percent int) {
+	if !slices.Contains(zoomSteps, percent) {
+		percent = 100
+	}
+	style.zoom = percent
+	applyFonts()
+}
+
+// zoomBy — масштаб на шаг крупнее (dir > 0), мельче (dir < 0) или обычный (0).
+func zoomBy(dir int) {
+	i := slices.Index(zoomSteps, style.zoom)
+	switch {
+	case dir == 0:
+		i = slices.Index(zoomSteps, 100)
+	case dir > 0:
+		i = min(i+1, len(zoomSteps)-1)
+	default:
+		i = max(i-1, 0)
+	}
+	if zoomSteps[i] == style.zoom {
+		return
+	}
+	SetZoom(zoomSteps[i])
+	if OnZoomChosen != nil {
+		OnZoomChosen(style.zoom)
+	}
+}
+
+// applyFonts — шрифты в деле: выбранные с масштабом; всё, что подписано на
+// смену темы, перерисуется.
+func applyFonts() {
+	scale := func(f config.Font) config.Font {
+		f.Size = int(math.Round(float64(f.Size) * float64(style.zoom) / 100))
+		return f
+	}
+	style.fonts = config.Fonts{Sidebar: scale(style.chosen.Sidebar), Feed: scale(style.chosen.Feed), Mono: scale(style.chosen.Mono)}
 	for _, l := range style.listeners {
 		l()
 	}
@@ -150,7 +198,7 @@ func showFontsDialog(parent *qt.QWidget) {
 	}
 	grid.SetColumnStretch(1, 1)
 	d.lay.AddLayout(grid.QLayout)
-	set(style.fonts)
+	set(style.chosen) // без масштаба: он поверх
 
 	reset := qt.NewQPushButton3("Сбросить")
 	reset.OnClicked(func() {

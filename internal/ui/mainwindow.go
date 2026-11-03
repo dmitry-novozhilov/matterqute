@@ -198,7 +198,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		}
 	}
 
-	deps := FeedDeps{Names: m.st.Username, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists, Log: m.log,
+	deps := FeedDeps{Names: m.st.Name, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists, Log: m.log,
 		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage, Saved: m.st.Saved,
 		ThreadFollow: m.threadFollowing}
 	m.initFeeds(deps)
@@ -598,6 +598,7 @@ func (m *MainWindow) reloadSidebar() {
 			} else {
 				crtChanged := sb.CRT != m.st.CRT()
 				previewsChanged := sb.LinkPreviews != m.st.LinkPreviews()
+				oldFormat, _ := m.st.NameFormat()
 				m.st.SetSidebar(sb)
 				m.sidebarOK = true
 				for _, st := range sb.Statuses {
@@ -611,7 +612,7 @@ func (m *MainWindow) reloadSidebar() {
 						m.dropFeed(id) // канала больше нет
 					}
 				}
-				if previewsChanged && !crtChanged {
+				if newFormat, _ := m.st.NameFormat(); (previewsChanged || newFormat != oldFormat) && !crtChanged {
 					m.eachFeed((*Feed).invalidateAll)
 					m.panel.feed.renderAll()
 				}
@@ -661,6 +662,7 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 	sb.CRT, sb.MaxFileSize, sb.LinkPreviews, sb.SyncDrafts = settings.CRT, settings.MaxFileSize, settings.LinkPreviews, settings.SyncDrafts
 	sb.UnreadSection = settings.UnreadSection
 	sb.PostPriority = settings.PostPriority
+	sb.NameFormat, sb.NameFormatLocked = settings.NameFormat, settings.NameFormatLocked
 	peers := map[string]bool{}
 	for _, t := range teams {
 		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")

@@ -70,6 +70,10 @@ type Shell struct {
 	OnMarkAllRead    func() // «Файл → Отметить всё прочитанным» — на текущем сервере
 	OnProfile        func() // «Файл → Профиль и уведомления…»
 	OnCreateChannel  func() // «Файл → Создать канал…»
+	// «Вид → Имена людей» — на текущем сервере: что выбрано и можно ли
+	// менять (ok=false — не вошли), и выбор.
+	OnNameFormatState func() (format string, locked, ok bool)
+	OnNameFormat      func(format string)
 }
 
 // ServerItem — пункт меню «Сервер».
@@ -196,6 +200,7 @@ func NewShell() *Shell {
 	}
 	syncSpell()
 	s.w.OnDestroyed(onSpell(syncSpell)) // окно удалено — пункта меню больше нет
+	s.buildNamesMenu(view.AddMenuWithTitle("Имена людей"))
 	s.alertAct = view.QWidget.AddActionWithText("Мигать на панели задач при уведомлении")
 	s.alertAct.SetCheckable(true)
 	s.alertAct.SetChecked(style.alert)
@@ -453,4 +458,34 @@ func (s *Shell) Raise() {
 	s.w.Show()
 	s.w.Raise()
 	s.w.ActivateWindow()
+}
+
+// buildNamesMenu — «Вид → Имена людей»: отметки — по текущему серверу при
+// каждом открытии (у каждого сервера своя настройка); запретил сервер
+// менять — пункты серые.
+func (s *Shell) buildNamesMenu(menu *qt.QMenu) {
+	group := qt.NewQActionGroup(s.w.QObject)
+	acts := map[string]*qt.QAction{}
+	for _, f := range nameFormats {
+		a := menu.QWidget.AddActionWithText(f.title)
+		a.SetCheckable(true)
+		group.AddAction(a)
+		format := f.format
+		a.OnTriggered(func() {
+			if s.OnNameFormat != nil {
+				s.OnNameFormat(format)
+			}
+		})
+		acts[format] = a
+	}
+	menu.OnAboutToShow(func() {
+		format, locked, ok := "", false, false
+		if s.OnNameFormatState != nil {
+			format, locked, ok = s.OnNameFormatState()
+		}
+		for f, a := range acts {
+			a.SetChecked(ok && f == format)
+			a.SetEnabled(ok && !locked)
+		}
+	})
 }

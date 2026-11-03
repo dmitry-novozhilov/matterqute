@@ -180,7 +180,7 @@ func (m *MainWindow) paintFileRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, 
 	p.SetFont(f)
 	p.SetPen(qt.NewQColor6(pal.Tx))
 	p.DrawText7(tx, cy-20, w, 20, int(qt.AlignVCenter|qt.AlignLeft), qt.NewQFontMetrics(f).ElidedText(fi.Name, qt.ElideMiddle, w))
-	sub := m.st.Username(fi.CreatorId)
+	sub := m.st.Name(fi.CreatorId)
 	if ch := m.st.Channel(fi.ChannelId); fl.where && ch != nil {
 		sub += " · " + channelPrefix(ch) + m.st.Title(ch)
 	}

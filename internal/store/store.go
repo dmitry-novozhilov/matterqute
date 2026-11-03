@@ -19,6 +19,8 @@ type Store struct {
 	crt          bool
 	noPreviews   bool // пользователь выключил предпросмотр ссылок
 	postPriority bool
+	nameFormat   string // как показывать людей (model.Show*); "" — имя пользователя
+	nameLocked   bool
 	maxFileSize  int64
 	teams        []*model.Team
 	channels     map[string]*model.Channel
@@ -92,6 +94,10 @@ type Sidebar struct {
 	// UnreadSection — непрочитанные отдельной группой вверху сайдбара.
 	UnreadSection bool
 	PostPriority  bool // метки «Важно», «Срочно» включены на сервере
+	// NameFormat — как показывать людей (model.Show*), NameFormatLocked —
+	// сервер запретил менять.
+	NameFormat       string
+	NameFormatLocked bool
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
@@ -102,6 +108,7 @@ func (s *Store) SetSidebar(sb *Sidebar) {
 	s.teams = sb.Teams
 	s.unreadSection = sb.UnreadSection
 	s.postPriority = sb.PostPriority
+	s.nameFormat, s.nameLocked = sb.NameFormat, sb.NameFormatLocked
 	s.categories = map[string]*model.OrderedSidebarCategories{}
 	for team, c := range sb.Categories {
 		s.categories[team] = c
@@ -237,7 +244,7 @@ func (s *Store) Title(ch *model.Channel) string {
 		return ch.DisplayName // у групповых сервер сам кладёт сюда список участников
 	}
 	peer := s.DMPeer(ch)
-	name := s.Username(peer)
+	name := s.Name(peer)
 	if peer == s.me.Id {
 		return name + " (вы)"
 	}
@@ -362,6 +369,31 @@ func (s *Store) Username(id string) string {
 	}
 	return id
 }
+
+// Name — как показывать человека: по настройке «как показывать имена»
+// (имя пользователя, псевдоним или «Имя Фамилия»; чего нет — имя
+// пользователя). Для @упоминаний и ссылок — Username.
+func (s *Store) Name(id string) string {
+	if u := s.users[id]; u != nil {
+		format := s.nameFormat
+		if format == "" {
+			format = model.ShowUsername
+		}
+		return u.GetDisplayName(format)
+	}
+	return id
+}
+
+// NameFormat — настройка «как показывать имена» и запретил ли сервер её менять.
+func (s *Store) NameFormat() (format string, locked bool) {
+	if s.nameFormat == "" {
+		return model.ShowUsername, s.nameLocked
+	}
+	return s.nameFormat, s.nameLocked
+}
+
+// SetNameFormat — настройку поменяли здесь.
+func (s *Store) SetNameFormat(format string) { s.nameFormat = format }
 
 func (s *Store) AddUsers(us []*model.User) {
 	for _, u := range us {
@@ -631,7 +663,8 @@ func (s *Store) ThreadsUnread() (unread bool, mentions int64) {
 // потоке: в нём те же объекты, что в store.
 func (s *Store) Snapshot(tail int) (*Sidebar, map[string]*Timeline) {
 	sb := &Sidebar{CRT: s.crt, MaxFileSize: s.maxFileSize, LinkPreviews: !s.noPreviews, Teams: s.teams,
-		Categories: s.categories, Saved: []string{}, UnreadSection: s.unreadSection, PostPriority: s.postPriority}
+		Categories: s.categories, Saved: []string{}, UnreadSection: s.unreadSection, PostPriority: s.postPriority,
+		NameFormat: s.nameFormat, NameFormatLocked: s.nameLocked}
 	for _, ch := range s.channels {
 		sb.Channels = append(sb.Channels, ch)
 	}

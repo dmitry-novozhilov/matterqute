@@ -55,7 +55,7 @@ func (m *MainWindow) mediaTitle(name string, p *model.Post) string {
 	if p == nil {
 		return name
 	}
-	author := m.st.Username(p.UserId)
+	author := m.st.Name(p.UserId)
 	if in, ok := store.PostIntegration(p); ok && in.Name != "" {
 		author = in.Name
 	}

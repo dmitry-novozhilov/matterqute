@@ -369,7 +369,7 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 		if in, ok := store.PostIntegration(root); ok && in.Name != "" {
 			head += in.Name
 		} else {
-			head += m.st.Username(root.UserId)
+			head += m.st.Name(root.UserId)
 		}
 		msg = markdown.PreviewLine(root.Message, markdown.Options{Me: m.s.Me.Username, Palette: pal})
 	}

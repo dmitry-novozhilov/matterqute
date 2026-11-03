@@ -120,7 +120,7 @@ func (m *MainWindow) typingText(k typingKey) string {
 	}
 	var names []string
 	for u := range m.typing.who[k] {
-		names = append(names, m.st.Username(u))
+		names = append(names, m.st.Name(u))
 	}
 	slices.Sort(names)
 	switch n := len(names); {

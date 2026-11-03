@@ -48,6 +48,12 @@ type Settings struct {
 	// PostPriority — метки «Важно» и «Срочно» у сообщений включены на
 	// сервере (ServiceSettings.PostPriority).
 	PostPriority bool
+	// NameFormat — как показывать людей (model.ShowUsername,
+	// ShowNicknameFullName, ShowFullName): настройка пользователя
+	// display_settings/name_format, иначе — сервера (TeammateNameDisplay);
+	// NameFormatLocked — сервер запретил менять (LockTeammateNameDisplay).
+	NameFormat       string
+	NameFormatLocked bool
 }
 
 // Настройка «непрочитанные отдельно» — категория и имя, как у веб-клиента.
@@ -67,11 +73,16 @@ func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 		return Settings{}, describe(s.ServerURL, fmt.Sprintf("load %s preferences", model.PreferenceCategoryDisplaySettings), resp, err)
 	}
 	st := Settings{CRT: CRTEnabled(cfg, prefs), LinkPreviews: true}
+	pref := ""
 	for _, p := range prefs {
 		if p.Name == "link_previews" && p.Value == "false" {
 			st.LinkPreviews = false
 		}
+		if p.Name == model.PreferenceNameNameFormat {
+			pref = p.Value
+		}
 	}
+	st.NameFormat, st.NameFormatLocked = NameFormat(cfg, pref)
 	st.SyncDrafts = cfg["AllowSyncedDrafts"] != "false"
 	st.PostPriority = cfg["PostPriority"] == "true"
 	if st.SyncDrafts {
@@ -102,4 +113,24 @@ func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 		}
 	}
 	return st, nil
+}
+
+// NameFormat — как показывать людей, как решает веб-клиент
+// (getTeammateNameDisplaySetting): сервер запретил менять — его, иначе
+// настройка пользователя pref, иначе — сервера, иначе имя пользователя.
+func NameFormat(cfg map[string]string, pref string) (format string, locked bool) {
+	valid := func(f string) bool {
+		return f == model.ShowUsername || f == model.ShowNicknameFullName || f == model.ShowFullName
+	}
+	server := cfg["TeammateNameDisplay"]
+	if !valid(server) {
+		server = model.ShowUsername
+	}
+	if cfg["LockTeammateNameDisplay"] == "true" {
+		return server, true
+	}
+	if valid(pref) {
+		return pref, false
+	}
+	return server, false
 }

@@ -68,7 +68,7 @@ func (m *MainWindow) maybeNotify(e store.NewPost) {
 // notification — «bob в #backend» и текст без разметки, по дизайну.
 func (m *MainWindow) notification(p *model.Post) notify.Notification {
 	in, hook := store.PostIntegration(p)
-	author := m.st.Username(p.UserId)
+	author := m.st.Name(p.UserId)
 	if hook && in.Name != "" {
 		author = in.Name
 	}

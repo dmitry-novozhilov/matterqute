@@ -111,6 +111,18 @@ func NewApp(cfg *config.Config, tokens *config.Tokens, log *slog.Logger) *App {
 			sv.main.showProfile()
 		}
 	}
+	a.shell.OnNameFormatState = func() (string, bool, bool) {
+		if sv := a.active; sv != nil && sv.main != nil {
+			f, locked := sv.main.st.NameFormat()
+			return f, locked, true
+		}
+		return "", false, false
+	}
+	a.shell.OnNameFormat = func(format string) {
+		if sv := a.active; sv != nil && sv.main != nil {
+			sv.main.setNameFormat(format)
+		}
+	}
 	a.shell.OnMarkAllRead = func() {
 		if sv := a.active; sv != nil && sv.main != nil {
 			sv.main.markAllRead()

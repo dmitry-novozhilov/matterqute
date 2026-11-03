@@ -1,6 +1,7 @@
 package mmfake
 
 import (
+	"cmp"
 	"encoding/json"
 	"net/http"
 	"slices"
@@ -108,7 +109,8 @@ func (s *Server) sendToChannel(channelID string, ev *model.WebSocketEvent) {
 
 func (s *Server) clientConfig(w http.ResponseWriter, _ *http.Request, _ *model.User) {
 	s.json(w, map[string]string{"Version": "mmfake", "CollapsedThreads": s.CollapsedThreads, "MaxFileSize": "52428800",
-		"AllowSyncedDrafts": strconv.FormatBool(!s.NoSyncedDrafts), "PostPriority": strconv.FormatBool(!s.NoPostPriority)})
+		"AllowSyncedDrafts": strconv.FormatBool(!s.NoSyncedDrafts), "PostPriority": strconv.FormatBool(!s.NoPostPriority),
+		"TeammateNameDisplay": cmp.Or(s.NameFormat, model.ShowUsername), "LockTeammateNameDisplay": strconv.FormatBool(s.LockNameFormat)})
 }
 
 func (s *Server) preferences(w http.ResponseWriter, r *http.Request, me *model.User) {
@@ -321,4 +323,16 @@ func (s *Server) userThread(w http.ResponseWriter, r *http.Request, me *model.Us
 		return
 	}
 	s.json(w, t)
+}
+
+// Pref — значение настройки пользователя (для тестов); "" — нет.
+func (s *Server) Pref(userID, category, name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.prefs[userID] {
+		if p.Category == category && p.Name == name {
+			return p.Value
+		}
+	}
+	return ""
 }

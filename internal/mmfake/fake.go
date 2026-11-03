@@ -38,6 +38,10 @@ type Server struct {
 	NoSyncedDrafts bool
 	// NoPostPriority — метки «Важно» и «Срочно» выключены (PostPriority=false).
 	NoPostPriority bool
+	// NameFormat — как показывать имена по умолчанию (TeammateNameDisplay;
+	// пусто — username), LockNameFormat — менять нельзя.
+	NameFormat     string
+	LockNameFormat bool
 	scheduled      map[string]*model.ScheduledPost
 	drafts         map[string]*model.Draft // user id/канал/корень → черновик
 	typed          []TypingEvent

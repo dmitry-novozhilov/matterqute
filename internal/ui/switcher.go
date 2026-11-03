@@ -68,10 +68,13 @@ func (m *MainWindow) switchSources(remoteUsers []*model.User, remoteChannels []*
 			peer := m.st.DMPeer(ch)
 			withDM[peer] = true
 			u := m.st.User(peer)
-			it.title = m.st.Username(peer)
-			it.fields = []string{it.title}
+			it.title = m.st.Name(peer)
+			it.fields = []string{it.title, m.st.Username(peer)}
 			if u != nil {
 				it.sub = displayName(u)
+				if it.title != u.Username {
+					it.sub = "@" + u.Username
+				}
 				it.fields = append(it.fields, u.FirstName, u.LastName, u.Nickname, displayName(u))
 			}
 			if it.sub == it.title {

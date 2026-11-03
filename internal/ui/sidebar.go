@@ -337,7 +337,7 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 		case model.ChannelTypeDirect:
 			peer := m.st.DMPeer(ch)
 			avatar, presence = m.st.User(peer), m.st.Status(peer)
-			label = m.st.Username(peer)
+			label = m.st.Name(peer)
 			if peer == m.s.Me.Id {
 				suffix = " (вы)"
 			}

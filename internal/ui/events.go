@@ -135,7 +135,8 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		// Пользователь мог включить или выключить свёрнутые треды или предпросмотр ссылок.
 		raw, _ := data["preferences"].(string)
 		reload := changed && (strings.Contains(raw, model.PreferenceNameCollapsedThreadsEnabled) || strings.Contains(raw, `"link_previews"`)) ||
-			strings.Contains(raw, `"`+mm.PrefUnreadSection+`"`) // непрочитанные отдельно — включили или выключили
+			strings.Contains(raw, `"`+mm.PrefUnreadSection+`"`) || // непрочитанные отдельно — включили или выключили
+			strings.Contains(raw, `"`+model.PreferenceNameNameFormat+`"`) // как показывать имена
 		if len(saved) == 0 && !reload {
 			return nil, nil
 		}

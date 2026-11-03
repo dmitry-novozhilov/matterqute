@@ -35,6 +35,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Git в контейнере
+        # Каталог checkout принадлежит пользователю раннера, а не root контейнера:
+        # без этого git говорит «dubious ownership», и go build не запишет коммит в бинарник.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Сборка
         run: go build -ldflags "-s -w -X matterqute/internal/ui.Version=${GITHUB_REF_NAME}" -o "matterqute-${GITHUB_REF_NAME}-linux-x86_64" ./cmd/matterqute
       - name: Тесты

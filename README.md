@@ -65,4 +65,8 @@ Tested on Linux (Debian 13, X11, XFCE) with Mattermost server 11.6.2. The interf
 
 [MIQT](https://github.com/mappu/miqt) (MIT): Qt 6 for Go; Qt is linked dynamically under the LGPL. The [Mattermost API client](https://github.com/mattermost/mattermost/tree/master/server/public) (Apache-2.0). Markdown by [goldmark](https://github.com/yuin/goldmark) (MIT), code highlighting by [chroma](https://github.com/alecthomas/chroma) (MIT). Fonts under the SIL OFL 1.1, icons from [Lucide](https://lucide.dev) (ISC).
 
+## License
+
+[MIT](LICENSE). Bundled third-party files keep their own licenses: the fonts in [internal/theme/fonts](internal/theme/fonts) are under the SIL OFL 1.1, the icons in [internal/theme/icons](internal/theme/icons/LICENSE) come from Lucide (ISC, some from Feather under MIT), and the emoji groups are built from Unicode data ([Unicode License V3](internal/emoji/LICENSE-unicode.txt)).
+
 Mattermost is a trademark of Mattermost, Inc. Matterqute is an independent project, not affiliated with Mattermost, Inc.

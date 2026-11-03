@@ -65,4 +65,8 @@ go test ./...         # тесты интерфейса поднимают на�
 
 [MIQT](https://github.com/mappu/miqt) (MIT): Qt 6 для Go, Qt подключается динамически под LGPL. [Клиент API Mattermost](https://github.com/mattermost/mattermost/tree/master/server/public) (Apache-2.0). Разметка — [goldmark](https://github.com/yuin/goldmark) (MIT), подсветка кода — [chroma](https://github.com/alecthomas/chroma) (MIT). Шрифты под SIL OFL 1.1, значки — [Lucide](https://lucide.dev) (ISC).
 
+## Лицензия
+
+[MIT](LICENSE). Сторонние файлы в репозитории остаются под своими лицензиями: шрифты в [internal/theme/fonts](internal/theme/fonts) — SIL OFL 1.1, значки в [internal/theme/icons](internal/theme/icons/LICENSE) — из Lucide (ISC, часть из Feather под MIT), разделы эмодзи собраны из данных Unicode ([Unicode License V3](internal/emoji/LICENSE-unicode.txt)).
+
 Mattermost — товарный знак Mattermost, Inc. Matterqute — независимый проект, с Mattermost, Inc. не связан.

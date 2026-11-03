@@ -215,6 +215,8 @@ Rich text в Qt 6.8 (проверено на скриншотах):
 
 ## Соглашения
 
+- Лицензия проекта — MIT (`LICENSE`). Сторонние файлы в репозитории — со своей лицензией рядом: шрифты — SIL OFL (тексты в `internal/theme/fonts`), значки Lucide (ISC, часть из Feather под MIT) — `internal/theme/icons/LICENSE` и копия в `docs/design_handoff_matterqute/icons`, разделы эмодзи из Unicode `emoji-test.txt` — `internal/emoji/LICENSE-unicode.txt`. Новый сторонний файл (значок, шрифт, данные) — только под разрешительной лицензией и с её текстом рядом; в README — строка в «License»/«Лицензия». Зависимости Go — разрешительные и MPL-2.0 (модули HashiCorp из библиотеки Mattermost, файловый копилефт); GPL-2.0-only несовместима (Apache-2.0, LGPL-3.0 Qt).
+
 - Ошибка содержит данные, из-за которых отказали: URL сервера, операцию, HTTP-статус, id ошибки Mattermost (см. `mm.ServerError`). Пароли и токены в сообщения и логи не попадают.
 - Таймстампы в логах — `YYYY-MM-DD HH:MM:SS`, местное время.
 

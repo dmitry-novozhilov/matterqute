@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -54,6 +55,9 @@ type Settings struct {
 	// NameFormatLocked — сервер запретил менять (LockTeammateNameDisplay).
 	NameFormat       string
 	NameFormatLocked bool
+	// AwayTimeout — через сколько простоя статус «Отошёл»
+	// (TeamSettings.UserStatusAwayTimeout, по умолчанию 5 минут).
+	AwayTimeout time.Duration
 }
 
 // Настройка «непрочитанные отдельно» — категория и имя, как у веб-клиента.
@@ -83,6 +87,10 @@ func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 		}
 	}
 	st.NameFormat, st.NameFormatLocked = NameFormat(cfg, pref)
+	st.AwayTimeout = model.TeamSettingsDefaultUserStatusAwayTimeout * time.Second
+	if sec, err := strconv.ParseInt(cfg["UserStatusAwayTimeout"], 10, 64); err == nil && sec > 0 {
+		st.AwayTimeout = time.Duration(sec) * time.Second
+	}
 	st.SyncDrafts = cfg["AllowSyncedDrafts"] != "false"
 	st.PostPriority = cfg["PostPriority"] == "true"
 	if st.SyncDrafts {

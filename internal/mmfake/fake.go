@@ -45,6 +45,8 @@ type Server struct {
 	scheduled      map[string]*model.ScheduledPost
 	drafts         map[string]*model.Draft // user id/канал/корень → черновик
 	typed          []TypingEvent
+	activity       []bool          // user_update_active_status: за компьютером ли
+	autoAway       map[string]bool // «отошёл» поставил простой, а не пользователь
 
 	mu        sync.Mutex
 	users     map[string]*model.User // по id
@@ -826,6 +828,7 @@ func (s *Server) setStatus(w http.ResponseWriter, r *http.Request, me *model.Use
 	defer s.mu.Unlock()
 	s.statuses[me.Id] = st.Status
 	s.dndEnd[me.Id] = st.DNDEndTime
+	delete(s.autoAway, me.Id) // выбрал руками — простой его не меняет
 	ev := model.NewWebSocketEvent(model.WebsocketEventStatusChange, "", "", "", nil, "")
 	ev.Add("user_id", me.Id)
 	ev.Add("status", st.Status)
@@ -927,10 +930,14 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 			if err := conn.ReadJSON(&req); err != nil {
 				return
 			}
-			if req.Action == "user_typing" {
+			switch req.Action {
+			case "user_typing":
 				ch, _ := req.Data["channel_id"].(string)
 				parent, _ := req.Data["parent_id"].(string)
 				s.typing(uid, ch, parent)
+			case "user_update_active_status":
+				active, _ := req.Data["user_is_active"].(bool)
+				s.activeStatus(uid, active)
 			}
 		}
 	}()

@@ -124,6 +124,21 @@ func (s *Session) Typing(channelID, parentID string) bool {
 	return true
 }
 
+// SetActive — сообщить серверу, за компьютером ли пользователь (система
+// простаивает — нет), как веб-клиент и Mattermost Desktop: действие
+// user_update_active_status с manual=false — сервер ставит «Отошёл» или «В
+// сети», только если статус не выставлен руками. false — соединения нет.
+func (s *Session) SetActive(active bool) bool {
+	s.wsMu.Lock()
+	ws := s.ws
+	s.wsMu.Unlock()
+	if ws == nil {
+		return false
+	}
+	go ws.SendMessage("user_update_active_status", map[string]any{"user_is_active": active, "manual": false})
+	return true
+}
+
 // websocketURL: https://host/sub → wss://host/sub (model.WebSocketClient сам добавит /api/v4/websocket).
 func websocketURL(serverURL string) (string, error) {
 	switch {

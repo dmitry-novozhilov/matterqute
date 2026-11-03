@@ -10,7 +10,7 @@
 
 ## Сборка
 
-Системные пакеты (Debian 13): `qt6-base-dev qt6-svg-dev qt6-image-formats-plugins qt6-multimedia-dev build-essential pkg-config`. Для проверки орфографии (не обязательно, ни при сборке, ни для запуска) — `libhunspell-1.7-0 hunspell-ru hunspell-en-us`: библиотеку приложение грузит само (`dlopen`), словари ищет в `DICPATH`, `/usr/share/hunspell`, `/usr/share/myspell`. Видео играет плагин ffmpeg из `libqt6multimedia6` (ставится вместе с `qt6-multimedia-dev`). Шрифты (IBM Plex Sans, PT Mono, Noto Color Emoji, все под OFL) зашиты в бинарник через `go:embed`, системные не нужны.
+Системные пакеты (Debian 13): `qt6-base-dev qt6-svg-dev qt6-image-formats-plugins qt6-multimedia-dev build-essential pkg-config`. Для проверки орфографии (не обязательно, ни при сборке, ни для запуска) — `libhunspell-1.7-0 hunspell-ru hunspell-en-us`: библиотеку приложение грузит само (`dlopen`), словари ищет в `DICPATH`, `/usr/share/hunspell`, `/usr/share/myspell`. Для автоматического «Отошёл» под X11 — `libxss1` (тоже `dlopen`, обычно уже стоит). Видео играет плагин ffmpeg из `libqt6multimedia6` (ставится вместе с `qt6-multimedia-dev`). Шрифты (IBM Plex Sans, PT Mono, Noto Color Emoji, все под OFL) зашиты в бинарник через `go:embed`, системные не нужны.
 
 ```sh
 go build ./cmd/matterqute
@@ -34,6 +34,7 @@ go test ./...
 | `internal/store` | состояние одного сервера: команды, каналы, членства (непрочитанные, упоминания), пользователи, загруженные ленты, треды (CRT) | нет |
 | `internal/emoji` | имена эмодзи Mattermost ↔ символы (по `model.SystemEmojis`) | нет |
 | `internal/sched` | отложенные сообщения: что и когда отправить, варианты времени («завтра в 9:00»), подписи, файл для тех, что отправляет приложение | нет |
+| `internal/idle` | простой системы (нет ввода): X11 — libXss через `dlopen`, GNOME — Mutter по DBus | нет |
 | `internal/status` | свой статус Mattermost и «не беспокоить»: стандартные статусы, сроки (до конца дня, недели…), истёк ли, подпись «до 15:30» | нет |
 | `internal/spell` | проверка орфографии: libhunspell через `dlopen` (нет — без проверки), словари ru_RU и en_US, личный словарь, слова текста с границами в UTF-16 | нет |
 | `internal/complete` | автодополнение: слово под курсором (`@`, `#`/`~`, `:`) и подбор пользователей, каналов, эмодзи | нет |
@@ -56,6 +57,7 @@ go test ./...
 - Профиль и уведомления (`profile.go`, «Файл → Профиль и уведомления…» и панель статуса): имя, фамилия, псевдоним, должность — `PatchUser`; фото — сразу (`SetProfileImage`/`SetDefaultProfileImage`, потом `GetMe`). Уведомления по умолчанию (desktop, desktop_threads при CRT, first_name, channel, mention_keys, email): сервер заменяет `notify_props` целиком — шлём всю карту, а настройки окна — явно (пустую сервер и приложение понимают по-разному); «изменилось ли» — по действующему значению (`notifyProp`: своё или умолчание `User.SetDefaultNotifications`). Свой профиль — `applyUser`: и `Session.Me`, и `store` («me»); событие без `notify_props`/почты их не стирает.
 
 - Свой статус — `user.props.customStatus` (эмодзи, текст, срок `thirty_minutes`/`one_hour`/`four_hours`/`today`/`this_week`/`date_and_time`, `expires_at`): `PUT/DELETE /users/{id}/status/custom`; «сегодня» — до конца дня, «неделя» — до конца воскресенья (`status.ExpiresAt`). Истёкший не показываем (`status.Current`); раз в минуту перерисовываем, где он виден.
+- Автоматический «Отошёл» (`away.go`, `internal/idle`): раз в 30 с (когда «отошёл» — раз в 5 с) простой системы — X11 `XScreenSaverQueryInfo` (libX11/libXss через dlopen; не под XWayland), иначе GNOME `org.gnome.Mutter.IdleMonitor.GetIdletime` по DBus; дольше `UserStatusAwayTimeout` из `config/client` (нет — 5 минут) — серверу действие WebSocket `user_update_active_status` (`user_is_active`, `manual=false`; `mm.Session.SetActive`), сервер меняет статус, только если он не выбран руками (по памяти о коде сервера, на настоящем не проверено). Одно и то же дважды не шлём, после переподключения — заново (`awayUnknown`). Простой не узнать (KDE под Wayland) — молчим, в лог один раз. Путь X11 в контейнере не запускался (нет X-сервера): раскладка `XScreenSaverInfo` сверена с `scrnsaver.h`.
 - Присутствие — `PUT /users/{id}/status`; «не беспокоить» со сроком — `dnd_end_time` в секундах («до завтра» — завтра в 9:00, как веб-клиент).
 - В строке состояния после `@user` — эмодзи своего статуса и его текст (длиннее `moodWidth` — с «…»; текст и срок — в подсказке, `Shell.SetMood`).
 - Панель статуса — клик по `@user` (или по своему статусу) в строке состояния или «Файл → Статус…»: свой статус и присутствие; окно своего статуса — эмодзи (то же окно выбора), текст, стандартные, срок. Чужие статусы — у имени автора в ленте, после имени в личке сайдбара (подсказка — текст и срок), в карточке. Обновляются по `user_updated`.
@@ -278,4 +280,4 @@ Rich text в Qt 6.8 (проверено на скриншотах):
    - ✅ Метки «Важно» и «Срочно»: показывать и ставить.
    - ✅ Подсветка синтаксиса в блоках кода.
    - ✅ Как показывать имена: имя пользователя, псевдоним или «Имя Фамилия» (`name_format`, общая с веб-клиентом).
-   - Автоматический «Отошёл» по простою.
+   - ✅ Автоматический «Отошёл» по простою.

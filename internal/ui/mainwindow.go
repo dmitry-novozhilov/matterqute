@@ -94,6 +94,9 @@ type MainWindow struct {
 	deleteDialog   *dialog            // «Удалить сообщение?»
 	channelDialog  *dialog            // обзор, создание канала, «покинуть»
 	interactive    *interactiveDialog // последнее окно интеграции (open_dialog)
+	awayTimer      *qt.QTimer         // простой системы → «Отошёл» (away.go)
+	away           awayState          // что о простое сообщили серверу
+	noIdle         bool               // простой узнать нечем (в лог — один раз)
 	switcherDialog *dialog            // последнее окно быстрого перехода (Ctrl+K)
 	viewer         *imageViewer       // картинка во весь экран; nil — закрыта
 
@@ -452,6 +455,7 @@ func (m *MainWindow) Start() {
 		m.applyState(st)
 	}
 	m.startStateTimer()
+	m.startAwayTimer()
 	m.reloadSidebar()
 	go m.s.RunRealtime(m.ctx, m, m.retryNow)
 }
@@ -663,6 +667,7 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 	sb.UnreadSection = settings.UnreadSection
 	sb.PostPriority = settings.PostPriority
 	sb.NameFormat, sb.NameFormatLocked = settings.NameFormat, settings.NameFormatLocked
+	sb.AwayTimeout = settings.AwayTimeout
 	peers := map[string]bool{}
 	for _, t := range teams {
 		chs, _, err := c.GetChannelsForTeamForUser(ctx, t.Id, me.Id, false, "")
@@ -1147,6 +1152,7 @@ func (m *MainWindow) OnConnected() {
 		m.banner.hide()
 		m.composer.SetOffline(false)
 		m.panel.composer.SetOffline(false)
+		m.away = awayUnknown // новое соединение: что за компьютером, сообщим заново
 		if !m.connectedOnce {
 			m.connectedOnce = true
 			if m.sidebarOK || m.sidebarLoading {

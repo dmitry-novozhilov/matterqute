@@ -21,6 +21,7 @@ type Store struct {
 	postPriority bool
 	nameFormat   string // как показывать людей (model.Show*); "" — имя пользователя
 	nameLocked   bool
+	awayTimeout  time.Duration
 	maxFileSize  int64
 	teams        []*model.Team
 	channels     map[string]*model.Channel
@@ -98,6 +99,7 @@ type Sidebar struct {
 	// сервер запретил менять.
 	NameFormat       string
 	NameFormatLocked bool
+	AwayTimeout      time.Duration // через сколько простоя «Отошёл»; 0 — не знаем
 }
 
 // SetSidebar заменяет каналы, членства и треды; пользователи и ленты остаются.
@@ -109,6 +111,7 @@ func (s *Store) SetSidebar(sb *Sidebar) {
 	s.unreadSection = sb.UnreadSection
 	s.postPriority = sb.PostPriority
 	s.nameFormat, s.nameLocked = sb.NameFormat, sb.NameFormatLocked
+	s.awayTimeout = sb.AwayTimeout
 	s.categories = map[string]*model.OrderedSidebarCategories{}
 	for team, c := range sb.Categories {
 		s.categories[team] = c
@@ -392,6 +395,9 @@ func (s *Store) NameFormat() (format string, locked bool) {
 	return s.nameFormat, s.nameLocked
 }
 
+// AwayTimeout — через сколько простоя системы статус «Отошёл»; 0 — не знаем.
+func (s *Store) AwayTimeout() time.Duration { return s.awayTimeout }
+
 // SetNameFormat — настройку поменяли здесь.
 func (s *Store) SetNameFormat(format string) { s.nameFormat = format }
 
@@ -664,7 +670,7 @@ func (s *Store) ThreadsUnread() (unread bool, mentions int64) {
 func (s *Store) Snapshot(tail int) (*Sidebar, map[string]*Timeline) {
 	sb := &Sidebar{CRT: s.crt, MaxFileSize: s.maxFileSize, LinkPreviews: !s.noPreviews, Teams: s.teams,
 		Categories: s.categories, Saved: []string{}, UnreadSection: s.unreadSection, PostPriority: s.postPriority,
-		NameFormat: s.nameFormat, NameFormatLocked: s.nameLocked}
+		NameFormat: s.nameFormat, NameFormatLocked: s.nameLocked, AwayTimeout: s.awayTimeout}
 	for _, ch := range s.channels {
 		sb.Channels = append(sb.Channels, ch)
 	}

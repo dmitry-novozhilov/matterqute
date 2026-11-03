@@ -3,6 +3,7 @@ package ui
 import (
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,30 +25,33 @@ func TestTyping(t *testing.T) {
 		}
 		town := m.current
 		bob, carol, dave := fake.UserID("bob"), fake.UserID("carol"), fake.UserID("dave")
-		note := func(c *Composer) string { return c.typingNote.Text() }
+		note := func(h *header) string { return h.note }
 
-		// Чужой набор — под полем канала; сообщение от пишущего убирает его.
+		// Чужой набор — в шапке канала; сообщение от пишущего убирает его.
 		fake.Typing(bob, town, "")
-		if !waitFor(t, "bob typing", func() bool { return note(m.composer) == "bob печатает…" }) {
+		if !waitFor(t, "bob typing", func() bool { return note(m.head) == "bob печатает…" }) {
 			return
 		}
 		fake.Typing(carol, town, "")
-		waitFor(t, "two typing", func() bool { return note(m.composer) == "bob и carol печатают…" })
+		waitFor(t, "two typing", func() bool { return note(m.head) == "bob и carol печатают…" })
+		if !m.head.sub.IsVisibleTo(m.head.f.QWidget) || !strings.Contains(m.head.sub.Text(), "bob и carol печатают…") {
+			t.Errorf("header line %q", m.head.sub.Text())
+		}
 		shotWidget(t, m.w, "typing")
 		fake.Post(&model.Post{ChannelId: town, UserId: bob, Message: "готово"})
-		waitFor(t, "bob posted", func() bool { return note(m.composer) == "carol печатает…" })
+		waitFor(t, "bob posted", func() bool { return note(m.head) == "carol печатает…" })
 		m.expireTyping(time.Now().Add(typingFor + time.Second))
-		if note(m.composer) != "" {
-			t.Errorf("typing not expired: %q", note(m.composer))
+		if note(m.head) != "" || m.head.sub.Text() != m.head.subHTML {
+			t.Errorf("typing not expired: %q, header line %q", note(m.head), m.head.sub.Text())
 		}
 
-		// В треде — под полем треда, не канала.
+		// В треде — в шапке треда, не канала.
 		m.openThread(root.Id)
 		if !waitFor(t, "thread", func() bool { return len(m.panel.feed.items) == 4 }) {
 			return
 		}
 		fake.Typing(dave, town, root.Id)
-		waitFor(t, "dave typing in the thread", func() bool { return note(m.panel.composer) == "dave печатает…" && note(m.composer) == "" })
+		waitFor(t, "dave typing in the thread", func() bool { return note(m.panel.head) == "dave печатает…" && note(m.head) == "" })
 
 		// Свой набор — серверу, не чаще раза в typingEvery.
 		key := func(c *Composer) {
@@ -75,15 +79,15 @@ func TestTyping(t *testing.T) {
 			t.Errorf("typing sent %d times for two keys", n)
 		}
 
-		// Не показывать: строки нет, события не копятся.
+		// Не показывать: в шапке своя строка, события не копятся.
 		SetTyping(false, true)
-		if m.composer.typingNote.IsVisibleTo(m.composer.w) {
-			t.Error("typing line shown with «show» off")
+		if m.head.note != "" || m.head.sub.Text() != m.head.subHTML {
+			t.Errorf("typing note %q with «show» off", m.head.note)
 		}
 		fake.Typing(bob, town, "")
 		settleFor(200 * time.Millisecond)
-		if note(m.composer) != "" || len(m.typing.who) != 0 {
-			t.Errorf("typing shown with «show» off: %q", note(m.composer))
+		if note(m.head) != "" || len(m.typing.who) != 0 {
+			t.Errorf("typing shown with «show» off: %q", note(m.head))
 		}
 		// Не сообщать: набор не уходит.
 		SetTyping(true, false)

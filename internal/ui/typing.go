@@ -10,10 +10,11 @@ import (
 )
 
 // «Печатает…»: свой набор — серверу (user_typing по WebSocket, не чаще
-// typingEvery на канал или тред), чужой — строкой под полем ввода канала и
-// треда («bob печатает…»), пока идут события, и ещё typingFor после
-// последнего; сообщение от пишущего убирает его сразу. Обе стороны
-// выключаются отдельно: «Вид → «Печатает…»» (config.json → typing).
+// typingEvery на канал или тред), чужой — второй строкой шапки канала и
+// треда вместо назначения канала («bob печатает…», как в Telegram: место
+// под полем ввода не нужно, и ничего не прыгает), пока идут события, и ещё
+// typingFor после последнего; сообщение от пишущего убирает его сразу. Обе
+// стороны выключаются отдельно: «Вид → «Печатает…»» (config.json → typing).
 
 const (
 	typingEvery = 3 * time.Second // свой набор — серверу не чаще
@@ -103,13 +104,13 @@ func (m *MainWindow) expireTyping(now time.Time) {
 	m.updateTypingNotes()
 }
 
-// updateTypingNotes — «… печатает» под полями канала и треда.
+// updateTypingNotes — «… печатает» в шапках канала и треда.
 func (m *MainWindow) updateTypingNotes() {
-	m.composer.SetTypingNote(m.typingText(typingKey{m.current, ""}))
+	m.head.setNote(m.typingText(typingKey{m.current, ""}))
 	if t := m.thread; t != nil {
-		m.panel.composer.SetTypingNote(m.typingText(typingKey{t.channelID, t.rootID}))
+		m.panel.head.setNote(m.typingText(typingKey{t.channelID, t.rootID}))
 	} else {
-		m.panel.composer.SetTypingNote("")
+		m.panel.head.setNote("")
 	}
 }
 

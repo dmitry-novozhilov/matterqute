@@ -20,6 +20,9 @@ type header struct {
 	close *qt.QToolButton
 	row   *qt.QHBoxLayout
 
+	subHTML string // вторая строка, заданная set
+	note    string // «bob печатает…» — на время вместо второй строки
+
 	onTitle func() // щелчок по заголовку (меню канала)
 }
 
@@ -94,8 +97,24 @@ func (h *header) set(icon *qt.QPixmap, titleHTML, subHTML string) {
 		h.icon.SetPixmap(icon)
 	}
 	h.title.SetText(titleHTML)
-	h.sub.SetText(subHTML)
-	h.sub.SetVisible(subHTML != "")
+	h.subHTML = subHTML
+	h.showSub()
+}
+
+// setNote — временная вторая строка («bob печатает…»): высота шапки не
+// меняется, поэтому лента и поле ввода не прыгают; "" — снова своя.
+func (h *header) setNote(text string) {
+	h.note = text
+	h.showSub()
+}
+
+func (h *header) showSub() {
+	text := h.subHTML
+	if h.note != "" {
+		text = fmt.Sprintf(`<i style="color:%s">%s</i>`, Pal().Tx2, html.EscapeString(h.note))
+	}
+	h.sub.SetText(text)
+	h.sub.SetVisible(text != "")
 }
 
 // banner — плашка «Нет связи» под шапкой канала с обратным отсчётом до

@@ -103,8 +103,6 @@ type Composer struct {
 	prioNote        *qt.QLabel      // метка над текстом
 	priority        string          // метка следующего сообщения
 	priorities      bool            // сервер разрешает метки (только поле канала)
-	typingNote      *qt.QLabel      // «bob печатает…» под полем; место под неё есть всегда, если показ включён
-	keysHint        *qt.QLabel      // справа от неё: «Shift+Enter — новая строка», как у веб-клиента
 	// OnDraft — черновик key поменялся (набор, вставка, ушли из канала):
 	// сохранить (drafts.go). Правка своего сообщения — не черновик.
 	OnDraft func(key string)
@@ -296,17 +294,6 @@ func NewComposer() *Composer {
 	lay.AddWidget(c.editBar.QWidget)
 	lay.AddWidget(c.frame.QWidget)
 	lay.AddWidget(c.hint.QWidget)
-	c.typingNote = qt.NewQLabel2()
-	setName(c.typingNote.QObject, "typingNote")
-	c.typingNote.SetTextFormat(qt.PlainText)
-	// Строка под полем не пустая: справа — подсказка, слева — кто печатает.
-	c.keysHint = qt.NewQLabel3("Shift+Enter — новая строка")
-	c.keysHint.SetTextFormat(qt.PlainText)
-	below := qt.NewQHBoxLayout2()
-	below.SetContentsMargins(0, 0, 0, 0)
-	below.AddWidget2(c.typingNote.QWidget, 1)
-	below.AddWidget(c.keysHint.QWidget)
-	lay.AddLayout(below.QLayout)
 
 	c.unsubscribe = OnThemeChanged(c.restyle)
 	c.setupSpelling()
@@ -326,18 +313,6 @@ func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
 	c.later.SetIcon(icon("clock", Pal().Tx2, 18))
 	c.updatePriority()
-	// Строка «печатает…» — всегда своей высоты: иначе поле прыгало бы, когда
-	// кто-то начинает и перестаёт печатать.
-	tf := pixelFont(12, qt.QFont__Normal)
-	tf.SetItalic(true)
-	c.typingNote.SetFont(tf)
-	c.typingNote.SetFixedHeight(qt.NewQFontMetrics(tf).Height())
-	c.typingNote.SetStyleSheet("color: " + Pal().Tx2)
-	c.typingNote.SetVisible(style.typingShow)
-	kf := pixelFont(12, qt.QFont__Normal)
-	c.keysHint.SetFont(kf)
-	c.keysHint.SetFixedHeight(qt.NewQFontMetrics(tf).Height())
-	c.keysHint.SetStyleSheet("color: " + Pal().Tx3)
 	c.restyleEditBar()
 	c.edit.SetFont(feedFont())
 	c.edit.Viewport().SetFont(feedFont()) // плейсхолдер Qt рисует шрифтом viewport
@@ -803,8 +778,6 @@ func (c *Composer) ScheduleAt(at time.Time) bool {
 	return true
 }
 
-// SetTypingNote — «bob печатает…» под полем ("" — пусто, место остаётся).
-func (c *Composer) SetTypingNote(text string) { c.typingNote.SetText(text) }
 
 // SetScheduledNote — «N отложенных» над полем (n=0 — прячется).
 func (c *Composer) SetScheduledNote(n int) {

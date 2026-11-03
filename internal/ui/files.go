@@ -74,7 +74,8 @@ func (m *MainWindow) handleLink(link string) {
 	default:
 		// Ссылка на свой сервер (сообщение, канал, личка) — здесь, на другой
 		// добавленный — там, остальное — в браузере.
-		if path, ok := m.ownPath(link); ok && m.openServerPath(path) {
+		path, own := m.ownPath(link)
+		if own && m.openServerPath(path) {
 			return
 		}
 		if m.OnOtherServerLink != nil && m.OnOtherServerLink(link) {
@@ -85,6 +86,8 @@ func (m *MainWindow) handleLink(link string) {
 			m.log.Warn("ignore link", "url", truncate(link, 200), "err", err)
 			return
 		}
+		// Ссылку на сообщение, ушедшую в браузер, по логу видно: какой адрес не узнали.
+		m.log.Debug("open in browser", "url", truncate(link, 200), "own_server", own, "path", truncate(path, 200))
 		qt.QDesktopServices_OpenUrl(qt.NewQUrl3(link))
 	}
 }

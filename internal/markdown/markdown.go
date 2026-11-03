@@ -318,21 +318,34 @@ func (r *qtRenderer) codeSpan(w util.BufWriter, source []byte, n ast.Node, enter
 }
 
 // codeBlock: <pre> в Qt не переносит строки и распирает ленту вширь, поэтому
-// pre-wrap в ячейке таблицы — она же даёт фон.
+// pre-wrap в ячейке таблицы — она же даёт фон. С языком после ``` — с
+// подсветкой синтаксиса (highlight.go).
 func (r *qtRenderer) codeBlock(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
 	if !entering {
 		return ast.WalkContinue, nil
 	}
-	w.WriteString(`<table width="100%" cellspacing="0" cellpadding="8" bgcolor="` + r.o.Palette.Surf2 + `" style="margin-top:4px;margin-bottom:4px"><tr><td>` +
-		`<p style="margin:0;white-space:pre-wrap;font-family:'PT Mono';font-size:13px">`)
+	var code bytes.Buffer
 	lines := n.Lines()
 	for i := range lines.Len() {
 		seg := lines.At(i)
-		v := seg.Value(source)
-		if i == lines.Len()-1 {
-			v = bytes.TrimSuffix(v, []byte("\n"))
-		}
-		r.Writer.RawWrite(w, v)
+		code.Write(seg.Value(source))
+	}
+	src := bytes.TrimSuffix(code.Bytes(), []byte("\n"))
+	lang := ""
+	if fc, ok := n.(*ast.FencedCodeBlock); ok {
+		lang = string(fc.Language(source))
+	}
+	w.WriteString(`<table width="100%" cellspacing="0" cellpadding="8" bgcolor="` + r.o.Palette.Surf2 + `" style="margin-top:4px;margin-bottom:4px"><tr><td>`)
+	colored, name, ok := highlight(lang, string(src), r.o.Palette.Dark)
+	if ok {
+		// Язык — мелкой подписью над кодом, как в веб-клиенте.
+		w.WriteString(`<p style="margin:0;margin-bottom:4px;font-size:11px;color:` + r.o.Palette.Tx2 + `">` + html.EscapeString(name) + `</p>`)
+	}
+	w.WriteString(`<p style="margin:0;white-space:pre-wrap;font-family:'PT Mono';font-size:13px">`)
+	if ok {
+		w.WriteString(colored)
+	} else {
+		r.Writer.RawWrite(w, src)
 	}
 	w.WriteString("</p></td></tr></table>\n")
 	return ast.WalkSkipChildren, nil

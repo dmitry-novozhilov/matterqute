@@ -34,7 +34,11 @@ func TestRender(t *testing.T) {
 		{"raw html is text", "<script>alert(1)</script> и <b>x</b>", []string{"&lt;script&gt;", "&lt;b&gt;x&lt;/b&gt;"}, []string{"<script>", "<b>x"}},
 		{"html block is text", "<div>\nhi\n</div>", []string{"&lt;div&gt;<br>hi<br>&lt;/div&gt;"}, []string{"<div>"}},
 		{"code span", "`a <b> & c`", []string{`<span style="font-family:'PT Mono';font-size:13px;background-color:#eeebe6">a &lt;b&gt; &amp; c</span>`}, nil},
-		{"code block", "```go\nfunc main() {\n\tx := 1 < 2\n}\n```", []string{"white-space:pre-wrap", "func main() {\n\tx := 1 &lt; 2\n}</p>"}, []string{"<pre>"}},
+		{"code block", "```\nfunc main() {\n\tx := 1 < 2\n}\n```", []string{"white-space:pre-wrap", "func main() {\n\tx := 1 &lt; 2\n}</p>"}, []string{"<pre>", "<span"}},
+		// С языком — подсветка (стиль github), пробелы и обычный текст — без своего цвета.
+		{"highlighted code", "```go\nfunc main() {\n\tx := 1 < 2\n}\n```", []string{"white-space:pre-wrap", ">Go</p>",
+			`<span style="color:#cf222e;">func </span><span style="color:#6639ba;">main</span>() {`, `x <span style="color:#0550ae;">:=`, "&lt;"}, []string{"#ffffff", "#1f2328", "<pre>"}},
+		{"unknown language", "```nosuchlang\nx < y\n```", []string{"x &lt; y</p>"}, []string{"<span"}},
 		{"mentions", "привет @alice и @bob.", []string{`background-color:#f6dd90;color:#4f3005;font-weight:600;text-decoration:none">@alice</a>`, `href="mm-user:bob" style="color:#007255;font-weight:600;text-decoration:none">@bob</a>.`}, nil},
 		{"mention case", "@Alice", []string{`background-color:#f6dd90;color:#4f3005;font-weight:600;text-decoration:none">@Alice</a>`}, nil},
 		{"special mentions", "@channel @here", []string{`#f6dd90;color:#4f3005;font-weight:600;text-decoration:none">@channel</a>`, `>@here</a>`}, nil},

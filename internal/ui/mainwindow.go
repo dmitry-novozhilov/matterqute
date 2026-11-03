@@ -126,6 +126,7 @@ type MainWindow struct {
 	sidebarDirty    bool // пока грузили, пришло событие, требующее перезагрузки
 	connectedOnce   bool
 	online          bool
+	outbox          outbox // написанное без связи (outbox.go)
 
 	OnChannelOpened   func(id string)
 	OnConnection      func(ConnState)
@@ -202,7 +203,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	}
 
 	deps := FeedDeps{Names: m.st.Name, Users: m.st.User, Me: s.Me, Assets: m.assets, ChannelExists: m.channelExists, Log: m.log,
-		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage, Saved: m.st.Saved,
+		LinkPreviews: m.st.LinkPreviews, QuickReactions: m.quickReactions, EmojiImage: m.emojiImage, Saved: m.st.Saved, Outbox: m.queuedState,
 		ThreadFollow: m.threadFollowing}
 	m.initFeeds(deps)
 
@@ -879,6 +880,7 @@ func (m *MainWindow) refreshHeader() {
 func (m *MainWindow) showTimeline(id string, tl *store.Timeline) {
 	f := m.feedFor(id)
 	f.SetPosts(tl.Posts, tl.HasMore)
+	m.requeueIn(f, id, "")
 	f.ready = true
 	if to := m.scrollTo; to != "" && id == m.current {
 		m.scrollTo = ""
@@ -926,6 +928,7 @@ func (m *MainWindow) fetchTimeline(id string, background bool, done func()) {
 			done()
 		}
 	}
+	since := tl.Gen() // пришедшее после запроса сверка не тронет
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
@@ -963,7 +966,7 @@ func (m *MainWindow) fetchTimeline(id string, background bool, done func()) {
 					return
 				}
 				if resync {
-					changed, removed := tl.Sync(posts, len(list.Order) >= pageSize)
+					changed, removed := tl.Sync(posts, len(list.Order) >= pageSize, since)
 					m.mergeFeed(id, changed, removed)
 					return
 				}
@@ -1103,26 +1106,18 @@ func (m *MainWindow) send(text string, fileIDs []string, priority string) {
 	if m.st.Channel(id) == nil {
 		return
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
-		defer cancel()
-		p, _, err := m.s.Client.CreatePost(ctx, withPriority(&model.Post{ChannelId: id, Message: text, FileIds: fileIDs}, priority))
-		m.ui(func() {
-			if err != nil {
-				m.fail("send", fmt.Errorf("send to channel %s: %w", id, err))
-				m.composer.Restore()
-				return
-			}
-			m.composer.Sent()
-			// Тот же пост придёт и по WebSocket — applyPosted не задублирует.
-			m.applyPosted(store.NewPost{Post: p})
-		})
-	}()
+	// Нет связи — в очередь (outbox.go), отказ сервера — текст обратно в поле.
+	p := m.newPost(withPriority(&model.Post{ChannelId: id, Message: text, FileIds: fileIDs}, priority))
+	m.createPost(p, m.composer.Sent, func(err error) {
+		m.fail("send", fmt.Errorf("send to channel %s: %w", id, err))
+		m.composer.Restore()
+	})
 }
 
 // applyPosted — новый пост из WebSocket или из ответа на отправку.
 func (m *MainWindow) applyPosted(e store.NewPost) {
 	p := e.Post
+	m.queuedPosted(p) // своё из очереди отправки дошло
 	m.stopTyping(p)
 	r := m.st.ApplyPosted(p, e.Mentioned)
 	m.applyToThread(p)
@@ -1171,6 +1166,7 @@ func (m *MainWindow) OnConnected() {
 		m.banner.hide()
 		m.composer.SetOffline(false)
 		m.panel.composer.SetOffline(false)
+		m.flushOutbox()      // написанное без связи
 		m.away = awayUnknown // новое соединение: что за компьютером, сообщим заново
 		if !m.connectedOnce {
 			m.connectedOnce = true

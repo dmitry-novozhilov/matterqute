@@ -12,7 +12,16 @@ type Timeline struct {
 	HasMore bool          // на сервере есть посты старше Posts[0]
 	Loaded  bool          // первая страница пришла; до этого в Posts только посты из WebSocket
 	Stale   bool          // был обрыв связи: события могли потеряться, сверить с сервером (Sync)
+
+	// Вставки по одной (Upsert: WebSocket, свои отправленные) — по номеру:
+	// сверка (Sync) не удаляет вставленное после своего запроса — его в
+	// странице сервера быть не могло.
+	gen   int
+	added map[string]int
 }
+
+// Gen — номер последней вставки: запомнить перед запросом страницы для Sync.
+func (t *Timeline) Gen() int { return t.gen }
 
 // PostsOf раскладывает PostList (Order — от новых к старым) в порядке от
 // старых к новым. Посты из Posts, которых нет в Order (корни тредов для
@@ -55,6 +64,11 @@ func (t *Timeline) Upsert(p *model.Post) (int, bool) {
 		i--
 	}
 	t.Posts = slices.Insert(t.Posts, i, p)
+	if t.added == nil {
+		t.added = map[string]int{}
+	}
+	t.gen++
+	t.added[p.Id] = t.gen
 	return i, true
 }
 
@@ -113,9 +127,11 @@ func (t *Timeline) index(id string) int {
 
 // Sync сверяет загруженное со свежей последней страницей с сервера (после
 // обрыва связи): новые и изменённые посты заменяются, а те, что в её
-// промежутке времени, но в ней нет, — удалены. Старше страницы — не трогаем.
-// Возвращает, что поменялось: ленте на экране перерисовать только это.
-func (t *Timeline) Sync(page []*model.Post, hasMore bool) (changed, removed []*model.Post) {
+// промежутке времени, но в ней нет, — удалены. Старше страницы — не трогаем,
+// и вставленное после запроса страницы (since — Gen перед ним: пришло по
+// WebSocket, своё отправленное) — тоже. Возвращает, что поменялось: ленте на
+// экране перерисовать только это.
+func (t *Timeline) Sync(page []*model.Post, hasMore bool, since int) (changed, removed []*model.Post) {
 	fresh := make(map[string]bool, len(page))
 	for _, p := range page {
 		fresh[p.Id] = true
@@ -129,7 +145,7 @@ func (t *Timeline) Sync(page []*model.Post, hasMore bool) (changed, removed []*m
 		from = page[0].CreateAt
 	}
 	for _, p := range slices.Clone(t.Posts) {
-		if p.CreateAt >= from && !fresh[p.Id] {
+		if p.CreateAt >= from && !fresh[p.Id] && t.added[p.Id] <= since { // пришедшее после запроса — не трогаем
 			t.Remove(p.Id)
 			removed = append(removed, p)
 		}

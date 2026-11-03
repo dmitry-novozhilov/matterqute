@@ -109,6 +109,9 @@ type FeedDeps struct {
 	Where func(p *model.Post) string
 	// QuickReactions — эмодзи панели реакций у сообщения под курсором; nil — только «все реакции».
 	QuickReactions func() []string
+	// Outbox — сообщение id в очереди отправки (нет связи) и отказ сервера
+	// ("" — ждёт связи); ok=false — не в очереди.
+	Outbox func(id string) (failed string, ok bool)
 	// EmojiImage — эмодзи картинкой (кастомное догружается, потом done).
 	EmojiImage func(name string, size int, done func()) *qt.QPixmap
 	// Log — посты, которые рисуются долго (debug); nil — не писать.
@@ -218,6 +221,7 @@ type Feed struct {
 	OnRemind         func(p *model.Post, at time.Time)           // «Напомнить»; at нулевое — спросить время
 	OnForward        func(p *model.Post)                         // «Переслать…»
 	OnQuote          func(p *model.Post, selected string)        // «Цитировать»: выделенное в нём или ("") всё сообщение
+	OnOutbox         func(id string, retry bool)                 // у сообщения из очереди отправки: «Повторить» или «Удалить»
 
 	// ReadOnly — канал в архиве: без панели реакций, реакций, цитаты,
 	// правки, удаления и закрепления в меню.
@@ -1548,6 +1552,7 @@ func (f *Feed) parts(i int) postParts {
 	b.WriteString(f.embedsHTML(p))
 	b.WriteString(f.reactionsHTML(p))
 	b.WriteString(f.threadHTML(p))
+	b.WriteString(f.outboxHTML(p))
 	// Картинки в строке (эмодзи, плашки реакций, иконки) — по верху строки,
 	// как было в ячейке таблицы с valign="top" (его наследовало всё в ней):
 	// по базовой линии строка выше на свисание букв.
@@ -2025,7 +2030,7 @@ func (f *Feed) reactionsHTML(p *model.Post) string {
 // threadHTML — под корнем треда в ленте канала: «3 ответа последний 08:35»;
 // у сообщения, из которого тред ещё не начат, — «Ответить» (не в архиве).
 func (f *Feed) threadHTML(p *model.Post) string {
-	if f.d.Thread || f.d.Search || p.RootId != "" || p.IsSystemMessage() {
+	if f.d.Thread || f.d.Search || p.RootId != "" || p.IsSystemMessage() || isQueued(p) {
 		return ""
 	}
 	pal := Pal()
@@ -2227,6 +2232,12 @@ func (f *Feed) onAnchor(link string) {
 		if f.OnRetry != nil {
 			f.OnRetry()
 		}
+	case strings.HasPrefix(link, outboxRetryLink), strings.HasPrefix(link, outboxDeleteLink):
+		retry := strings.HasPrefix(link, outboxRetryLink)
+		id, _ := url.PathUnescape(strings.TrimPrefix(strings.TrimPrefix(link, outboxRetryLink), outboxDeleteLink))
+		if f.OnOutbox != nil && id != "" {
+			f.OnOutbox(id, retry)
+		}
 	case strings.HasPrefix(link, permalinkLink):
 		ch, post, _ := strings.Cut(strings.TrimPrefix(link, permalinkLink), ":")
 		if f.OnPermalink != nil && ch != "" && post != "" {
@@ -2300,7 +2311,7 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	}
 	if it != nil {
 		p := it.post
-		if !p.IsSystemMessage() {
+		if !p.IsSystemMessage() && !isQueued(p) {
 			menu.AddSeparator()
 			if !f.d.Thread {
 				reply := menu.QWidget.AddActionWithText("Ответить в треде")
@@ -2387,7 +2398,7 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 		menu.AddSeparator()
 		ct := menu.QWidget.AddActionWithText("Копировать текст сообщения")
 		ct.OnTriggered(func() { qt.QGuiApplication_Clipboard().SetText(p.Message) })
-		if !p.IsSystemMessage() && f.OnCopyLink != nil {
+		if !p.IsSystemMessage() && !isQueued(p) && f.OnCopyLink != nil {
 			pl := menu.QWidget.AddActionWithText("Копировать ссылку на сообщение")
 			pl.OnTriggered(func() { f.OnCopyLink(p) })
 		}
@@ -2414,6 +2425,29 @@ func (f *Feed) copySelection(super func() *qt.QMimeData) *qt.QMimeData {
 	out := qt.NewQMimeData()
 	out.SetText(copiedText(text))
 	return out
+}
+
+// outboxHTML — под сообщением из очереди отправки: ждёт связи или отказ
+// сервера, «Повторить», «Удалить».
+func (f *Feed) outboxHTML(p *model.Post) string {
+	if !isQueued(p) || f.d.Outbox == nil {
+		return ""
+	}
+	failed, ok := f.d.Outbox(p.Id)
+	if !ok {
+		return ""
+	}
+	pal := Pal()
+	id := url.PathEscape(p.Id)
+	link := func(href, text string) string {
+		return fmt.Sprintf(`<a href="%s%s" style="color:%s">%s</a>`, href, id, pal.Acc, text)
+	}
+	if failed == "" {
+		return fmt.Sprintf(`<p style="margin-top:2px;margin-bottom:0;font-size:12px;color:%s"><img src="%s" width="14" height="14">&nbsp;Не отправлено — уйдёт, когда появится связь · %s</p>`,
+			pal.Tx2, f.iconSrc("clock", pal.Tx2, 14), link(outboxDeleteLink, "Удалить"))
+	}
+	return fmt.Sprintf(`<p style="margin-top:2px;margin-bottom:0;font-size:12px;color:%s">Не отправлено: %s · %s · %s</p>`,
+		pal.Dang, html.EscapeString(failed), link(outboxRetryLink, "Повторить"), link(outboxDeleteLink, "Удалить"))
 }
 
 // setReadOnly — канал в архиве (или вернули): посты заново — без «Ответить».

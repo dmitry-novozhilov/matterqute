@@ -47,6 +47,7 @@ type Server struct {
 	typed          []TypingEvent
 	activity       []bool          // user_update_active_status: за компьютером ли
 	autoAway       map[string]bool // «отошёл» поставил простой, а не пользователь
+	unreachable    bool            // POST /posts рвёт соединение (SetUnreachable)
 
 	mu        sync.Mutex
 	users     map[string]*model.User // по id
@@ -386,6 +387,20 @@ func (s *Server) seed() {
 	legacy.DeleteAt = oldProject.DeleteAt
 }
 
+// SetUnreachable — POST /posts рвёт соединение без ответа (нет связи с сервером).
+func (s *Server) SetUnreachable(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unreachable = on
+}
+
+// SetPostPriority — разрешены ли метки «Важно»/«Срочно» (NoPostPriority во время работы).
+func (s *Server) SetPostPriority(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.NoPostPriority = !on
+}
+
 // Archive — архивировать канал, как администратор: событие channel_deleted участникам.
 func (s *Server) Archive(channelID string) {
 	s.mu.Lock()
@@ -694,6 +709,26 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request, me *model.Us
 		return
 	}
 	s.mu.Lock()
+	if s.unreachable { // связи нет: соединение рвётся без ответа
+		s.mu.Unlock()
+		if hj, ok := w.(http.Hijacker); ok {
+			if c, _, err := hj.Hijack(); err == nil {
+				c.Close()
+				return
+			}
+		}
+		w.WriteHeader(http.StatusBadGateway)
+		return
+	}
+	// Повтор с тем же pending_post_id — тот же пост, как у сервера.
+	for _, q := range s.posts[p.ChannelId] {
+		if p.PendingPostId != "" && q.PendingPostId == p.PendingPostId && q.UserId == me.Id {
+			s.mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+			s.json(w, q)
+			return
+		}
+	}
 	if s.members[me.Id][p.ChannelId] == nil {
 		s.mu.Unlock()
 		s.fail(w, http.StatusForbidden, "api.context.permissions.app_error")

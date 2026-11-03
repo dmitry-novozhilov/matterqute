@@ -396,7 +396,7 @@ func (c *Composer) updatePlaceholder() {
 	case c.archived:
 		text = "Канал в архиве — новые сообщения сюда не отправить"
 	case c.offline:
-		text = "Нет соединения — отправка недоступна"
+		text = "Нет связи — сообщение уйдёт, когда она появится"
 	}
 	if doc := c.edit.Document(); doc.BlockCount() == 1 && blockKind(doc.FirstBlock()) != markdown.Para {
 		text = ""
@@ -408,17 +408,17 @@ func (c *Composer) updatePlaceholder() {
 
 func (c *Composer) SetEnabled(on bool) { c.w.SetEnabled(on) }
 
-// SetOffline — нет соединения: поле неактивно и говорит об этом.
+// SetOffline — нет соединения: писать можно, сообщение уйдёт, когда связь
+// появится (очередь отправки, outbox.go); подсказка говорит об этом.
 func (c *Composer) SetOffline(offline bool) {
 	c.offline = offline
-	c.frame.SetEnabled(!c.offline && !c.archived)
 	c.updatePlaceholder()
 }
 
 // SetArchived — канал в архиве: писать нельзя, поле неактивно и говорит об этом.
 func (c *Composer) SetArchived(archived bool) {
 	c.archived = archived
-	c.frame.SetEnabled(!c.offline && !c.archived)
+	c.frame.SetEnabled(!c.archived)
 	c.updatePlaceholder()
 }
 

@@ -129,6 +129,7 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 				m.panel.feed.ReadOnly = archived
 				m.panel.composer.SetArchived(archived)
 				m.panel.feed.SetPosts(t.tl.Posts, false)
+				m.requeueIn(m.panel.feed, t.channelID, rootID)
 				m.panel.composer.SetEnabled(t.channelID != "")
 				m.panel.composer.Focus()
 				m.updateScheduledNotes()
@@ -171,20 +172,11 @@ func (m *MainWindow) sendReply(text string, fileIDs []string, _ string) {
 	if t == nil || t.channelID == "" {
 		return
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
-		defer cancel()
-		p, _, err := m.s.Client.CreatePost(ctx, &model.Post{ChannelId: t.channelID, RootId: t.rootID, Message: text, FileIds: fileIDs})
-		m.ui(func() {
-			if err != nil {
-				m.fail("send reply", fmt.Errorf("reply to thread %s: %w", t.rootID, err))
-				m.panel.composer.Restore()
-				return
-			}
-			m.panel.composer.Sent()
-			m.applyPosted(store.NewPost{Post: p})
-		})
-	}()
+	p := m.newPost(&model.Post{ChannelId: t.channelID, RootId: t.rootID, Message: text, FileIds: fileIDs})
+	m.createPost(p, m.panel.composer.Sent, func(err error) {
+		m.fail("send reply", fmt.Errorf("reply to thread %s: %w", t.rootID, err))
+		m.panel.composer.Restore()
+	})
 }
 
 // applyToThread кладёт пост в открытый тред, если он оттуда.

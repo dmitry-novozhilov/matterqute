@@ -40,6 +40,7 @@ type savedState struct {
 	Me        *model.User                `json:"me"`
 	Sidebar   *store.Sidebar             `json:"sidebar"`
 	Timelines map[string]*store.Timeline `json:"timelines"`
+	Outbox    []*model.Post              `json:"outbox,omitempty"` // написанное без связи, ещё не отправленное
 }
 
 // statePath — снимок сервера serverURL в общем каталоге кэша cacheDir.
@@ -75,7 +76,7 @@ func (m *MainWindow) saveState(wait bool) {
 	}
 	start := time.Now()
 	sb, tls := m.st.Snapshot(statePosts)
-	data, err := json.Marshal(&savedState{Version: stateVersion, Me: m.s.Me, Sidebar: sb, Timelines: tls})
+	data, err := json.Marshal(&savedState{Version: stateVersion, Me: m.s.Me, Sidebar: sb, Timelines: tls, Outbox: m.outbox.posts()})
 	if err != nil {
 		m.log.Warn("save state", "err", err)
 		return
@@ -130,6 +131,7 @@ func (m *MainWindow) applyState(st *savedState) {
 		return
 	}
 	m.st.Restore(st.Sidebar, st.Timelines)
+	m.restoreOutbox(st.Outbox) // в ленты — когда построятся, на сервер — когда будет связь
 	m.restored = true
 	m.composer.SetPriorities(m.st.PostPriority())
 	m.fillSidebar()

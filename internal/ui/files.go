@@ -41,6 +41,7 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnForward = func(p *model.Post) { m.showForward(p) }
 	f.OnAction = func(p *model.Post, a *model.PostAction) { m.postAction(f, p, a) }
 	f.OnQuote = func(p *model.Post, selected string) { m.quote(f, p, selected) }
+	f.OnOutbox = m.outboxAction
 }
 
 // quote — «Цитировать»: в поле ввода колонки ленты f (тред — в поле треда,

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,11 +60,12 @@ func TestUserCardOfflineDark(t *testing.T) {
 			return ch != nil && ch.Type == model.ChannelTypeDirect && m.st.Username(m.st.DMPeer(ch)) == "carol"
 		})
 
-		// Обрыв WebSocket: баннер с отсчётом, поле ввода заблокировано.
+		// Обрыв WebSocket: баннер с отсчётом; писать можно — уйдёт, когда
+		// связь появится (очередь отправки), подсказка поля говорит об этом.
 		m.OnDisconnected(errors.New("test: connection reset"), 9*time.Second)
 		waitFor(t, "connection banner", func() bool { return m.banner.f.IsVisible() })
-		if m.composer.frame.IsEnabled() {
-			t.Error("composer stays enabled while offline")
+		if !m.composer.frame.IsEnabled() || !strings.Contains(m.composer.edit.PlaceholderText(), "Нет связи") {
+			t.Errorf("offline composer: enabled %v, placeholder %q", m.composer.frame.IsEnabled(), m.composer.edit.PlaceholderText())
 		}
 		shot(t, m, "offline")
 		m.OnConnected()

@@ -1,0 +1,192 @@
+# Сборки под Linux, macOS и Windows и релиз на GitHub по тегу vX.Y.Z.
+# workflow_dispatch — только собрать (артефакты в Actions), без релиза:
+# проверить, что собирается. Заметки к релизу — .github/release-notes.py.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GOTOOLCHAIN: auto
+  GOFLAGS: -trimpath
+
+jobs:
+  linux:
+    name: Linux x86_64 (Debian 13)
+    runs-on: ubuntu-24.04
+    # Debian 13 — Qt 6.8, как у пользователей; у Ubuntu 24.04 Qt 6.4 без QStyleHints::colorScheme (internal/qtx).
+    container: debian:trixie
+    steps:
+      - name: Системные пакеты
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git ca-certificates curl tar xz-utils build-essential pkg-config \
+            qt6-base-dev qt6-svg-dev qt6-image-formats-plugins qt6-multimedia-dev
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Сборка
+        run: go build -ldflags "-s -w -X matterqute/internal/ui.Version=${GITHUB_REF_NAME}" -o "matterqute-${GITHUB_REF_NAME}-linux-x86_64" ./cmd/matterqute
+      - name: Тесты
+        run: QT_QPA_PLATFORM=offscreen go test ./...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: matterqute-*-linux-x86_64
+
+  macos:
+    name: macOS arm64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Qt (Homebrew)
+        run: |
+          brew install qt pkgconf
+          QT="$(brew --prefix qt)"
+          echo "PKG_CONFIG_PATH=$QT/lib/pkgconfig:$QT/libexec/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "$QT/bin" >> "$GITHUB_PATH"
+          PKG_CONFIG_PATH="$QT/lib/pkgconfig:$QT/libexec/lib/pkgconfig" pkg-config --modversion Qt6Widgets
+      - name: Сборка
+        run: go build -ldflags "-s -w -X matterqute/internal/ui.Version=${GITHUB_REF_NAME}" -o matterqute ./cmd/matterqute
+      - name: Бандл и dmg
+        run: |
+          APP=Matterqute.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp matterqute "$APP/Contents/MacOS/"
+          sed "s/@VERSION@/${GITHUB_REF_NAME#v}/g" .github/macos/Info.plist > "$APP/Contents/Info.plist"
+          # Иконку приложение рисует само: --install кладёт PNG в XDG_DATA_HOME.
+          XDG_DATA_HOME="$PWD/xdg" ./matterqute --install >/dev/null || true
+          PNG=xdg/icons/hicolor/256x256/apps/matterqute.png
+          if [ -f "$PNG" ]; then
+            mkdir icon.iconset
+            for px in 16 32 64 128 256; do
+              sips -z "$px" "$px" "$PNG" --out "icon.iconset/icon_${px}x${px}.png" >/dev/null
+            done
+            cp icon.iconset/icon_32x32.png icon.iconset/icon_16x16@2x.png
+            cp icon.iconset/icon_64x64.png icon.iconset/icon_32x32@2x.png
+            cp icon.iconset/icon_256x256.png icon.iconset/icon_128x128@2x.png
+            iconutil -c icns icon.iconset -o "$APP/Contents/Resources/matterqute.icns"
+          fi
+          macdeployqt "$APP" -dmg
+          mv Matterqute.dmg "matterqute-${GITHUB_REF_NAME}-macos-arm64.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: matterqute-*-macos-arm64.dmg
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git zip
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-go
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-imageformats
+            mingw-w64-ucrt-x86_64-qt6-multimedia
+            mingw-w64-ucrt-x86_64-qt6-tools
+      - name: Кэш Go
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/AppData/Local/go-build
+          key: windows-go-${{ hashFiles('go.sum') }}
+          restore-keys: windows-go-
+      - name: Сборка
+        run: |
+          export GOROOT=/ucrt64/lib/go
+          go version
+          go build -ldflags "-s -w -H windowsgui -X matterqute/internal/ui.Version=${GITHUB_REF_NAME}" -o dist/matterqute.exe ./cmd/matterqute
+      - name: Qt и DLL рядом с exe
+        run: |
+          shopt -s nullglob
+          cd dist
+          windeployqt-qt6 --release --no-translations matterqute.exe || windeployqt6 --release --no-translations matterqute.exe
+          # windeployqt кладёт Qt и плагины, но не их зависимости из MSYS2
+          # (runtime gcc, icu, pcre, harfbuzz…): добираем по ldd до замыкания.
+          added=1
+          while [ "$added" = 1 ]; do
+            added=0
+            for dll in $(ldd *.exe *.dll */*.dll 2>/dev/null | awk '/\/ucrt64\//{print $3}' | sort -u); do
+              b=$(basename "$dll")
+              if [ ! -e "$b" ]; then
+                cp "$dll" . && added=1
+              fi
+            done
+          done
+          cp ../README.md ../README.ru.md ../LICENSE .
+          zip -qr "../matterqute-${GITHUB_REF_NAME}-windows-x86_64.zip" .
+      - name: Установщик (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $tag = $env:GITHUB_REF_NAME
+          $version = $tag.TrimStart('v')
+          if ($version -notmatch '^\d+(\.\d+)*$') { $version = '0.0.0' }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DTag=$tag /DVersion=$version /O"$PWD" .github\windows\matterqute.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            matterqute-*-windows-x86_64.zip
+            matterqute-*-windows-x86_64-setup.exe
+
+  release:
+    name: Релиз на GitHub
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Заметки к релизу
+        run: python3 -I .github/release-notes.py "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" > notes.md
+      - name: Релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # Релиз уже создали руками (или прогон повторили): файлы — поверх, заметки — только если пустые.
+            gh release upload "$tag" dist/* --clobber
+            if [ -z "$(gh release view "$tag" --json body -q .body)" ]; then
+              gh release edit "$tag" --notes-file notes.md
+            fi
+          else
+            gh release create "$tag" --title "Matterqute $tag" --notes-file notes.md dist/*
+          fi

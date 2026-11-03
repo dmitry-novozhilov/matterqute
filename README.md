@@ -31,6 +31,10 @@
 
 ![A Grafana alert with buttons, quick reactions and the dark theme](docs/screenshots/dark.png)
 
+## Downloads
+
+Prebuilt binaries are attached to each [release](https://github.com/dmitry-novozhilov/matterqute/releases): Linux x86_64 (a single binary built on Debian 13 — `chmod +x` after downloading; needs the system packages `libqt6widgets6 libqt6svg6 qt6-image-formats-plugins libqt6multimedia6`, Qt 6.8+), macOS on Apple Silicon (an unsigned `.dmg`: after copying the app run `xattr -dr com.apple.quarantine /Applications/Matterqute.app`) and Windows x86_64 (a `setup.exe` installer — no admin rights needed, registers `mattermost://` links — or a portable `.zip`; both unsigned). macOS and Windows builds are produced by CI but have not been tried by hand.
+
 ## Building
 
 You need Go 1.24 or newer (it fetches the required toolchain by itself) and Qt 6.4+. On Debian 13:
@@ -70,3 +74,7 @@ Tested on Linux (Debian 13, X11, XFCE) with Mattermost server 11.6.2. The interf
 [MIT](LICENSE). Bundled third-party files keep their own licenses: the fonts in [internal/theme/fonts](internal/theme/fonts) are under the SIL OFL 1.1; most icons in [internal/theme/icons](internal/theme/icons) come from Lucide (ISC, some from Feather under MIT — see its [LICENSE](internal/theme/icons/LICENSE)), while the four `status-*.svg` were drawn for this project (MIT); the emoji groups are built from Unicode data ([Unicode License V3](internal/emoji/LICENSE-unicode.txt)).
 
 Mattermost is a trademark of Mattermost, Inc. Matterqute is an independent project, not affiliated with Mattermost, Inc.
+
+<!-- CC-TOKENS:START -->
+<abbr title="opus: 1.2 G ток, $367.70&#10;fable: 65.4 M ток, $93.35&#10;итого: 1.3 G ток, $461.05&#10;обновлено 2026-11-03 18:47 UTC · сессий: 2 (хостов: 1)&#10;прайс от 2026-11-03"><img src=".llm-tokens-badge.svg" alt="AI: $461.05"></abbr>
+<!-- CC-TOKENS:END -->

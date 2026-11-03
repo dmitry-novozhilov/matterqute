@@ -31,6 +31,10 @@
 
 ![Алерт Grafana с кнопками, панель реакций и тёмная тема](docs/screenshots/dark.png)
 
+## Скачать
+
+Готовые сборки приложены к каждому [релизу](https://github.com/dmitry-novozhilov/matterqute/releases): Linux x86_64 (один бинарник, собран на Debian 13, после скачивания `chmod +x`; нужны системные пакеты `libqt6widgets6 libqt6svg6 qt6-image-formats-plugins libqt6multimedia6`, Qt 6.8+), macOS на Apple Silicon (неподписанный `.dmg`: после копирования в «Программы» выполнить `xattr -dr com.apple.quarantine /Applications/Matterqute.app`) и Windows x86_64 (установщик `setup.exe` — без прав администратора, регистрирует ссылки `mattermost://` — или портативный `.zip`; оба без подписи). Сборки для macOS и Windows делает CI, руками они не проверялись.
+
 ## Сборка
 
 Нужны Go 1.24 или новее (нужную версию тулчейна Go скачает сам) и Qt 6.4+. На Debian 13:

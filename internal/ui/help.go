@@ -148,8 +148,18 @@ func aboutHTML() string {
 		AppTitle, pal.Tx2, html.EscapeString(buildVersion()), qt.QLibraryInfo_Version().ToString(), runtime.Version(), pal.Tx2)
 }
 
-// buildVersion — из чего собрано: коммит и время (Go пишет их в бинарник).
+// Version — версия релиза (тег): ставит сборка через -ldflags "-X matterqute/internal/ui.Version=v1.2.3".
+var Version string
+
+// buildVersion — версия релиза, если задана, и из чего собрано: коммит и время (Go пишет их в бинарник).
 func buildVersion() string {
+	if Version != "" {
+		return Version + " (" + vcsVersion() + ")"
+	}
+	return vcsVersion()
+}
+
+func vcsVersion() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "неизвестна"

@@ -28,6 +28,14 @@ go test ./...
 
 Без дисплея: `QT_QPA_PLATFORM=offscreen MATTERQUTE_SCREENSHOT=/tmp/shot.png ./matterqute` — через 3 с (`MATTERQUTE_SCREENSHOT_DELAY`) сохраняет видимые окна в `/tmp/shot-N.png` и выходит. Конфиг подменяется через `XDG_CONFIG_HOME`. `MATTERQUTE_DEBUG=1` — debug-логи (в т.ч. все события WebSocket и задачи из горутин, державшие главный поток дольше 100 мс: `main thread busy` с местом вызова `MainWindow.ui`); главный поток не отвечает дольше 300 мс — `main thread stuck` и стек его горутины в stderr, раз в секунду, пока не освободится (`WatchMainThread`, `watchdog.go`); пост рисовался дольше 50 мс — `slow post` с размерами (HTML, текст, строки, таблицы, вложения, поля, файлы), без текста (`Feed.logSlow`). В меню ленты при отладке — «Отладка: структура ленты в лог» (`feeddebug.go`: по посту — фрейм в документе, место и высота текста, абзацы и сколько ужато, без текста) и «Отладка: перерисовать ленту».
 
+## Релизы
+
+- Тег `vX.Y.Z` → `.github/workflows/release.yml`: сборки под Linux x86_64 (контейнер Debian 13 — Qt 6.8, как у пользователей; на Ubuntu 24.04 Qt 6.4 без `QStyleHints::colorScheme`), macOS arm64 (Homebrew `qt`, бандл `Matterqute.app` с `Info.plist` из `.github/macos`, иконка из `--install`, `macdeployqt -dmg`) и Windows x86_64 (MSYS2 UCRT64, `-H windowsgui`, `windeployqt` плюс замыкание DLL по `ldd`, zip и установщик Inno Setup из `.github/windows/matterqute.iss` — без прав администратора, регистрирует `mattermost://` в реестре); на Linux ещё и тесты, артефакт — один бинарник. Потом релиз: `gh release create` с файлами и заметками. `workflow_dispatch` — только собрать, без релиза (проверить сборку). Сборки не подписаны (macOS: снять карантин `xattr`, Windows: SmartScreen).
+- Заметки к релизу пишет `.github/release-notes.py` из заголовков коммитов между предыдущим тегом и этим, группируя по префиксу заголовка: `Новое:`, `Исправлено:`, `Изменено:`, `Убрано:`, `Документация:` (или `feat:`, `fix:`, `change:`, `remove:`, `docs:`, можно с областью — `fix(лента):`); без префикса — «Прочее». Поэтому заголовок коммита — с префиксом и о том, что видно пользователю. Релиз, созданный руками до прогона, не затирается: файлы добавляются, заметки — только если пустые.
+- Версия релиза — в «О программе»: сборка передаёт тег через `-ldflags "-X matterqute/internal/ui.Version=vX.Y.Z"` (`ui.Version`), рядом коммит и время из `debug.ReadBuildInfo`.
+- Платформы: `internal/idle` и `internal/spell` через `dlopen` — файлы `*_unix.go` (`!windows`), под Windows `idle_windows.go` (`GetLastInputInfo`) и `hunspell_windows.go` (проверки орфографии нет, личный словарь работает). DBus (уведомления, один экземпляр, счётчик в доке) без шины отключается с предупреждением в лог. Что не сделано: подпись сборок, Intel-mac, AppImage, иконка и метаданные exe (go-winres), открытие `mattermost://` на macOS/Windows (схема объявлена в `Info.plist`, обработчика Apple Events нет).
+- Бейдж стоимости AI-разработки (`llm-tool count-tokens`, блок `CC-TOKENS` в README, `.llm-tokens.tsv`, `.llm-tokens-badge.svg`) обновляет pre-commit хук `.githooks/pre-commit`; в каждом клоне включить: `git config core.hooksPath .githooks`.
+
 ## Архитектура
 
 | Пакет | Что делает | Qt |
@@ -300,3 +308,19 @@ Rich text в Qt 6.8 (проверено на скриншотах):
    - ✅ Масштаб: Ctrl+= / Ctrl+− / Ctrl+0.
    - ✅ Архивные каналы: открыть только для чтения, в обзоре каналов — «Архивные».
    - ✅ Отправка без сети: очередь, «не отправлено» в ленте, отправка при восстановлении связи.
+
+<!-- LLM-TOOL-GENERATED:START -->
+## Автогенерируемые файлы (llm-tool count-tokens)
+
+Эти пути пишет `llm-tool count-tokens` из pre-commit хука, а не человек:
+
+- `.llm-tokens.tsv` — расход токенов по сессиям;
+- `.llm-tokens-badge.svg` — бейдж стоимости, на него ссылается README;
+- блок между маркерами `CC-TOKENS:START` и `CC-TOKENS:END` в `README.md`;
+- записи этих двух файлов в `.gitattributes` и этот блок в `CLAUDE.md`.
+
+Хук сам добавляет их в индекс, поэтому они попадают в коммит, даже если их не
+трогали, а `README.md` может измениться на диске посреди сессии. Это ожидаемое
+поведение, а не чужая правка: не откатывать, не разбирать их дифф, не править
+руками — достаточно перечитать файл, если он нужен дальше.
+<!-- LLM-TOOL-GENERATED:END -->

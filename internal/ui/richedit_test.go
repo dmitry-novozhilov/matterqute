@@ -195,7 +195,7 @@ func TestComposerFormatting(t *testing.T) {
 		}
 		check("draft", send(), "**черновик** и `код`")
 
-		// Панель оформления — кнопкой «Aa», во всех полях.
+		// Панель оформления — кнопкой «T», во всех полях.
 		other := NewComposer()
 		defer other.w.Close()
 		defer other.dispose()

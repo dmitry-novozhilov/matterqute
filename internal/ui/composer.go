@@ -52,7 +52,7 @@ type Composer struct {
 	unsubscribeSpell func()
 	attach           *qt.QToolButton
 	fmtBar           *qt.QWidget     // панель оформления над полем
-	fmtShow          *qt.QToolButton // «Aa» — показать или спрятать панель
+	fmtShow          *qt.QToolButton // «T» — показать или спрятать панель
 	acts             formatActions
 	styleKey         string // тема и шрифты, которыми нарисован документ поля
 	typing           bool   // идёт набор с клавиатуры: курсор сдвинул ввод, а не переход

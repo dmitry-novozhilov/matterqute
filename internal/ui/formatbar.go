@@ -28,7 +28,7 @@ func SetFormatBar(on bool) {
 	}
 }
 
-// OnFormatBarChosen — панель показали или спрятали кнопкой «Aa» (сохранить).
+// OnFormatBarChosen — панель показали или спрятали кнопкой «T» (сохранить).
 var OnFormatBarChosen func(on bool)
 
 func (c *Composer) buildFormatBar() {
@@ -113,13 +113,15 @@ func (c *Composer) restyleFormatBar() {
 		x.SetIcon(icon(name, pal.Tx2, 16))
 	}
 	c.fmtShow.SetIcon(icon("type", pal.Tx2, 18))
-	css := fmt.Sprintf(`QToolButton { border: none; border-radius: 4px; background: transparent; min-width: 0; min-height: 0; }
-QToolButton:hover { background: %[1]s; }
-QToolButton:checked { background: %[2]s; }
-QToolButton:disabled { background: transparent; }
-QFrame#formatSep { background: %[3]s; }`, pal.Hover, pal.SelBg, pal.Line)
-	c.fmtBar.SetStyleSheet(css)
-	c.fmtShow.SetStyleSheet(css)
+	states := fmt.Sprintf(`QToolButton:hover { background: %s; }
+QToolButton:checked { background: %s; }
+QToolButton:disabled { background: transparent; }`, pal.Hover, pal.SelBg)
+	// min-width и min-height из QSS Qt ставит кнопке минимумом поверх
+	// SetFixedSize: мелким кнопкам панели — 0, а «T» в строке поля — как у
+	// соседних (из темы), иначе она сжималась и вставала ниже их.
+	c.fmtBar.SetStyleSheet(`QToolButton { border: none; border-radius: 4px; background: transparent; min-width: 0; min-height: 0; }
+` + states + fmt.Sprintf("\nQFrame#formatSep { background: %s; }", pal.Line))
+	c.fmtShow.SetStyleSheet("QToolButton { border: none; border-radius: 4px; background: transparent; }\n" + states)
 	c.fmtBar.SetVisible(style.formatBar)
 	c.fmtShow.SetChecked(style.formatBar)
 }

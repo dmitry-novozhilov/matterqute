@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
@@ -25,6 +26,14 @@ func TestPostPriority(t *testing.T) {
 		c := m.composer
 		if c.prioBtn.IsHidden() || !m.panel.composer.prioBtn.IsHidden() {
 			t.Errorf("priority button: channel hidden %v, thread hidden %v", c.prioBtn.IsHidden(), m.panel.composer.prioBtn.IsHidden())
+		}
+		// Кнопки строки поля — одного размера и на одном уровне.
+		settle()
+		want := c.later.Geometry()
+		for name, b := range map[string]*qt.QToolButton{"attach": c.attach, "priority": c.prioBtn, "format": c.fmtShow} {
+			if g := b.Geometry(); g.Y() != want.Y() || g.Height() != want.Height() || g.Width() != want.Width() {
+				t.Errorf("%s button %d,%d %dx%d, «later» %d,%d %dx%d", name, g.X(), g.Y(), g.Width(), g.Height(), want.X(), want.Y(), want.Width(), want.Height())
+			}
 		}
 		pick := func(title string) {
 			menu := c.priorityMenu()

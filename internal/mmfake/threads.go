@@ -122,6 +122,11 @@ func (s *Server) preferences(w http.ResponseWriter, r *http.Request, me *model.U
 			out = append(out, p)
 		}
 	}
+	if len(out) == 0 {
+		// Как настоящий сервер (по памяти о его коде): пустая категория — 404.
+		s.fail(w, http.StatusNotFound, "api.preference.preferences_category.get.app_error")
+		return
+	}
 	s.json(w, out)
 }
 

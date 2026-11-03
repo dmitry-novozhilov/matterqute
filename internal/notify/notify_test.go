@@ -73,7 +73,7 @@ func TestNotifier(t *testing.T) {
 		t.Fatalf("own %s: %v %v", dest, reply, err)
 	}
 
-	n, err := New("matterqute", "/tmp/icon.png")
+	n, err := New("Matterqute", "matterqute", "/tmp/icon.png")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestNotifierPlainServer(t *testing.T) {
 	fake := &fakeServer{caps: []string{"body"}}
 	srv.Export(fake, path, iface)
 	srv.RequestName(dest, dbus.NameFlagDoNotQueue)
-	n, err := New("matterqute", "")
+	n, err := New("Matterqute", "matterqute", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestNotifierPlainServer(t *testing.T) {
 
 func TestNoServer(t *testing.T) {
 	privateBus(t)
-	if n, err := New("matterqute", ""); err == nil || !strings.Contains(err.Error(), "GetCapabilities") {
+	if n, err := New("Matterqute", "matterqute", ""); err == nil || !strings.Contains(err.Error(), "GetCapabilities") {
 		t.Errorf("New without a notification server = %v, %v", n, err)
 	}
 }

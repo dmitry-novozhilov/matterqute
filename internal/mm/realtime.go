@@ -58,7 +58,7 @@ func (s *Session) RunRealtime(ctx context.Context, h RealtimeHandler, retry <-ch
 	}
 }
 
-func listenOnce(ctx context.Context, wsURL, token string, h RealtimeHandler, setWS func(*model.WebSocketClient)) error {
+func listenOnce(ctx context.Context, wsURL, token string, h RealtimeHandler, setWS func(*wsOut)) error {
 	wsc, err := model.NewWebSocketClient4(wsURL, token)
 	if err != nil {
 		return fmt.Errorf("connect %s: %w", wsURL, err)
@@ -88,8 +88,9 @@ func listenOnce(ctx context.Context, wsURL, token string, h RealtimeHandler, set
 				return fmt.Errorf("websocket %s: closed by server", wsURL)
 			}
 			if ev.EventType() == model.WebsocketEventHello {
-				setWS(wsc)
-				defer setWS(nil) // до wsc.Close (defer выше): после него писать некуда
+				out := startWSOut(wsc)
+				setWS(out)
+				defer func() { setWS(nil); out.stop() }() // до wsc.Close (defer выше): после него писать некуда
 				h.OnConnected()
 				continue
 			}
@@ -105,23 +106,81 @@ func listenOnce(ctx context.Context, wsURL, token string, h RealtimeHandler, set
 	}
 }
 
-func (s *Session) setWS(ws *model.WebSocketClient) {
+func (s *Session) setWS(ws *wsOut) {
 	s.wsMu.Lock()
 	s.ws = ws
 	s.wsMu.Unlock()
 }
 
-// Typing — сообщить серверу, что пользователь набирает текст в канале (в
-// треде — parentID): остальные увидят «печатает…». Без соединения — false.
-func (s *Session) Typing(channelID, parentID string) bool {
+// wsOut — писатель одного соединения: действия клиента (user_typing,
+// user_update_active_status) уходят в WebSocket из одной горутины по очереди,
+// главный поток их только ставит в очередь. SendMessage библиотеки пишет в
+// канал, который её читатель закрывает при обрыве, и отправка в этот момент
+// паникует — горутина это ловит и с соединением заканчивает: очередь после
+// обрыва пропадает вместе с ним (следующее соединение сообщит всё заново).
+type wsOut struct {
+	queue chan wsAction
+	done  chan struct{}
+}
+
+type wsAction struct {
+	action string
+	data   map[string]any
+}
+
+const wsOutQueue = 16
+
+func startWSOut(wsc *model.WebSocketClient) *wsOut {
+	o := &wsOut{queue: make(chan wsAction, wsOutQueue), done: make(chan struct{})}
+	go func() {
+		for {
+			select {
+			case <-o.done:
+				return
+			case a := <-o.queue:
+				if !sendWS(wsc, a) {
+					return
+				}
+			}
+		}
+	}()
+	return o
+}
+
+// sendWS — одно действие в соединение; false — канал писателя уже закрыт.
+func sendWS(wsc *model.WebSocketClient, a wsAction) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	wsc.SendMessage(a.action, a.data)
+	return true
+}
+
+func (o *wsOut) stop() { close(o.done) }
+
+// send ставит действие в очередь, не ожидая: очередь полна — соединение
+// не пишет (скоро оборвётся), действие пропускаем.
+func (s *Session) send(action string, data map[string]any) bool {
 	s.wsMu.Lock()
 	ws := s.ws
 	s.wsMu.Unlock()
 	if ws == nil {
 		return false
 	}
-	go ws.UserTyping(channelID, parentID) // через канал писателя соединения: главный поток не ждёт
-	return true
+	select {
+	case ws.queue <- wsAction{action, data}:
+		return true
+	default:
+		return false
+	}
+}
+
+// Typing — сообщить серверу, что пользователь набирает текст в канале (в
+// треде — parentID): остальные увидят «печатает…». Без соединения — false.
+func (s *Session) Typing(channelID, parentID string) bool {
+	return s.send("user_typing", map[string]any{"channel_id": channelID, "parent_id": parentID})
 }
 
 // SetActive — сообщить серверу, за компьютером ли пользователь (система
@@ -129,14 +188,7 @@ func (s *Session) Typing(channelID, parentID string) bool {
 // user_update_active_status с manual=false — сервер ставит «Отошёл» или «В
 // сети», только если статус не выставлен руками. false — соединения нет.
 func (s *Session) SetActive(active bool) bool {
-	s.wsMu.Lock()
-	ws := s.ws
-	s.wsMu.Unlock()
-	if ws == nil {
-		return false
-	}
-	go ws.SendMessage("user_update_active_status", map[string]any{"user_is_active": active, "manual": false})
-	return true
+	return s.send("user_update_active_status", map[string]any{"user_is_active": active, "manual": false})
 }
 
 // websocketURL: https://host/sub → wss://host/sub (model.WebSocketClient сам добавит /api/v4/websocket).

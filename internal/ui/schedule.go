@@ -76,9 +76,14 @@ func (s *scheduler) reload() {
 		defer cancel()
 		var all []*model.ScheduledPost
 		for i, t := range teams {
-			lists, _, err := s.m.s.Client.GetUserScheduledPosts(ctx, t.Id, i == 0)
+			lists, resp, err := s.m.s.Client.GetUserScheduledPosts(ctx, t.Id, i == 0)
 			if err != nil {
 				s.m.ui(func() {
+					if offline(resp, err) {
+						// Сервер не ответил (переподключение, таймаут) — это не «не умеет»: хранилище не меняем.
+						s.m.log.Warn("scheduled posts: server unavailable, keeping the current storage", "err", err)
+						return
+					}
 					s.m.log.Info("scheduled posts on the server are unavailable, the app sends them itself", "err", err)
 					s.server, s.why = false, commandError(err)
 					s.changed()
@@ -268,16 +273,20 @@ func (s *scheduler) sendNow(id string) {
 		return
 	}
 	s.sending[id] = true
-	post := &model.Post{ChannelId: p.ChannelID, RootId: p.RootID, Message: p.Message, FileIds: p.FileIDs}
+	// С pending_post_id: повтор после таймаута (сервер пост создал, ответ не дошёл) не задвоится.
+	post := s.m.newPost(&model.Post{ChannelId: p.ChannelID, RootId: p.RootID, Message: p.Message, FileIds: p.FileIDs})
 	go func() {
 		ctx, cancel := context.WithTimeout(s.m.ctx, requestTimeout)
 		defer cancel()
-		created, _, err := s.m.s.Client.CreatePost(ctx, post)
+		created, resp, err := s.m.s.Client.CreatePost(ctx, post)
 		s.m.ui(func() {
 			delete(s.sending, id)
 			if err != nil {
 				err = fmt.Errorf("send scheduled post to channel %s: %w", p.ChannelID, err)
 				s.m.log.Warn("scheduled post", "err", err)
+				if !p.OnServer && offline(resp, err) {
+					return // связи нет: следующий tick попробует снова, пока срок не стал пропущенным
+				}
 				if !p.OnServer {
 					p.Error = commandError(err)
 					s.save()
@@ -296,7 +305,7 @@ func (s *scheduler) sendNow(id string) {
 // tick — свои отложенные, чьё время пришло (опоздание терпимо), — отправить.
 func (s *scheduler) tick(now time.Time) {
 	for _, p := range slices.Clone(s.posts) {
-		if !p.OnServer && p.Due(now) {
+		if !p.OnServer && p.Due(now) && s.m.online {
 			s.sendNow(p.ID)
 		}
 	}
@@ -502,13 +511,13 @@ func (m *MainWindow) laterFor(c *Composer, where func() (channelID, rootID strin
 	c.OnLater = func() {
 		m.showScheduleDialog("Отправить позже", "Запланировать", time.Now().Add(time.Hour), func(at time.Time) { c.ScheduleAt(at) })
 	}
-	c.OnSchedule = func(text string, fileIDs []string, at time.Time) {
+	c.OnSchedule = func(text string, fileIDs []string, at time.Time, d *draft) {
 		ch, root := where()
 		if ch == "" {
-			c.Restore()
+			c.Restore(d)
 			return
 		}
-		m.sched.create(ch, root, text, fileIDs, at, c.Sent, c.Restore)
+		m.sched.create(ch, root, text, fileIDs, at, func() {}, func() { c.Restore(d) })
 	}
 	c.OnShowScheduled = func() { m.selectChannel(schedID) }
 }

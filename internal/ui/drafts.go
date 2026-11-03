@@ -37,12 +37,16 @@ type draftKey struct{ channel, root string }
 
 type drafts struct {
 	m       *MainWindow
-	server  bool   // хранит сервер; иначе файл path
-	path    string // файл черновиков, если их не хранит сервер
-	synced  map[draftKey]string
+	server  bool                // хранит сервер; иначе файл path
+	path    string              // файл черновиков, если их не хранит сервер
+	synced  map[draftKey]string // что в хранилище (сервер подтвердил или записано в файл)
+	pending map[draftKey]string // отправлено серверу, ответа ещё нет
+	acked   map[draftKey]int64  // UpdateAt сервера у последнего подтверждённого: события старше — запоздавшее эхо
 	dirty   map[draftKey]bool
 	roots   map[string]string // корень треда → канал: у поля треда ключ — корень
 	timer   *qt.QTimer
+	saving  bool                   // запрос сохранения в пути: следующий — после него, по порядку
+	again   bool                   // пока шёл запрос, набралось ещё
 	loaded  bool                   // загружены после первого сайдбара
 	reload  bool                   // переподключились: загрузить заново (события за обрыв потеряны)
 	modeSet bool                   // server уже выбран по настройкам
@@ -50,8 +54,8 @@ type drafts struct {
 }
 
 func newDrafts(m *MainWindow, path string) *drafts {
-	d := &drafts{m: m, path: path, synced: map[draftKey]string{}, dirty: map[draftKey]bool{}, roots: map[string]string{},
-		edited: map[draftKey]time.Time{}}
+	d := &drafts{m: m, path: path, synced: map[draftKey]string{}, pending: map[draftKey]string{}, acked: map[draftKey]int64{},
+		dirty: map[draftKey]bool{}, roots: map[string]string{}, edited: map[draftKey]time.Time{}}
 	d.timer = qt.NewQTimer2(m.w.QObject)
 	d.timer.SetSingleShot(true)
 	d.timer.SetInterval(int(draftDelay.Milliseconds()))
@@ -99,8 +103,16 @@ func (d *drafts) changed(c *Composer, key string) {
 }
 
 // save — изменившиеся черновики — на сервер или в файл; wait — дождаться
-// ответа сервера (окно закрывается).
+// ответа сервера (окно закрывается). Запросы идут по одному: пока один в
+// пути, новое копится (again) — иначе два ответа приходили бы не по порядку.
+// synced меняется только по ответу сервера: до него набранное — правка
+// здесь, и сверка с сервером (applyAll) его не затрёт.
 func (d *drafts) save(wait bool) {
+	if d.saving && !wait {
+		d.again = true
+		return
+	}
+	me := d.m.s.Me.Id
 	var ups []*model.Draft
 	var dels []draftKey
 	for k := range d.dirty {
@@ -110,18 +122,25 @@ func (d *drafts) save(wait bool) {
 			continue
 		}
 		if text == "" {
-			delete(d.synced, k)
 			dels = append(dels, k)
 		} else {
-			d.synced[k] = text
-			ups = append(ups, &model.Draft{UserId: d.m.s.Me.Id, ChannelId: k.channel, RootId: k.root, Message: text})
+			ups = append(ups, &model.Draft{UserId: me, ChannelId: k.channel, RootId: k.root, Message: text})
 		}
+		d.pending[k] = text
 	}
 	if len(ups)+len(dels) == 0 {
 		return
 	}
 	d.m.refreshItem("") // карандаш у канала в сайдбаре
 	if !d.server {
+		for k, text := range d.pending {
+			if text == "" {
+				delete(d.synced, k)
+			} else {
+				d.synced[k] = text
+			}
+		}
+		clear(d.pending)
 		if err := saveDraftFile(d.path, d.synced); err != nil {
 			d.m.log.Warn("save drafts", "err", err)
 		}
@@ -130,28 +149,31 @@ func (d *drafts) save(wait bool) {
 	run := func() {
 		ctx, cancel := context.WithTimeout(d.m.ctx, requestTimeout)
 		defer cancel()
-		var failed []draftKey
+		var results []draftSaved
 		for _, dr := range ups {
-			if _, _, err := d.m.s.Client.UpsertDraft(ctx, dr); err != nil {
+			r := draftSaved{k: draftKey{dr.ChannelId, dr.RootId}, text: dr.Message}
+			if saved, _, err := d.m.s.Client.UpsertDraft(ctx, dr); err != nil {
 				d.m.log.Warn("save draft", "channel", dr.ChannelId, "root", dr.RootId, "err", err)
-				failed = append(failed, draftKey{dr.ChannelId, dr.RootId})
+			} else {
+				r.ok = true
+				if saved != nil {
+					r.at = saved.UpdateAt
+				}
 			}
+			results = append(results, r)
 		}
 		for _, k := range dels {
-			if err := d.deleteOnServer(ctx, k); err != nil {
+			r := draftSaved{k: k}
+			if err := d.deleteOnServer(ctx, me, k); err != nil {
 				d.m.log.Warn("delete draft", "channel", k.channel, "root", k.root, "err", err)
-				failed = append(failed, k)
+			} else {
+				r.ok = true
 			}
+			results = append(results, r)
 		}
-		if len(failed) > 0 && !wait {
-			d.m.ui(func() {
-				// Не сохранилось (нет связи): после переподключения — снова (resync).
-				for _, k := range failed {
-					delete(d.synced, k)
-				}
-			})
-		}
+		d.m.ui(func() { d.saved(results) })
 	}
+	d.saving = true
 	if wait {
 		run()
 	} else {
@@ -159,17 +181,51 @@ func (d *drafts) save(wait bool) {
 	}
 }
 
+// draftSaved — ответ сервера на одно сохранение: text — что отправили ("" —
+// удаление), at — UpdateAt сохранённого, ok — сервер принял.
+type draftSaved struct {
+	k    draftKey
+	text string
+	at   int64
+	ok   bool
+}
+
+// saved — ответы сервера: принятое — в synced; не принятое (нет связи)
+// остаётся отличием поля от synced, и его отправит следующая правка или
+// сверка после переподключения.
+func (d *drafts) saved(results []draftSaved) {
+	d.saving = false
+	for _, r := range results {
+		if d.pending[r.k] == r.text {
+			delete(d.pending, r.k)
+		}
+		if !r.ok {
+			continue
+		}
+		if r.text == "" {
+			delete(d.synced, r.k)
+		} else {
+			d.synced[r.k] = r.text
+		}
+		d.acked[r.k] = max(d.acked[r.k], r.at)
+	}
+	if d.again {
+		d.again = false
+		d.save(false)
+	}
+}
+
 // deleteOnServer — черновик канала или треда прочь; его и не было — не ошибка.
 // DeleteDraft клиента не знает про тред (всегда удаляет черновик канала),
 // поэтому у треда — путь, как у веб-клиента: …/drafts/{корень}.
-func (d *drafts) deleteOnServer(ctx context.Context, k draftKey) error {
+func (d *drafts) deleteOnServer(ctx context.Context, me string, k draftKey) error {
 	var resp *model.Response
 	var err error
 	if k.root == "" {
-		_, resp, err = d.m.s.Client.DeleteDraft(ctx, d.m.s.Me.Id, k.channel, "")
+		_, resp, err = d.m.s.Client.DeleteDraft(ctx, me, k.channel, "")
 	} else {
 		var r *http.Response
-		r, err = d.m.s.Client.DoAPIDelete(ctx, "/users/"+d.m.s.Me.Id+"/channels/"+k.channel+"/drafts/"+k.root)
+		r, err = d.m.s.Client.DoAPIDelete(ctx, "/users/"+me+"/channels/"+k.channel+"/drafts/"+k.root)
 		if r != nil {
 			r.Body.Close()
 			resp = model.BuildResponse(r)
@@ -184,8 +240,14 @@ func (d *drafts) deleteOnServer(ctx context.Context, k draftKey) error {
 // sidebarLoaded — сайдбар загружен (команды известны): после первого раза и
 // после переподключения — черновики с сервера или из файла.
 func (d *drafts) sidebarLoaded(server bool) {
-	if d.modeSet && server != d.server {
-		d.loaded = false // хранилище сменилось (настройку переключили)
+	if !d.modeSet || server != d.server {
+		// Хранилище выбрано впервые (до сайдбара набранное шло в файл) или
+		// сменилось (настройку переключили): что в synced — не отсюда, и
+		// набранное в полях уйдёт в новое хранилище как правка.
+		clear(d.synced)
+		clear(d.pending)
+		clear(d.acked)
+		d.loaded = false
 	}
 	d.server, d.modeSet = server, true
 	if d.loaded && !d.reload {
@@ -197,10 +259,11 @@ func (d *drafts) sidebarLoaded(server bool) {
 		if err != nil {
 			d.m.log.Warn("load drafts", "err", err)
 		}
-		d.applyAll(all)
+		d.applyAll(all, true)
 		return
 	}
 	teams := d.m.st.Teams()
+	me := d.m.s.Me.Id
 	go func() {
 		ctx, cancel := context.WithTimeout(d.m.ctx, requestTimeout)
 		defer cancel()
@@ -208,7 +271,7 @@ func (d *drafts) sidebarLoaded(server bool) {
 		edited := map[draftKey]time.Time{}
 		var errs []error
 		for _, t := range teams {
-			list, _, err := d.m.s.Client.GetDrafts(ctx, d.m.s.Me.Id, t.Id)
+			list, _, err := d.m.s.Client.GetDrafts(ctx, me, t.Id)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("drafts of team %s: %w", t.Name, err))
 				continue
@@ -222,8 +285,8 @@ func (d *drafts) sidebarLoaded(server bool) {
 		d.m.ui(func() {
 			if len(errs) > 0 {
 				d.m.log.Warn("load drafts", "err", errors.Join(errs...))
+				d.reload = true // попробуем после следующего переподключения
 				if len(errs) == len(teams) {
-					d.reload = true // попробуем после следующего переподключения
 					return
 				}
 			}
@@ -232,21 +295,25 @@ func (d *drafts) sidebarLoaded(server bool) {
 					d.edited[k] = at
 				}
 			}
-			d.applyAll(all)
+			// Часть команд не ответила: их черновиков в all нет, но они не удалены.
+			d.applyAll(all, len(errs) == 0)
 		})
 	}()
 }
 
 // applyAll — все черновики с сервера (или из файла): пришедшие — в поля, а
-// сохранённые раньше, которых там больше нет, — удалены (в другом клиенте).
+// сохранённые раньше, которых там больше нет, — удалены (в другом клиенте);
+// complete — список полный, и отсутствие в нём значит удаление.
 // Правленное здесь и не сохранённое (не было связи) — сохранить.
-func (d *drafts) applyAll(all map[draftKey]string) {
+func (d *drafts) applyAll(all map[draftKey]string, complete bool) {
 	for k, text := range all {
 		d.apply(k, text)
 	}
-	for k := range d.synced {
-		if _, ok := all[k]; !ok {
-			d.apply(k, "")
+	if complete {
+		for k := range d.synced {
+			if _, ok := all[k]; !ok {
+				d.apply(k, "")
+			}
 		}
 	}
 	for _, c := range []*Composer{d.m.composer, d.m.panel.composer} {
@@ -293,13 +360,17 @@ func (d *drafts) remote(dr *model.Draft, deleted bool) {
 	if !d.server || !d.loaded {
 		return
 	}
+	k := draftKey{dr.ChannelId, dr.RootId}
+	if dr.UpdateAt > 0 && dr.UpdateAt < d.acked[k] {
+		return // запоздавшее эхо своего же более раннего сохранения
+	}
 	text := dr.Message
 	if deleted {
 		text = ""
 	} else if dr.UpdateAt > 0 {
-		d.edited[draftKey{dr.ChannelId, dr.RootId}] = time.UnixMilli(dr.UpdateAt)
+		d.edited[k] = time.UnixMilli(dr.UpdateAt)
 	}
-	d.apply(draftKey{dr.ChannelId, dr.RootId}, text)
+	d.apply(k, text)
 }
 
 // eventDraft — черновик из data["draft"] (JSON-строка).

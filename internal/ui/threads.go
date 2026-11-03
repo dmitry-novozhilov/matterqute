@@ -96,11 +96,19 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 	}
 	m.panel.composer.SetEnabled(false)
 	m.panel.composer.SwitchTo(rootID)
+	m.loadThread(t, focus, true)
+}
+
+// loadThread грузит тред t целиком и показывает его в панели; focus — ответ,
+// к которому прокрутить; focusField — поставить курсор в поле ответа (при
+// перезагрузке после обрыва связи — нет: пользователь мог печатать в другом).
+func (m *MainWindow) loadThread(t *threadView, focus string, focusField bool) {
+	rootID := t.rootID
 	crt := m.st.CRT()
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, requestTimeout)
 		defer cancel()
-		list, _, err := m.s.Client.GetPostThread(ctx, rootID, "", crt)
+		list, _, err := m.s.Client.GetPostThread(ctx, t.rootID, "", crt)
 		m.ui(func() {
 			if m.thread != t {
 				return
@@ -131,7 +139,9 @@ func (m *MainWindow) openThreadAt(rootID, focus string) {
 				m.panel.feed.SetPosts(t.tl.Posts, false)
 				m.requeueIn(m.panel.feed, t.channelID, rootID)
 				m.panel.composer.SetEnabled(t.channelID != "")
-				m.panel.composer.Focus()
+				if focusField {
+					m.panel.composer.Focus()
+				}
 				m.updateScheduledNotes()
 				m.updateTypingNotes()
 				if focus != "" && m.panel.feed.Has(focus) {
@@ -167,15 +177,16 @@ func (m *MainWindow) closeThread() {
 	m.updateTypingNotes()
 }
 
-func (m *MainWindow) sendReply(text string, fileIDs []string, _ string) {
+func (m *MainWindow) sendReply(text string, fileIDs []string, _ string, d *draft) {
 	t := m.thread
 	if t == nil || t.channelID == "" {
+		m.panel.composer.Restore(d)
 		return
 	}
 	p := m.newPost(&model.Post{ChannelId: t.channelID, RootId: t.rootID, Message: text, FileIds: fileIDs})
-	m.createPost(p, m.panel.composer.Sent, func(err error) {
+	m.createPost(p, func() {}, func(err error) {
 		m.fail("send reply", fmt.Errorf("reply to thread %s: %w", t.rootID, err))
-		m.panel.composer.Restore()
+		m.panel.composer.Restore(d)
 	})
 }
 

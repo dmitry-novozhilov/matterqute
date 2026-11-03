@@ -537,11 +537,14 @@ func (s *Store) ApplyPosted(p *model.Post, mentioned bool) Posted {
 	if ch == nil {
 		return r
 	}
+	ch.LastPostAt = max(ch.LastPostAt, p.CreateAt)
+	if p.IsJoinLeaveMessage() {
+		return r // сервер их в счётчиках не учитывает: канал от них непрочитанным не становится
+	}
 	ch.TotalMsgCount++
 	if p.RootId == "" {
 		ch.TotalMsgCountRoot++
 	}
-	ch.LastPostAt = max(ch.LastPostAt, p.CreateAt)
 	m := s.members[p.ChannelId]
 	switch {
 	case m == nil:
@@ -562,6 +565,9 @@ func (s *Store) ApplyEdited(p *model.Post) bool {
 	t := s.timelines[p.ChannelId]
 	return t != nil && t.Replace(p)
 }
+
+// Deleted — пост уже удаляли (ответом на DeletePost или по WebSocket).
+func (s *Store) Deleted(id string) bool { return s.deleted[id] }
 
 // ApplyDeleted убирает пост из ленты канала (removed — он там был), у ответа
 // уменьшает счётчик ответов корня в ленте (root — перерисовать). first=false

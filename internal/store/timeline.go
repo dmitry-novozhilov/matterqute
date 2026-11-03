@@ -135,8 +135,11 @@ func (t *Timeline) Sync(page []*model.Post, hasMore bool, since int) (changed, r
 	fresh := make(map[string]bool, len(page))
 	for _, p := range page {
 		fresh[p.Id] = true
-		if old := t.Get(p.Id); old == nil || differs(old, p) {
+		if i := t.index(p.Id); i < 0 {
 			t.Upsert(p)
+			changed = append(changed, p)
+		} else if differs(t.Posts[i], p) {
+			t.Posts[i] = p // как есть: счётчик ответов у страницы сервера точный, и меньше — тоже
 			changed = append(changed, p)
 		}
 	}

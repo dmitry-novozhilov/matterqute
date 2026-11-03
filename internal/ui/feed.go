@@ -162,6 +162,7 @@ type Feed struct {
 	chosen      map[string]string      // «пост:действие» → выбранное в списке интеграции (подпись)
 	hovered     string                 // ресурс реакции под курсором
 	movies      map[string]*qt.QMovie
+	movieAt     map[string]movieTarget  // куда класть кадры GIF: ресурс того размера, в котором пост нарисован сейчас
 	placeholder bool                    // в документе заглушка вместо постов
 	history     *qt.QTextFrame          // строка «Загружаем историю…» над постами
 	newSince    int64                   // посты новее — «Новые сообщения»
@@ -246,7 +247,7 @@ func NewFeed(d FeedDeps) *Feed {
 	if d.Users == nil {
 		d.Users = func(string) *model.User { return nil }
 	}
-	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{},
+	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, movieAt: map[string]movieTarget{}, videos: map[string]*inlineVideo{},
 		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, relayout: map[*postItem]bool{}, shown: true, expanded: map[string]bool{}, chosen: map[string]string{}}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
@@ -460,6 +461,7 @@ func (f *Feed) stopMovies() {
 		m.DeleteLater()
 		delete(f.movies, id)
 	}
+	clear(f.movieAt)
 }
 
 // SetNewSince — посты новее ts (не свои) отмечаются «Новые сообщения»
@@ -1637,6 +1639,9 @@ func (f *Feed) authorAvatar(p *model.Post) string {
 		return src
 	}
 	reload := func() {
+		if f.disposed {
+			return
+		}
 		f.avatars[src] = integrationAvatar(f.d.Assets, in, f.d.Users(p.UserId), name, 32, nil)
 		f.view.Viewport().Update()
 	}
@@ -1908,6 +1913,9 @@ func (f *Feed) imageSize(fi *model.FileInfo) (int, int) {
 func (f *Feed) previewSrc(fi *model.FileInfo, w, h int) string {
 	name := fmt.Sprintf("preview:%s:%dx%d", fi.Id, w, h)
 	if _, ok := f.resources[name]; ok {
+		if fi.MimeType == "image/gif" {
+			f.animate(fi, name, w, h) // кадры — в ресурс этого размера
+		}
 		return name
 	}
 	if f.d.Assets != nil {
@@ -1934,9 +1942,24 @@ func (f *Feed) previewSrc(fi *model.FileInfo, w, h int) string {
 	return ph
 }
 
+// movieTarget — ресурс документа (и его размер), в который идут кадры GIF.
+type movieTarget struct {
+	name string
+	w, h int
+}
+
 // animate крутит GIF: качает файл целиком, кадры QMovie кладёт в ресурс name.
+// Пост перерисовали в другом размере (смена ширины) — ресурс уже другой:
+// кадры теперь в него, а QMovie тот же.
 func (f *Feed) animate(fi *model.FileInfo, name string, w, h int) {
-	if f.movies[fi.Id] != nil || f.d.Assets == nil {
+	if f.d.Assets == nil {
+		return
+	}
+	f.movieAt[fi.Id] = movieTarget{name, w, h}
+	if mv := f.movies[fi.Id]; mv != nil {
+		if mv.IsValid() {
+			f.putFrame(fi.Id, mv) // текущий кадр сразу: до следующего ресурс показывал бы первый
+		}
 		return
 	}
 	f.movies[fi.Id] = qt.NewQMovie() // занято: второй вызов не начнёт загрузку снова
@@ -1955,18 +1978,25 @@ func (f *Feed) animate(fi *model.FileInfo, name string, w, h int) {
 			return
 		}
 		f.movies[fi.Id] = mv
-		mv.OnFrameChanged(func(int) {
-			pm := mv.CurrentPixmap().Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
-			pm.SetDevicePixelRatio(resourceDPR)
-			gifBadge(pm)
-			f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(name), pm.ToQVariant())
-			f.view.Viewport().Update()
-		})
+		mv.OnFrameChanged(func(int) { f.putFrame(fi.Id, mv) })
 		mv.Start()
 		if !f.shown {
 			mv.SetPaused(true) // пойдёт при показе
 		}
 	})
+}
+
+// putFrame — текущий кадр GIF id в ресурс того размера, в котором пост нарисован сейчас.
+func (f *Feed) putFrame(id string, mv *qt.QMovie) {
+	t, ok := f.movieAt[id]
+	if !ok {
+		return
+	}
+	pm := mv.CurrentPixmap().Scaled3(t.w*resourceDPR, t.h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+	pm.SetDevicePixelRatio(resourceDPR)
+	gifBadge(pm)
+	f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(t.name), pm.ToQVariant())
+	f.view.Viewport().Update()
 }
 
 // gifBadge — метка «GIF» в углу кадра.
@@ -2004,6 +2034,9 @@ func (f *Feed) avatarSrc(u *model.User, userID, name string, bot bool) string {
 		return src
 	}
 	reload := func() {
+		if f.disposed { // лента ушла (dropFeed), пока фото качалось
+			return
+		}
 		f.avatars[src] = avatarPixmap(f.d.Assets, f.d.Users(userID), name, bot, 32, nil)
 		f.view.Viewport().Update()
 	}

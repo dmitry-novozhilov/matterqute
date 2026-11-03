@@ -16,13 +16,18 @@ import (
 var ErrNoToken = errors.New("no saved session token")
 
 // Tokens хранит токены сессий по URL сервера: в системном keyring (Secret
-// Service на Linux), а если его нет — в tokens.json с правами 0600.
+// Service на Linux), а если его нет — в tokens.json с правами 0600. Файл
+// читается и при живом keyring: токен, записанный в файл, когда keyring был
+// недоступен (например, коллекция была заблокирована и пользователь закрыл
+// окно разблокировки), переезжает в keyring, а при выходе стирается из
+// обоих — иначе сессия «терялась», а её токен оставался на диске.
 type Tokens struct {
 	// Backend — "keyring" или путь к файлу; для логов и UI.
 	Backend string
 
-	file string // пусто, если работаем через keyring
-	mu   sync.Mutex
+	keyring bool   // основное хранилище — keyring; файл — запасное
+	file    string // tokens.json
+	mu      sync.Mutex
 }
 
 // FileTokens — токены только в файле path (0600), без keyring; для тестов и
@@ -31,25 +36,57 @@ func FileTokens(path string) *Tokens { return &Tokens{Backend: path, file: path}
 
 // OpenTokens выбирает хранилище; err — почему keyring недоступен (не фатально).
 func OpenTokens(dir string) (*Tokens, error) {
+	file := filepath.Join(dir, "tokens.json")
 	_, err := keyring.Get(appName, "probe")
 	if err == nil || errors.Is(err, keyring.ErrNotFound) {
-		return &Tokens{Backend: "keyring"}, nil
+		return &Tokens{Backend: "keyring", keyring: true, file: file}, nil
 	}
-	file := filepath.Join(dir, "tokens.json")
 	return &Tokens{Backend: file, file: file}, fmt.Errorf("keyring unavailable, tokens go to %s: %w", file, err)
 }
 
 func (t *Tokens) Get(serverURL string) (string, error) {
-	if t.file == "" {
+	if t.keyring {
 		tok, err := keyring.Get(appName, serverURL)
-		if errors.Is(err, keyring.ErrNotFound) {
-			return "", ErrNoToken
+		if err == nil {
+			return tok, nil
 		}
-		if err != nil {
+		if !errors.Is(err, keyring.ErrNotFound) {
 			return "", fmt.Errorf("keyring get %s: %w", serverURL, err)
 		}
-		return tok, nil
 	}
+	tok, err := t.fromFile(serverURL)
+	if err != nil {
+		return "", err
+	}
+	if t.keyring {
+		// Лежал в файле, пока keyring был недоступен: теперь — в keyring.
+		if err := keyring.Set(appName, serverURL, tok); err == nil {
+			_ = t.updateFile(func(m map[string]string) { delete(m, serverURL) })
+		}
+	}
+	return tok, nil
+}
+
+func (t *Tokens) Set(serverURL, token string) error {
+	if t.keyring {
+		if err := keyring.Set(appName, serverURL, token); err != nil {
+			return fmt.Errorf("keyring set %s: %w", serverURL, err)
+		}
+		return t.updateFile(func(m map[string]string) { delete(m, serverURL) }) // старая копия в файле, если была
+	}
+	return t.updateFile(func(m map[string]string) { m[serverURL] = token })
+}
+
+func (t *Tokens) Delete(serverURL string) error {
+	if t.keyring {
+		if err := keyring.Delete(appName, serverURL); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			return fmt.Errorf("keyring delete %s: %w", serverURL, err)
+		}
+	}
+	return t.updateFile(func(m map[string]string) { delete(m, serverURL) })
+}
+
+func (t *Tokens) fromFile(serverURL string) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	m, err := t.readFile()
@@ -61,27 +98,6 @@ func (t *Tokens) Get(serverURL string) (string, error) {
 		return "", ErrNoToken
 	}
 	return tok, nil
-}
-
-func (t *Tokens) Set(serverURL, token string) error {
-	if t.file == "" {
-		if err := keyring.Set(appName, serverURL, token); err != nil {
-			return fmt.Errorf("keyring set %s: %w", serverURL, err)
-		}
-		return nil
-	}
-	return t.updateFile(func(m map[string]string) { m[serverURL] = token })
-}
-
-func (t *Tokens) Delete(serverURL string) error {
-	if t.file == "" {
-		err := keyring.Delete(appName, serverURL)
-		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			return fmt.Errorf("keyring delete %s: %w", serverURL, err)
-		}
-		return nil
-	}
-	return t.updateFile(func(m map[string]string) { delete(m, serverURL) })
 }
 
 func (t *Tokens) readFile() (map[string]string, error) {
@@ -99,6 +115,7 @@ func (t *Tokens) readFile() (map[string]string, error) {
 	return m, nil
 }
 
+// updateFile меняет файл; пустой — удаляется (а не создаётся пустым).
 func (t *Tokens) updateFile(change func(map[string]string)) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -107,6 +124,12 @@ func (t *Tokens) updateFile(change func(map[string]string)) error {
 		return err
 	}
 	change(m)
+	if len(m) == 0 {
+		if err := os.Remove(t.file); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove tokens %s: %w", t.file, err)
+		}
+		return nil
+	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode tokens: %w", err)

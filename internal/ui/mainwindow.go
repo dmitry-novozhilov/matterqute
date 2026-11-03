@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -123,7 +124,9 @@ type MainWindow struct {
 	initialChannel  string // открыть после первой загрузки сайдбара
 	selectAfterLoad string // открыть после перезагрузки сайдбара (новая личка)
 	sidebarLoading  bool
-	sidebarDirty    bool // пока грузили, пришло событие, требующее перезагрузки
+	sidebarDirty    bool          // пока грузили, пришло событие, требующее перезагрузки
+	sidebarRetry    *qt.QTimer    // повтор загрузки сайдбара после ошибки
+	sidebarBackoff  time.Duration // пауза перед повтором: растёт до минуты, сбрасывается удачей
 	connectedOnce   bool
 	online          bool
 	outbox          outbox // написанное без связи (outbox.go)
@@ -214,6 +217,9 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		m.refreshItem("")
 	})
 	statusTimer.Start(60_000)
+	m.sidebarRetry = qt.NewQTimer2(m.w.QObject)
+	m.sidebarRetry.SetSingleShot(true)
+	m.sidebarRetry.OnTimeout(m.reloadSidebar)
 	m.suggestTimer = qt.NewQTimer2(m.w.QObject)
 	m.suggestTimer.SetSingleShot(true)
 	m.suggestTimer.OnTimeout(func() {
@@ -227,9 +233,10 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.composer.OnSend = m.send
 	m.composer.OnEdit = func(id, text string, blocks []markdown.Block) { m.saveEdit(m.feed)(id, text, blocks) }
 	m.composer.OnEditLast = func() { m.editLast(m.feed) }
-	m.composer.OnCommand = func(text string) { m.runCommand(m.composer, m.current, "", text) }
+	m.composer.OnCommand = func(text string, d *draft) { m.runCommand(m.composer, m.current, "", text, d) }
 	m.sched = newScheduler(m, filepath.Join(cacheDir, "scheduled.json"))
 	m.initTyping()
+	m.initOutbox()
 	m.composer.OnTyping = func() { m.userTyping(m.current, "") }
 	m.emojiFor(m.composer)
 	m.laterFor(m.composer, func() (string, string) {
@@ -371,9 +378,11 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 			m.userTyping(t.channelID, t.rootID)
 		}
 	}
-	m.panel.composer.OnCommand = func(text string) {
+	m.panel.composer.OnCommand = func(text string, d *draft) {
 		if t := m.thread; t != nil {
-			m.runCommand(m.panel.composer, t.channelID, t.rootID, text)
+			m.runCommand(m.panel.composer, t.channelID, t.rootID, text, d)
+		} else {
+			m.panel.composer.Restore(d)
 		}
 	}
 	m.panel.composer.Suggest = m.suggester(func() string {
@@ -597,13 +606,19 @@ func (m *MainWindow) reloadSidebar() {
 		return
 	}
 	m.sidebarLoading = true
+	m.sidebarRetry.Stop()
 	go func() {
 		sb, err := m.fetchSidebar()
 		m.ui(func() {
 			m.sidebarLoading = false
 			if err != nil {
 				m.fail("load sidebar", err)
+				// Повторить: иначе до следующего обрыва WebSocket окно стояло бы
+				// пустым (или на снимке без сверки) — сам он повтора не даёт.
+				m.sidebarBackoff = min(max(m.sidebarBackoff*2, sidebarRetryMin), sidebarRetryMax)
+				m.sidebarRetry.Start(int(m.sidebarBackoff / time.Millisecond))
 			} else {
+				m.sidebarBackoff = 0
 				crtChanged := sb.CRT != m.st.CRT()
 				previewsChanged := sb.LinkPreviews != m.st.LinkPreviews()
 				oldFormat, _ := m.st.NameFormat()
@@ -662,11 +677,11 @@ func (m *MainWindow) fetchSidebar() (*store.Sidebar, error) {
 		return nil, fmt.Errorf("load teams of %s: %w", me.Username, err)
 	}
 	sb := &store.Sidebar{Teams: teams, Categories: map[string]*model.OrderedSidebarCategories{}}
-	// При ошибке часть настроек может быть прочитана, остальное — по умолчанию (без CRT).
+	// Настройки не прочитались — сайдбар не загружен: с пустыми (CRT выключен)
+	// все ленты и тред сбрасывались бы в другой режим, а следующей загрузкой — обратно.
 	settings, err := m.s.FetchSettings(ctx)
 	if err != nil {
-		m.log.Warn("load server settings", "err", err)
-		settings.LinkPreviews = true
+		return nil, err
 	}
 	sb.CRT, sb.MaxFileSize, sb.LinkPreviews, sb.SyncDrafts = settings.CRT, settings.MaxFileSize, settings.LinkPreviews, settings.SyncDrafts
 	sb.UnreadSection = settings.UnreadSection
@@ -966,6 +981,8 @@ func (m *MainWindow) fetchTimeline(id string, background bool, done func()) {
 					return
 				}
 				if resync {
+					// Удалённое по WebSocket, пока страница шла: в ней оно ещё есть, а post_deleted уже не придёт.
+					posts = slices.DeleteFunc(posts, func(p *model.Post) bool { return m.st.Deleted(p.Id) })
 					changed, removed := tl.Sync(posts, len(list.Order) >= pageSize, since)
 					m.mergeFeed(id, changed, removed)
 					return
@@ -1101,16 +1118,17 @@ func (m *MainWindow) markViewed(id, prev string) {
 	}()
 }
 
-func (m *MainWindow) send(text string, fileIDs []string, priority string) {
+func (m *MainWindow) send(text string, fileIDs []string, priority string, d *draft) {
 	id := m.current
 	if m.st.Channel(id) == nil {
+		m.composer.Restore(d)
 		return
 	}
 	// Нет связи — в очередь (outbox.go), отказ сервера — текст обратно в поле.
 	p := m.newPost(withPriority(&model.Post{ChannelId: id, Message: text, FileIds: fileIDs}, priority))
-	m.createPost(p, m.composer.Sent, func(err error) {
+	m.createPost(p, func() {}, func(err error) {
 		m.fail("send", fmt.Errorf("send to channel %s: %w", id, err))
-		m.composer.Restore()
+		m.composer.Restore(d)
 	})
 }
 
@@ -1166,6 +1184,8 @@ func (m *MainWindow) OnConnected() {
 		m.banner.hide()
 		m.composer.SetOffline(false)
 		m.panel.composer.SetOffline(false)
+		m.outbox.backoff = 0
+		m.outbox.retry.Stop()
 		m.flushOutbox()      // написанное без связи
 		m.away = awayUnknown // новое соединение: что за компьютером, сообщим заново
 		if !m.connectedOnce {
@@ -1190,7 +1210,11 @@ func (m *MainWindow) OnConnected() {
 		m.assets.Retry()
 		m.sched.reload()
 		if t := m.thread; t != nil {
-			m.openThread(t.rootID)
+			// Ответы за время обрыва потеряны: тред заново — без подъёма его
+			// окна, сброса панели и перехвата фокуса.
+			nt := &threadView{rootID: t.rootID, channelID: t.channelID, tl: &store.Timeline{}}
+			m.thread = nt
+			m.loadThread(nt, "", false)
 		}
 	})
 }

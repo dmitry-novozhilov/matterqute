@@ -52,8 +52,10 @@ func Entry(exe string) string {
 }
 
 // quoteExec — путь для Exec по спецификации Desktop Entry: в кавычках, если в
-// нём есть пробелы или спецсимволы; \ " ` $ внутри экранируются.
+// нём есть пробелы или спецсимволы; \ " ` $ внутри экранируются, % — это
+// код поля (%u), буквальный пишется как %%.
 func quoteExec(path string) string {
+	path = strings.ReplaceAll(path, "%", "%%")
 	if !strings.ContainsAny(path, " \t\n\"'\\><~|&;$*?#()`") {
 		return path
 	}

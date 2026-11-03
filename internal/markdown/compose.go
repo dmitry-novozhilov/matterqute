@@ -23,6 +23,7 @@ const (
 type Block struct {
 	Kind  BlockKind
 	Level int    // вложенность пункта списка: 0 — верхний уровень
+	Start int    // номер пункта нумерованного списка в исходном тексте; 0 — по порядку с 1
 	Spans []Span // текст с оформлением; у Code оформление не учитывается
 }
 
@@ -89,7 +90,8 @@ func FromBlocks(blocks []Block) string {
 			}
 			listKinds, widths, counters = listKinds[:keep], widths[:keep], counters[:keep]
 			if level == len(listKinds) {
-				listKinds, widths, counters = append(listKinds, int(b.Kind)), append(widths, 0), append(counters, 0)
+				// Первый пункт уровня задаёт номер (markdown нумерует дальше сам).
+				listKinds, widths, counters = append(listKinds, int(b.Kind)), append(widths, 0), append(counters, max(b.Start, 1)-1)
 			}
 			counters[level]++
 			marker := "-"

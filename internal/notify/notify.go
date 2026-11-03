@@ -33,25 +33,27 @@ type Notification struct {
 
 // Notifier шлёт уведомления; методы можно звать из любого потока.
 type Notifier struct {
-	conn   *dbus.Conn
-	obj    dbus.BusObject
-	app    string // имя приложения и его .desktop-файла
-	icon   string // иконка приложения, путь к файлу
-	markup bool   // сервер понимает разметку в тексте: <, > и & надо экранировать
+	conn    *dbus.Conn
+	obj     dbus.BusObject
+	app     string // имя приложения и его .desktop-файла
+	icon    string // иконка приложения, путь к файлу
+	desktop string // имя .desktop-файла без расширения: по нему сервер уведомлений связывает их с приложением
+	markup  bool   // сервер понимает разметку в тексте: <, > и & надо экранировать
 
 	mu     sync.Mutex
 	open   map[uint32]func(string)
 	tokens map[uint32]string // ActivationToken приходит перед ActionInvoked
 }
 
-// New подключается к сессионной шине. Ошибка — уведомлений не будет: нет шины
+// New подключается к сессионной шине; app — имя приложения для людей,
+// desktopEntry — имя его .desktop без расширения (подсказка desktop-entry). Ошибка — уведомлений не будет: нет шины
 // или некому их показывать.
-func New(app, icon string) (*Notifier, error) {
+func New(app, desktopEntry, icon string) (*Notifier, error) {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		return nil, fmt.Errorf("notifications: connect to session bus: %w", err)
 	}
-	n := &Notifier{conn: conn, obj: conn.Object(dest, path), app: app, icon: icon,
+	n := &Notifier{conn: conn, obj: conn.Object(dest, path), app: app, desktop: desktopEntry, icon: icon,
 		open: map[uint32]func(string){}, tokens: map[uint32]string{}}
 	var caps []string
 	if err := n.obj.Call(iface+".GetCapabilities", 0).Store(&caps); err != nil {
@@ -78,7 +80,7 @@ func (n *Notifier) Show(x Notification) (uint32, error) {
 		body = markupEscaper.Replace(body)
 	}
 	hints := map[string]dbus.Variant{
-		"desktop-entry": dbus.MakeVariant(n.app),
+		"desktop-entry": dbus.MakeVariant(n.desktop),
 		"category":      dbus.MakeVariant("im.received"),
 		"sound-name":    dbus.MakeVariant("message-new-instant"),
 	}

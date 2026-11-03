@@ -83,6 +83,10 @@ func (m *MainWindow) setupSidebar() {
 		}
 		e.SetDropAction(qt.CopyAction)
 		super(e)
+		// QAbstractItemView принимает предложенное действие, а с Shift это
+		// Move: Qt удалил бы строку сам и выбрал соседнюю. Нам нужна копия —
+		// сайдбар строится заново из категорий.
+		e.SetDropAction(qt.CopyAction)
 		mainthread.Start(func() {
 			if !m.closed {
 				m.moveChannel(team, id, cat, order)

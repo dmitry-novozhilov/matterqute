@@ -72,8 +72,9 @@ func (s *Session) FetchSettings(ctx context.Context) (Settings, error) {
 	if err != nil {
 		return Settings{}, describe(s.ServerURL, "load client config", resp, err)
 	}
+	// Нет ни одной настройки в категории — сервер может ответить 404: значит, по умолчанию.
 	prefs, resp, err := s.Client.GetPreferencesByCategory(ctx, s.Me.Id, model.PreferenceCategoryDisplaySettings)
-	if err != nil {
+	if err != nil && (resp == nil || resp.StatusCode != http.StatusNotFound) {
 		return Settings{}, describe(s.ServerURL, fmt.Sprintf("load %s preferences", model.PreferenceCategoryDisplaySettings), resp, err)
 	}
 	st := Settings{CRT: CRTEnabled(cfg, prefs), LinkPreviews: true}

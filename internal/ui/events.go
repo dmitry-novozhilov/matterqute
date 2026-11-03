@@ -17,6 +17,10 @@ import (
 func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 	data := ev.GetData()
 	me := m.s.Me.Id
+	bc := ev.GetBroadcast()
+	if bc == nil { // настоящий сервер кладёт его всегда; искажённый фрейм не должен ронять процесс
+		return nil, fmt.Errorf("event %s without broadcast", ev.EventType())
+	}
 	switch ev.EventType() {
 	case model.WebsocketEventPosted:
 		p, err := eventPost(data)
@@ -54,7 +58,7 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 	case model.WebsocketEventTyping:
 		user, _ := data["user_id"].(string)
 		parent, _ := data["parent_id"].(string)
-		ch := ev.GetBroadcast().ChannelId
+		ch := bc.ChannelId
 		return func() { m.applyTyping(ch, parent, user) }, nil
 
 	case model.WebsocketEventEphemeralMessage:
@@ -92,7 +96,7 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 			return nil, fmt.Errorf("reaction %s: %w", truncate(raw, 200), err)
 		}
 		added := ev.EventType() == model.WebsocketEventReactionAdded
-		channel := ev.GetBroadcast().ChannelId
+		channel := bc.ChannelId
 		return func() { m.applyReaction(channel, &r, added) }, nil
 
 	case model.WebsocketEventThreadUpdated:
@@ -159,7 +163,7 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 
 	case model.WebsocketEventPostUnread:
 		// Пометили непрочитанным (здесь или в другом клиенте): счётчики — с сервера.
-		ch := ev.GetBroadcast().ChannelId
+		ch := bc.ChannelId
 		if ch == "" {
 			return nil, fmt.Errorf("post_unread without channel: %v", data)
 		}
@@ -199,11 +203,11 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 	case model.WebsocketEventUserAdded, model.WebsocketEventUserRemoved:
 		// Шлётся всем участникам канала (и удалённому — ему одному, с
 		// channel_id); сайдбар меняется, только если это мы.
-		ch := ev.GetBroadcast().ChannelId
+		ch := bc.ChannelId
 		if ch == "" {
 			ch, _ = data["channel_id"].(string)
 		}
-		if data["user_id"] == me || ev.GetBroadcast().UserId == me {
+		if data["user_id"] == me || bc.UserId == me {
 			return func() {
 				m.reloadSidebar()
 				m.membersChanged(ch)
@@ -213,7 +217,7 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 
 	case model.WebsocketEventSidebarCategoryCreated, model.WebsocketEventSidebarCategoryUpdated,
 		model.WebsocketEventSidebarCategoryDeleted, model.WebsocketEventSidebarCategoryOrderUpdated:
-		if team := ev.GetBroadcast().TeamId; team != "" {
+		if team := bc.TeamId; team != "" {
 			return func() { m.reloadCategories(team) }, nil
 		}
 

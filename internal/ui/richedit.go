@@ -21,6 +21,7 @@ const (
 	propCode      = int(qt.QTextFormat__UserProperty) + 1 // символы: код
 	propQuote     = int(qt.QTextFormat__UserProperty) + 2 // абзац: цитата
 	propCodeBlock = int(qt.QTextFormat__UserProperty) + 3 // абзац: блок кода
+	propListStart = int(qt.QTextFormat__UserProperty) + 4 // абзац: номер первого пункта нумерованного списка в исходном тексте
 	boldWeight    = 600                                   // Plex SemiBold — самый жирный из зашитых
 	quoteIndent   = 14                                    // отступ цитаты: слева от текста — полоса
 )
@@ -37,6 +38,7 @@ func readBlocks(doc *qt.QTextDocument) []markdown.Block {
 		}
 		if l := b.TextList(); l != nil {
 			blk.Level = max(0, l.Format().Indent()-1)
+			blk.Start = b.BlockFormat().IntProperty(propListStart)
 		}
 		for it := b.Begin(); !it.AtEnd(); it.OperatorPlusPlus() {
 			fr := it.Fragment()
@@ -174,6 +176,13 @@ func writeBlocks(cur *qt.QTextCursor, blocks []markdown.Block) {
 			} else {
 				lists = append(lists, cur.CreateList(listFormat(b.Kind, level)))
 				kinds = append(kinds, b.Kind)
+				if b.Start > 0 {
+					// Редактор нумерует с 1 (QTextListFormat без start), а в
+					// markdown вернётся исходный номер.
+					bf := cur.BlockFormat()
+					bf.SetProperty(propListStart, qt.NewQVariant4(b.Start))
+					cur.SetBlockFormat(bf)
+				}
 			}
 		default:
 			lists, kinds = nil, nil

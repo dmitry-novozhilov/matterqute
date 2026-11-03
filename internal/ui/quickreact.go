@@ -124,7 +124,7 @@ func (q *quickBar) setIcon(b *qt.QToolButton, name string) {
 		return
 	}
 	b.SetIcon(qt.NewQIcon2(q.f.d.EmojiImage(name, 20, func() {
-		if slices.Contains(q.names, name) {
+		if !q.f.disposed && slices.Contains(q.names, name) {
 			q.refresh() // кастомное догрузилось
 		}
 	})))

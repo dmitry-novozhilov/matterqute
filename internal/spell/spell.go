@@ -295,8 +295,10 @@ func Words(text string) []Word {
 				continue
 			}
 			if strings.ContainsRune(".:/@", r) && i+size < len(text) {
+				// Внутри слова (адрес, путь, время) — часть токена; перед
+				// пробелом («слово: дальше») — конец слова.
 				next, _ := utf8.DecodeRuneInString(text[i+size:])
-				if unicode.IsLetter(next) || unicode.IsDigit(next) || r == '/' || r == ':' {
+				if unicode.IsLetter(next) || unicode.IsDigit(next) || next == '/' {
 					advance(r, size)
 					continue
 				}

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"github.com/zalando/go-keyring"
+
 	"errors"
 	"os"
 	"path/filepath"
@@ -89,5 +91,32 @@ func TestRemove(t *testing.T) {
 	c.Remove("https://a")
 	if len(c.Servers) != 0 || c.Active != "" {
 		t.Errorf("after removing the last server: %+v active %q", c.Servers, c.Active)
+	}
+}
+
+// Keyring есть: токен из файла (сохранён, пока keyring был недоступен)
+// переезжает в keyring, выход стирает его отовсюду, пустой файл не остаётся.
+func TestKeyringTokensMigrateFromFile(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "tokens.json")
+	if err := FileTokens(file).Set("https://a.example", "t1"); err != nil {
+		t.Fatal(err)
+	}
+	tk := &Tokens{Backend: "keyring", keyring: true, file: file}
+	if got, err := tk.Get("https://a.example"); err != nil || got != "t1" {
+		t.Fatalf("get from file via keyring backend = %q, %v", got, err)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Errorf("token not moved out of the file: %v", err)
+	}
+	if got, err := keyring.Get(appName, "https://a.example"); err != nil || got != "t1" {
+		t.Errorf("token not in keyring: %q, %v", got, err)
+	}
+	if err := tk.Delete("https://a.example"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tk.Get("https://a.example"); !errors.Is(err, ErrNoToken) {
+		t.Errorf("get after delete: %v, want ErrNoToken", err)
 	}
 }

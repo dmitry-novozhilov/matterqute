@@ -38,7 +38,7 @@ func TestThreadWindow(t *testing.T) {
 			t.Errorf("members closed the detached thread: thread %v", m.thread != nil)
 		}
 		// Ответ из окна.
-		m.sendReply("ответ из окна", nil, "")
+		m.sendReply("ответ из окна", nil, "", nil)
 		if !waitFor(t, "reply in the detached thread", func() bool {
 			last := fake.Last(root.ChannelId)
 			return last != nil && last.Message == "ответ из окна" && m.panel.feed.Has(last.Id)

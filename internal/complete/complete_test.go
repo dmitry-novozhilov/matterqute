@@ -33,6 +33,8 @@ func TestAt(t *testing.T) {
 		{"", Token{}, false},
 		{"просто текст", Token{}, false},
 		{"😀 @al", Token{User, "al", 3}, true},
+		{"a\u00a0@bo", Token{User, "bo", 3}, true}, // неразрывный пробел — тоже разделитель
+		{"a\u3000~tow", Token{Channel, "tow", 4}, true},
 	} {
 		got, ok := At(tc.before)
 		if ok != tc.ok || got != tc.want {

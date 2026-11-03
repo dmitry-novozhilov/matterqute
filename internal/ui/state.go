@@ -91,9 +91,16 @@ func (m *MainWindow) saveState(wait bool) {
 	}
 	if wait {
 		write()
-	} else {
-		go write()
+		return
 	}
+	go func() {
+		write()
+		m.ui(func() {
+			if m.statePath == "" { // пока писали, вышли из аккаунта: снимок с перепиской не должен остаться
+				os.Remove(path)
+			}
+		})
+	}()
 }
 
 // dropState — выход из аккаунта или сервер удалён: снимок прочь и больше не писать.

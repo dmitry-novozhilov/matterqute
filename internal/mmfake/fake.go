@@ -469,11 +469,14 @@ func (s *Server) seedPost(c *model.Channel, u *model.User, at time.Time, msg str
 func (s *Server) addPost(p *model.Post) {
 	s.posts[p.ChannelId] = append(s.posts[p.ChannelId], p)
 	c := s.channels[p.ChannelId]
+	c.LastPostAt = max(c.LastPostAt, p.CreateAt)
+	if p.IsJoinLeaveMessage() {
+		return // как сервер: вход и выход в счётчиках не считаются
+	}
 	c.TotalMsgCount++
 	if p.RootId == "" {
 		c.TotalMsgCountRoot++
 	}
-	c.LastPostAt = max(c.LastPostAt, p.CreateAt)
 	if m := s.members[p.UserId][p.ChannelId]; m != nil {
 		m.MsgCount, m.MsgCountRoot, m.LastViewedAt = c.TotalMsgCount, c.TotalMsgCountRoot, p.CreateAt
 	}

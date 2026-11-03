@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -38,11 +39,10 @@ const emojiMinQuery = 2
 // At — что дополнять, если до курсора стоит textBefore (текст строки до
 // курсора). Слово начинается знаком после пробела или с начала строки.
 func At(textBefore string) (Token, bool) {
-	start := strings.LastIndexFunc(textBefore, func(r rune) bool { return unicode.IsSpace(r) || r == '(' }) + 1
-	if start > 0 {
-		// LastIndexFunc вернул байт начала разделителя; пропускаем его целиком.
-		_, size := lastRune(textBefore[:start])
-		start += size - 1
+	start := 0
+	if i := strings.LastIndexFunc(textBefore, func(r rune) bool { return unicode.IsSpace(r) || r == '(' }); i >= 0 {
+		_, size := utf8.DecodeRuneInString(textBefore[i:])
+		start = i + size // разделитель бывает многобайтовым (неразрывный пробел)
 	}
 	word := textBefore[start:]
 	if word == "" {
@@ -81,15 +81,6 @@ func CommandAt(textBefore string) (Token, bool) {
 		return Token{}, false
 	}
 	return Token{Kind: Command, Query: textBefore[1:], Len: utf16Len(textBefore)}, true
-}
-
-func lastRune(s string) (rune, int) {
-	for i := len(s) - 1; i >= 0; i-- {
-		if r := []rune(s[i:]); len(r) == 1 {
-			return r[0], len(s) - i
-		}
-	}
-	return 0, 1
 }
 
 func isNameRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }

@@ -131,7 +131,7 @@ func startNotifier(log *slog.Logger) *notify.Notifier {
 			icon = path
 		}
 	}
-	n, err := notify.New(ui.AppTitle, icon)
+	n, err := notify.New(ui.AppTitle, strings.TrimSuffix(desktop.ID, ".desktop"), icon)
 	if err != nil {
 		log.Warn("desktop notifications off", "err", err)
 		return nil

@@ -22,8 +22,8 @@ func TestToBlocks(t *testing.T) {
 		{"raw stays", `snake_case \*не курсив\* :+1: @alice <https://x.y> ![a](b.png)`, []Block{{Kind: Para,
 			Spans: sp(`snake_case \*не курсив\* :+1: @alice <https://x.y> ![a](b.png)`)}}},
 		{"lines", "раз\nдва\n\nтри", []Block{{Kind: Para, Spans: sp("раз")}, {Kind: Para, Spans: sp("два")}, {Kind: Para}, {Kind: Para, Spans: sp("три")}}},
-		{"lists", "1. a\n   - a1\n2. b\n\nпосле", []Block{{Kind: Ordered, Spans: sp("a")}, {Kind: Bullet, Level: 1, Spans: sp("a1")},
-			{Kind: Ordered, Spans: sp("b")}, {Kind: Para, Spans: sp("после")}}},
+		{"lists", "1. a\n   - a1\n2. b\n\nпосле", []Block{{Kind: Ordered, Start: 1, Spans: sp("a")}, {Kind: Bullet, Level: 1, Spans: sp("a1")},
+			{Kind: Ordered, Start: 2, Spans: sp("b")}, {Kind: Para, Spans: sp("после")}}},
 		{"quote", "> так\n>\n> вот", []Block{{Kind: Quote, Spans: sp("так")}, {Kind: Quote}, {Kind: Quote, Spans: sp("вот")}}},
 		{"code", "смотри\n```\nx := **1**\n\n```\nготово", []Block{{Kind: Para, Spans: sp("смотри")}, {Kind: Code, Spans: sp("x := **1**")},
 			{Kind: Code, Spans: sp("")}, {Kind: Para, Spans: sp("готово")}}},
@@ -56,5 +56,35 @@ func TestToBlocksRoundTrip(t *testing.T) {
 		if got := FromBlocks(ToBlocks(src)); got != src {
 			t.Errorf("round trip:\n src %q\n got %q\nblocks %+v", src, got, ToBlocks(src))
 		}
+	}
+}
+
+// Правка без изменений не должна менять текст: номера списка, ленивая
+// строка цитаты, код отступом в пункте, заголовок ссылки со скобкой.
+func TestToBlocksKeepsSource(t *testing.T) {
+	for _, src := range []string{
+		"3. third\n4. fourth",
+		"2024. год",
+		"- a\n\n      code",
+		"1. раз\n   - вложенный\n2. два",
+	} {
+		if got := FromBlocks(ToBlocks(src)); got != src {
+			t.Errorf("round trip:\n src %q\n got %q\nblocks %+v", src, got, ToBlocks(src))
+		}
+	}
+	// Ленивая строка остаётся в цитате; заголовок ссылки теряется, но ссылка цела.
+	for src, want := range map[string]string{
+		"> q\nreply":               "> q\n> reply",
+		"> q\n>\nreply":            "> q\n>\n\nreply",
+		`[t](url "a)b") хвост`:     "[t](url) хвост",
+		`[t](url 'title') и *x*`:   "[t](url) и *x*",
+		"[t](https://x/y) и текст": "[t](https://x/y) и текст",
+	} {
+		if got := FromBlocks(ToBlocks(src)); got != want {
+			t.Errorf("ToBlocks(%q) → %q, want %q; blocks %+v", src, got, want, ToBlocks(src))
+		}
+	}
+	if b := ToBlocks("3. third")[0]; b.Kind != Ordered || b.Start != 3 {
+		t.Errorf("ordered start: %+v", b)
 	}
 }

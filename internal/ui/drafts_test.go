@@ -124,3 +124,44 @@ func TestDraftsInFile(t *testing.T) {
 		waitFor(t, "draft from the file after restart", func() bool { return m.composer.DraftText(m.current) == "только у себя" })
 	})
 }
+
+// Окно из снимка: набранное до того, как пришёл сайдбар с сервера (и
+// сохранённое пока в файл), сверка с сервером не стирает — наоборот, оно
+// уходит на сервер.
+func TestDraftTypedBeforeSidebar(t *testing.T) {
+	fake, s := startFake(t, model.CollapsedThreadsAlwaysOn)
+	cacheDir := t.TempDir()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	onMain(func() {
+		m := NewMainWindow(s, log, "", cacheDir)
+		if openTown(t, m) == nil {
+			m.Close()
+			return
+		}
+		town := m.current
+		m.Close()
+		st, err := readState(statePath(cacheDir, s.ServerURL))
+		if err != nil || st == nil {
+			t.Errorf("read state: %v", err)
+			return
+		}
+		m = NewMainWindow(mm.Offline(s.ServerURL, s.Token(), st.Me), log, town, cacheDir)
+		defer m.Close()
+		m.restore = st
+		m.w.Show()
+		m.Start()
+		// Ни одного ответа сервера ещё нет: набираем и «проходит» 0,8 с.
+		m.composer.edit.InsertPlainText("набрал до сайдбара")
+		m.drafts.save(false)
+		if m.drafts.server {
+			t.Error("storage chosen before the sidebar")
+		}
+		if !waitFor(t, "drafts synced with the server", func() bool { return m.sidebarOK && m.drafts.server && m.drafts.loaded }) {
+			return
+		}
+		waitFor(t, "typed draft on the server", func() bool { return fake.Draft(s.Me.Id, town, "") == "набрал до сайдбара" })
+		if got := m.composer.DraftText(town); got != "набрал до сайдбара" {
+			t.Errorf("draft typed before the sidebar: %q", got)
+		}
+	})
+}

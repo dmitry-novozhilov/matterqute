@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"time"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"matterqute/internal/store"
@@ -30,8 +32,49 @@ const (
 
 type outbox struct {
 	items   []*queued
-	sending bool  // идёт отправка очереди: по одному, по порядку
-	last    int64 // время в последнем pending_post_id: два в одну миллисекунду совпали бы
+	sending bool          // идёт отправка очереди: по одному, по порядку
+	last    int64         // время в последнем pending_post_id: два в одну миллисекунду совпали бы
+	retry   *qt.QTimer    // REST не отвечает при живом WebSocket (OnConnected не будет): повтор по таймеру
+	backoff time.Duration // пауза перед повтором: растёт до минуты, сбрасывается удачей
+}
+
+const (
+	outboxRetryMin = 10 * time.Second
+	outboxRetryMax = time.Minute
+)
+
+func (m *MainWindow) initOutbox() {
+	m.outbox.retry = qt.NewQTimer2(m.w.QObject)
+	m.outbox.retry.SetSingleShot(true)
+	m.outbox.retry.OnTimeout(m.flushOutbox)
+}
+
+// retryOutbox — запрос не дошёл, а соединение, по мнению WebSocket, есть:
+// OnConnected не придёт, повторим сами.
+func (m *MainWindow) retryOutbox() {
+	o := &m.outbox
+	if !m.online {
+		return
+	}
+	o.backoff = min(max(o.backoff*2, outboxRetryMin), outboxRetryMax)
+	o.retry.Start(int(o.backoff / time.Millisecond))
+}
+
+// waiting — в очереди есть ждущие связи (не отказанные сервером).
+func (o *outbox) waiting() bool {
+	return slices.ContainsFunc(o.items, func(q *queued) bool { return q.err == "" })
+}
+
+// alreadyPosted — пост с таким pending_post_id уже пришёл (по WebSocket, пока
+// ответ на отправку не дошёл): отправлять снова не надо.
+func (m *MainWindow) alreadyPosted(p *model.Post) bool {
+	has := func(tl *store.Timeline) bool {
+		return tl != nil && slices.ContainsFunc(tl.Posts, func(q *model.Post) bool { return q.PendingPostId == p.PendingPostId && !isQueued(q) })
+	}
+	if t := m.thread; t != nil && p.RootId == t.rootID && has(t.tl) {
+		return true
+	}
+	return has(m.st.Timeline(p.ChannelId))
 }
 
 type queued struct {
@@ -92,9 +135,11 @@ func offline(resp *model.Response, err error) bool {
 // createPost — отправить p (из поля ввода): связи нет — сразу в очередь;
 // не дошло — в очередь; ушло — sent и пост в ленты; отказ сервера — failed.
 func (m *MainWindow) createPost(p *model.Post, sent func(), failed func(err error)) {
-	if !m.online {
+	if !m.online || m.outbox.waiting() {
+		// Нет связи — или очередь ещё не ушла: новое — за ней, по порядку.
 		m.enqueue(p)
 		sent()
+		m.flushOutbox()
 		return
 	}
 	go func() {
@@ -103,10 +148,13 @@ func (m *MainWindow) createPost(p *model.Post, sent func(), failed func(err erro
 		created, resp, err := m.s.Client.CreatePost(ctx, p)
 		m.ui(func() {
 			switch {
+			case offline(resp, err) && m.alreadyPosted(p):
+				sent() // сервер пост создал, ответ не дошёл — пост уже пришёл по WebSocket
 			case offline(resp, err):
 				m.log.Warn("send: no connection, queued", "channel", p.ChannelId, "err", err)
 				m.enqueue(p)
 				sent()
+				m.retryOutbox()
 			case err != nil:
 				failed(err)
 			default:
@@ -200,9 +248,12 @@ func (m *MainWindow) flushOutbox() {
 		m.ui(func() {
 			o.sending = false
 			switch {
+			case offline(resp, err) && m.alreadyPosted(q.post):
+				m.queuedPosted(q.post) // дошло, а ответ — нет; пост уже пришёл по WebSocket
 			case offline(resp, err):
 				m.log.Warn("send queued: still no connection", "err", err)
-				return // ждём OnConnected
+				m.retryOutbox() // при обрыве WebSocket это ещё и OnConnected
+				return
 			case err != nil:
 				if o.find(q.post.Id) != nil {
 					m.log.Warn("send queued", "channel", q.post.ChannelId, "err", err)
@@ -210,6 +261,7 @@ func (m *MainWindow) flushOutbox() {
 					m.refreshQueued(q.post)
 				}
 			default:
+				o.backoff = 0
 				created.PendingPostId = q.post.PendingPostId
 				m.queuedPosted(created)
 				m.applyPosted(store.NewPost{Post: created})

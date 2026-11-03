@@ -59,6 +59,7 @@ type Composer struct {
 	typing           bool   // идёт набор с клавиатуры: курсор сдвинул ввод, а не переход
 
 	editID   string     // правится своё сообщение с этим id; пусто — пишется новое
+	editOrig string     // текст правимого сообщения, каким его загрузили в поле
 	stash    *draft     // черновик, отложенный на время правки
 	editBar  *qt.QFrame // «Редактирование сообщения» над полем
 	editText *qt.QLabel
@@ -74,7 +75,6 @@ type Composer struct {
 	files       []*attachment
 	drafts      map[string]*draft
 	lastID      int
-	sent        *draft // отправляется: вернуть в черновик, если отправка не удалась
 	unsubscribe func()
 
 	// Suggest — подсказки для слова под курсором (@, #, ~, :); show можно
@@ -86,18 +86,19 @@ type Composer struct {
 	dismissed string         // Esc: для этого слова список больше не открывать
 
 	// OnSend — отправить; priority — метка сообщения (priority.go), "" — без неё.
-	OnSend func(text string, fileIDs []string, priority string)
+	// OnSend — отправить; d — что ушло из поля: не вышло — Restore(d).
+	OnSend func(text string, fileIDs []string, priority string, d *draft)
 	// OnEdit — сохранить правку сообщения id (text пустой — сообщение стёрли).
 	OnEdit func(id, text string, blocks []markdown.Block)
 	// OnEditLast — ↑ в пустом поле: править последнее своё сообщение.
 	OnEditLast func()
 	// OnCommand — сообщение — слэш-команда («/away»): выполнить на сервере.
 	// Не вышло — Restore; команды нет — OfferAsText.
-	OnCommand func(text string)
+	OnCommand func(text string, d *draft)
 	// OnLater — «Отправить позже»: выбрать время (потом — ScheduleAt).
 	OnLater func()
 	// OnSchedule — отложить отправку того, что было в поле, на at.
-	OnSchedule func(text string, fileIDs []string, at time.Time)
+	OnSchedule func(text string, fileIDs []string, at time.Time, d *draft)
 	// OnShowScheduled — «показать» в подсказке об отложенных.
 	OnShowScheduled func()
 	// OnEmoji — кнопка эмодзи: окно выбора у точки at (глобальной), выбор — InsertEmoji.
@@ -629,12 +630,10 @@ func (c *Composer) UploadFailed(id int, err error) {
 }
 
 func (c *Composer) find(id int) *attachment {
+	// В отправленном (commit) незагруженных файлов нет: pending их не пропускает.
 	lists := [][]*attachment{c.files}
 	for _, d := range c.drafts {
 		lists = append(lists, d.files)
-	}
-	if c.sent != nil {
-		lists = append(lists, c.sent.files)
 	}
 	for _, l := range lists {
 		if i := slices.IndexFunc(l, func(a *attachment) bool { return a.id == id }); i >= 0 {
@@ -740,10 +739,17 @@ func (c *Composer) uploading() bool {
 func (c *Composer) send() {
 	if c.editID != "" {
 		blocks := readBlocks(c.edit.Document())
+		text := strings.TrimSpace(markdown.FromBlocks(blocks))
+		if !c.edit.Document().IsModified() && text == c.editOrig {
+			// Ничего не меняли — нечего и сохранять: разметка, которой редактор
+			// не умеет (заголовок ссылки и т. п.), при пересборке текста изменилась бы.
+			c.CancelEdit()
+			return
+		}
 		id := c.editID
 		c.CancelEdit()
 		if c.OnEdit != nil {
-			c.OnEdit(id, strings.TrimSpace(markdown.FromBlocks(blocks)), blocks)
+			c.OnEdit(id, text, blocks)
 		}
 		return
 	}
@@ -755,16 +761,15 @@ func (c *Composer) send() {
 		return
 	}
 	if strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "//") && len(ids) == 0 && c.OnCommand != nil && text != c.asText {
-		c.sent = &draft{key: c.key, blocks: blocks}
+		d := &draft{key: c.key, blocks: blocks}
 		c.setBlocks(nil)
 		c.hint.SetVisible(false)
-		c.OnCommand(text)
+		c.OnCommand(text, d)
 		return
 	}
 	c.asText = ""
 	priority := c.priority
-	c.commit(blocks, files)
-	c.OnSend(text, ids, priority)
+	c.OnSend(text, ids, priority, c.commit(blocks, files))
 }
 
 // pending — что отправить: текст (markdown Mattermost) и загруженные файлы.
@@ -785,14 +790,16 @@ func (c *Composer) pending() (text string, ids []string, blocks []markdown.Block
 	return text, ids, blocks, files, text != "" || len(ids) > 0
 }
 
-// commit — отправляемое ушло из поля: запомнить его для Restore, поле очистить.
-func (c *Composer) commit(blocks []markdown.Block, files []*attachment) {
-	c.sent = &draft{key: c.key, blocks: blocks, files: files, priority: c.priority}
+// commit — отправляемое ушло из поля: поле очистить, а ушедшее отдать —
+// для Restore, если отправка не удастся.
+func (c *Composer) commit(blocks []markdown.Block, files []*attachment) *draft {
+	d := &draft{key: c.key, blocks: blocks, files: files, priority: c.priority}
 	c.setPriority("")
 	c.setBlocks(nil)
 	c.files = slices.DeleteFunc(c.files, func(a *attachment) bool { return a.fileID != "" })
 	c.renderChips()
 	c.hint.SetVisible(false)
+	return d
 }
 
 // ScheduleAt — «Отправить позже» на время at: то, что в поле, уходит в
@@ -805,8 +812,7 @@ func (c *Composer) ScheduleAt(at time.Time) bool {
 	if !ok {
 		return false
 	}
-	c.commit(blocks, files)
-	c.OnSchedule(text, ids, at)
+	c.OnSchedule(text, ids, at, c.commit(blocks, files))
 	return true
 }
 
@@ -820,31 +826,34 @@ func (c *Composer) SetScheduledNote(n int) {
 	}
 }
 
-// Restore возвращает неотправленное в черновик того канала (треда), откуда
-// отправляли, — даже если пользователь уже ушёл в другой.
-func (c *Composer) Restore() {
-	s := c.sent
-	c.sent = nil
+// Restore возвращает неотправленное s (из commit) в черновик того канала
+// (треда), откуда отправляли, — даже если пользователь уже ушёл в другой.
+// Если там уже что-то набрали (или идёт правка — тогда в отложенный
+// черновик), неотправленное встаёт перед набранным: текст не теряется.
+func (c *Composer) Restore(s *draft) {
 	if s == nil {
 		return
 	}
-	if s.key != c.key {
+	if s.key != c.key || c.editID != "" {
 		d := c.drafts[s.key]
-		if d == nil {
+		if c.editID != "" && s.key == c.key {
+			if c.stash == nil {
+				c.stash = &draft{key: c.key}
+			}
+			d = c.stash
+		} else if d == nil {
 			d = &draft{key: s.key}
 			c.drafts[s.key] = d
 		}
-		if blocksEmpty(d.blocks) {
-			d.blocks = s.blocks
-		}
+		d.blocks = joinBlocks(s.blocks, d.blocks)
 		if d.priority == "" {
 			d.priority = s.priority
 		}
 		d.files = append(s.files, d.files...)
 		return
 	}
-	if c.empty() {
-		c.setBlocks(s.blocks)
+	if !blocksEmpty(s.blocks) {
+		c.setBlocks(joinBlocks(s.blocks, readBlocks(c.edit.Document())))
 	}
 	if c.priority == "" {
 		c.setPriority(s.priority)
@@ -853,8 +862,16 @@ func (c *Composer) Restore() {
 	c.renderChips()
 }
 
-// Sent — отправка прошла, возвращать нечего.
-func (c *Composer) Sent() { c.sent = nil }
+// joinBlocks — first, пустая строка, then; пустое с любой стороны — другое как есть.
+func joinBlocks(first, then []markdown.Block) []markdown.Block {
+	switch {
+	case blocksEmpty(then):
+		return first
+	case blocksEmpty(first):
+		return then
+	}
+	return append(append(slices.Clone(first), markdown.Block{}), then...)
+}
 
 // token — слово под курсором для подсказок и позиция его начала.
 func (c *Composer) token() (complete.Token, int, bool) {
@@ -1035,8 +1052,9 @@ func (c *Composer) StartEditWith(id, label string, blocks []markdown.Block) {
 		c.files = nil
 		c.renderChips()
 	}
-	c.editID = id
+	c.editID, c.editOrig = id, strings.TrimSpace(markdown.FromBlocks(blocks))
 	c.setBlocks(blocks)
+	c.edit.Document().SetModifiedWithBool(false) // Enter без правок ничего не отправит
 	c.editText.SetText(label)
 	c.editBar.Show()
 	c.attach.SetEnabled(false)

@@ -142,8 +142,9 @@ func aboutHTML() string {
 	return fmt.Sprintf(`<p style="font-size:18px;font-weight:600;margin:0">%s</p>`+
 		`<p style="margin-top:2px;color:%s">Десктопный клиент Mattermost на Go и Qt</p>`+
 		`<p style="margin-top:12px">Сборка: %s<br>Qt %s, %s</p>`+
-		`<p style="margin-top:12px;font-size:12px;color:%s">Внутри: шрифты IBM Plex Sans, PT Mono, Noto Color Emoji (OFL), `+
-		`клиент Mattermost (Apache-2.0), Qt (LGPL), MIQT (MIT).</p>`,
+		`<p style="margin-top:12px;font-size:12px;color:%s">Matterqute — MIT. Внутри: шрифты IBM Plex Sans, PT Mono, Noto Color Emoji (OFL), `+
+		`значки Lucide (ISC, часть из Feather — MIT), разделы эмодзи из данных Unicode (Unicode License V3), `+
+		`клиент Mattermost (Apache-2.0), goldmark и chroma (MIT), Qt (LGPL), MIQT (MIT).</p>`,
 		AppTitle, pal.Tx2, html.EscapeString(buildVersion()), qt.QLibraryInfo_Version().ToString(), runtime.Version(), pal.Tx2)
 }
 

@@ -20,7 +20,8 @@ func TestComposerFormatting(t *testing.T) {
 		defer c.w.Close()
 		defer c.dispose()
 		sent := "—"
-		c.OnSend = func(text string, _ []string, _ string) { sent = text }
+		var last *draft
+		c.OnSend = func(text string, _ []string, _ string, d *draft) { sent, last = text, d }
 		c.w.Resize(700, 240)
 		c.w.Show()
 		c.edit.SetFocus()
@@ -244,9 +245,16 @@ func TestComposerFormatting(t *testing.T) {
 		// Неудачная отправка возвращает оформленное.
 		typeText("**вернуть**")
 		send()
-		c.Restore()
+		c.Restore(last)
 		if b := readBlocks(c.edit.Document()); len(b) != 1 || !b[0].Spans[0].Bold {
 			t.Errorf("restored draft %+v", b)
+		}
+		// Пока ждали ответа, набрали новое: неотправленное — перед ним, ничего не пропало.
+		send()
+		typeText("новое")
+		c.Restore(last)
+		if got := markdown.PlainText(markdown.FromBlocks(readBlocks(c.edit.Document()))); got != "вернуть\nновое" {
+			t.Errorf("restored before the new text: %q", got)
 		}
 	})
 }

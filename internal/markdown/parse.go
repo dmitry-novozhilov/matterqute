@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -56,6 +57,7 @@ func ToBlocks(src string) []Block {
 			items = nil
 			continue
 		}
+		blank := skipped // перед этой строкой была пустая (после списка или цитаты)
 		skipped = false
 		if m := fenceRe.FindStringSubmatch(l); m != nil {
 			fence, items = m[1], nil
@@ -70,11 +72,12 @@ func ToBlocks(src string) []Block {
 			for len(items) > 0 && indent < items[len(items)-1].content {
 				items = items[:len(items)-1]
 			}
-			kind := Bullet
+			kind, start := Bullet, 0
 			if strings.ContainsAny(marker, ".)") {
 				kind = Ordered
+				start, _ = strconv.Atoi(marker[:len(marker)-1])
 			}
-			out = append(out, Block{Kind: kind, Level: len(items), Spans: inlineSpans(m[3])})
+			out = append(out, Block{Kind: kind, Level: len(items), Start: start, Spans: inlineSpans(m[3])})
 			items = append(items, item{indent, indent + len(marker) + 1})
 			continue
 		}
@@ -83,8 +86,20 @@ func ToBlocks(src string) []Block {
 			items = nil
 			continue
 		}
+		if b := last(); b != nil && b.Kind == Quote && len(b.Spans) > 0 && !blank {
+			// «Ленивая» строка без «>» по CommonMark продолжает абзац цитаты.
+			b.Spans = appendSpans(b.Spans, Span{Text: " "})
+			b.Spans = appendSpans(b.Spans, inlineSpans(l)...)
+			continue
+		}
 		if b := last(); b != nil && (b.Kind == Bullet || b.Kind == Ordered) && len(items) > 0 &&
 			len(l)-len(strings.TrimLeft(l, " ")) >= items[len(items)-1].content {
+			if blank && len(l)-len(strings.TrimLeft(l, " ")) >= items[len(items)-1].content+4 {
+				// Блок кода отступом внутри пункта: редактор такого не умеет — как есть.
+				out = append(out, plainBlock(l))
+				items = nil
+				continue
+			}
 			// Продолжение пункта с новой строки.
 			b.Spans = appendSpans(b.Spans, Span{Text: " "})
 			b.Spans = appendSpans(b.Spans, inlineSpans(strings.TrimLeft(l, " "))...)
@@ -248,6 +263,15 @@ func rawRange(n ast.Node, src []byte) (start, end int, ok bool) {
 			switch src[i] {
 			case '\\':
 				i++
+			case '"', '\'':
+				// Заголовок ссылки в кавычках (после пробела): скобки внутри — текст.
+				if q := src[i]; i > end+2 && (src[i-1] == ' ' || src[i-1] == '\t') {
+					for i++; i < len(src) && src[i] != q; i++ {
+						if src[i] == '\\' {
+							i++
+						}
+					}
+				}
 			case '(':
 				depth++
 			case ')':

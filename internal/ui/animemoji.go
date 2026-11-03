@@ -69,18 +69,21 @@ func (a *Assets) OnEmojiFrame(name string, f func()) (cancel func()) {
 	}
 	return func() {
 		delete(an.subs, id)
-		if len(an.subs) == 0 {
+		if len(an.subs) == 0 && an.movie == mv { // после stopAnimations QMovie уже удалён
 			mv.Stop()
 		}
 	}
 }
 
-// stopAnimations — окно сервера закрывается.
+// stopAnimations — окно сервера закрывается. Подписчики, которые отпишутся
+// позже (окно выбора эмодзи — по destroyed своего виджета, после удаления
+// QMovie), по an.movie == nil поймут, что останавливать нечего.
 func (a *Assets) stopAnimations() {
 	for name, an := range a.anims {
 		if an.movie != nil {
 			an.movie.Stop()
 			an.movie.DeleteLater()
+			an.movie = nil
 		}
 		delete(a.anims, name)
 	}

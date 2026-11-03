@@ -76,7 +76,8 @@ func TestDraftList(t *testing.T) {
 		m.deleteDraft(draftKey{channel: town, root: root.Id})
 		settle()
 		if m.draftCount() != 0 || m.items[draftsID] != nil {
-			t.Errorf("drafts left %d, row %v", m.draftCount(), m.items[draftsID] != nil)
+			t.Errorf("drafts left %d, row %v; channel %v thread %v synced %v pending %v", m.draftCount(), m.items[draftsID] != nil,
+				m.composer.DraftKeys(), m.panel.composer.DraftKeys(), m.drafts.synced, m.drafts.pending)
 		}
 	})
 }

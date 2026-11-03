@@ -100,7 +100,7 @@ func TestEditDeletePost(t *testing.T) {
 		if !waitFor(t, "thread", func() bool { return len(m.panel.feed.items) == 4 }) {
 			return
 		}
-		m.sendReply("мой ответ", nil, "")
+		m.sendReply("мой ответ", nil, "", nil)
 		if !waitFor(t, "own reply", func() bool { return last(m.panel.feed).Message == "мой ответ" }) {
 			return
 		}

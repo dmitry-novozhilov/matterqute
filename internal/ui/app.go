@@ -21,7 +21,12 @@ import (
 	"matterqute/internal/mm"
 )
 
-const requestTimeout = 30 * time.Second
+const (
+	requestTimeout = 30 * time.Second
+	// Повтор загрузки сайдбара после ошибки: от 5 с, удваивая до минуты.
+	sidebarRetryMin = 5 * time.Second
+	sidebarRetryMax = time.Minute
+)
 
 // App решает, что показать в окне. Серверов может быть несколько: у каждого,
 // куда вошли, своё окно, свой WebSocket, свои уведомления и счётчик; показан

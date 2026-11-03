@@ -6,6 +6,7 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -285,11 +286,13 @@ func (c *Cache) FetchFile(ctx context.Context, fi *model.FileInfo) (string, erro
 		if st, err := os.Stat(path); err == nil && st.Size() == fi.Size {
 			return path, nil
 		}
-		data, _, err := c.c.GetFile(ctx, fi.Id)
+		// Потоком на диск: вложение бывает размером с видео, в памяти целиком ему не место.
+		r, err := c.c.DoAPIGet(ctx, "/files/"+fi.Id, "")
 		if err != nil {
 			return "", fmt.Errorf("download file %s (%q) from %s: %w", fi.Id, fi.Name, c.server, err)
 		}
-		return c.save(path, data)
+		defer r.Body.Close()
+		return c.saveFrom(path, r.Body)
 	})
 }
 
@@ -337,6 +340,11 @@ func (c *Cache) do(key string, f func() (string, error)) (string, error) {
 }
 
 func (c *Cache) save(path string, data []byte) (string, error) {
+	return c.saveFrom(path, bytes.NewReader(data))
+}
+
+// saveFrom — содержимое r в path атомарно (через временный файл рядом).
+func (c *Cache) saveFrom(path string, r io.Reader) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("cache %s: %w", path, err)
 	}
@@ -345,7 +353,7 @@ func (c *Cache) save(path string, data []byte) (string, error) {
 		return "", fmt.Errorf("cache %s: %w", path, err)
 	}
 	defer os.Remove(tmp.Name())
-	_, err = tmp.Write(data)
+	_, err = io.Copy(tmp, r)
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}

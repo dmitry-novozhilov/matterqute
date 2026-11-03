@@ -44,6 +44,7 @@ func TestQuoteExec(t *testing.T) {
 		"/usr/bin/matterqute": "/usr/bin/matterqute",
 		"/a b/c":              `"/a b/c"`,
 		`/a $x/"q"`:           `"/a \\$x/\\"q\\""`,
+		"/home/me/dl%20/mq":   "/home/me/dl%%20/mq", // % — код поля: буквальный удваивается
 	} {
 		if got := quoteExec(in); got != want {
 			t.Errorf("quoteExec(%q) = %q, want %q", in, got, want)

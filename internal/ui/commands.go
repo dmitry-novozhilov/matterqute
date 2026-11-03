@@ -17,7 +17,7 @@ import (
 const commandNotFound = "api.command.execute_command.not_found.app_error"
 
 // runCommand выполняет text из поля c в канале channelID (rootID — в треде).
-func (m *MainWindow) runCommand(c *Composer, channelID, rootID, text string) {
+func (m *MainWindow) runCommand(c *Composer, channelID, rootID, text string, d *draft) {
 	team := m.teamOf(channelID)
 	args := &model.CommandArgs{ChannelId: channelID, TeamId: team, RootId: rootID, Command: text}
 	data, _ := json.Marshal(args)
@@ -32,7 +32,7 @@ func (m *MainWindow) runCommand(c *Composer, channelID, rootID, text string) {
 		}
 		m.ui(func() {
 			if err != nil {
-				c.Restore()
+				c.Restore(d)
 				var appErr *model.AppError
 				if errors.As(err, &appErr) && appErr.Id == commandNotFound {
 					c.OfferAsText(text)
@@ -42,7 +42,6 @@ func (m *MainWindow) runCommand(c *Composer, channelID, rootID, text string) {
 				c.ShowHint("Команда не выполнена: " + commandError(err))
 				return
 			}
-			c.Sent()
 			if resp.GotoLocation != "" {
 				m.gotoLocation(resp.GotoLocation)
 			}

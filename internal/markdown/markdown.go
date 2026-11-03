@@ -133,6 +133,8 @@ func (r *qtRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(ast.KindCodeBlock, r.codeBlock)
 	reg.Register(ast.KindHTMLBlock, r.htmlBlock)
 	reg.Register(ast.KindRawHTML, r.rawHTML)
+	reg.Register(ast.KindLink, r.link)
+	reg.Register(ast.KindAutoLink, r.autoLink)
 	reg.Register(ast.KindImage, r.image)
 	reg.Register(ast.KindBlockquote, r.blockquote)
 	reg.Register(ast.KindHeading, r.heading)
@@ -384,6 +386,72 @@ func (r *qtRenderer) rawHTML(w util.BufWriter, source []byte, node ast.Node, ent
 	return ast.WalkSkipChildren, nil
 }
 
+// linkSchemeRe — схема в начале адреса ссылки (CommonMark: буква, потом буквы, цифры, «+.-»).
+var linkSchemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.\-]*:`)
+
+// linkAllowed — ссылка из текста пользователя может быть только тем, что
+// окно открывает (http, https, mailto), или относительным адресом. Ссылки
+// mm-* (реакция, кнопка интеграции, очередь отправки) лента исполняет сама,
+// а QUrl приводит схему к нижнему регистру — чужой текст подделать их не
+// должен; javascript: и прочее Qt не исполнит, но и показывать ссылкой незачем.
+func linkAllowed(dest []byte) bool {
+	m := linkSchemeRe.Find(dest)
+	if m == nil {
+		return true
+	}
+	switch strings.ToLower(string(m[:len(m)-1])) {
+	case "http", "https", "mailto":
+		return true
+	}
+	return false
+}
+
+// link — как renderLink goldmark, но адрес с чужой схемой — просто текст ссылки.
+func (r *qtRenderer) link(w util.BufWriter, _ []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	n := node.(*ast.Link)
+	if !linkAllowed(n.Destination) {
+		return ast.WalkContinue, nil
+	}
+	if entering {
+		w.WriteString(`<a href="`)
+		w.Write(util.EscapeHTML(util.URLEscape(n.Destination, true)))
+		w.WriteByte('"')
+		if n.Title != nil {
+			w.WriteString(` title="`)
+			r.Writer.Write(w, n.Title)
+			w.WriteByte('"')
+		}
+		w.WriteByte('>')
+	} else {
+		w.WriteString("</a>")
+	}
+	return ast.WalkContinue, nil
+}
+
+// autoLink — как renderAutoLink goldmark (автоссылки <…> и Linkify), но
+// адрес с чужой схемой — текстом.
+func (r *qtRenderer) autoLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	n := node.(*ast.AutoLink)
+	if !entering {
+		return ast.WalkContinue, nil
+	}
+	dest := n.URL(source)
+	label := n.Label(source)
+	if n.AutoLinkType == ast.AutoLinkEmail && !bytes.HasPrefix(bytes.ToLower(dest), []byte("mailto:")) {
+		dest = append([]byte("mailto:"), dest...)
+	}
+	if !linkAllowed(dest) {
+		w.Write(util.EscapeHTML(label))
+		return ast.WalkContinue, nil
+	}
+	w.WriteString(`<a href="`)
+	w.Write(util.EscapeHTML(util.URLEscape(dest, false)))
+	w.WriteString(`">`)
+	w.Write(util.EscapeHTML(label))
+	w.WriteString(`</a>`)
+	return ast.WalkContinue, nil
+}
+
 // image: картинки по ссылкам не грузим — показываем ссылкой.
 func (r *qtRenderer) image(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	if !entering {
@@ -391,14 +459,20 @@ func (r *qtRenderer) image(w util.BufWriter, source []byte, node ast.Node, enter
 	}
 	n := node.(*ast.Image)
 	var alt bytes.Buffer
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
+	// Весь текст подписи, и внутри выделения и кода.
+	ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
+		if t, ok := c.(*ast.Text); ok && entering {
 			alt.Write(t.Segment.Value(source))
 		}
-	}
+		return ast.WalkContinue, nil
+	})
 	label := alt.String()
 	if label == "" {
 		label = string(n.Destination)
+	}
+	if !linkAllowed(n.Destination) {
+		w.WriteString(html.EscapeString(label))
+		return ast.WalkSkipChildren, nil
 	}
 	w.WriteString(`<a href="` + html.EscapeString(string(util.URLEscape(n.Destination, true))) + `">🖼 ` + html.EscapeString(label) + `</a>`)
 	return ast.WalkSkipChildren, nil

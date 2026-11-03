@@ -69,3 +69,14 @@ func TestChecker(t *testing.T) {
 		c2.Close()
 	}
 }
+
+// Двоеточие и слеш перед пробелом кончают слово, а внутри адреса или пути — нет.
+func TestWordsBeforeColon(t *testing.T) {
+	var got []string
+	for _, w := range Words("слово: дальше http://x.y/z путь/к тест/ конец") {
+		got = append(got, w.Text)
+	}
+	if want := []string{"слово", "дальше", "тест", "конец"}; !slices.Equal(got, want) {
+		t.Errorf("words %q\nwant  %q", got, want)
+	}
+}

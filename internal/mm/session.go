@@ -28,7 +28,7 @@ type Session struct {
 	Me        *model.User
 
 	wsMu sync.Mutex
-	ws   *model.WebSocketClient // текущее соединение realtime; nil — нет
+	ws   *wsOut // писатель текущего соединения realtime; nil — нет
 }
 
 func (s *Session) Token() string { return s.Client.AuthToken }

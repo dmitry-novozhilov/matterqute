@@ -306,16 +306,17 @@ func emojiPixmapSized(char string, size int) *qt.QPixmap {
 // pickReaction — окно выбора у курсора; выбранное эмодзи ставится реакцией
 // (если уже стоит наша — ничего не меняем).
 func (m *MainWindow) pickReaction(p *model.Post) {
-	m.pickEmoji(m.w, qt.QCursor_Pos(), func(name string) {
+	m.pickEmoji(m.w, qt.QCursor_Pos(), false, func(name string) {
 		if !HasReaction(p, m.s.Me.Id, name) {
 			m.toggleReaction(p, name)
 		}
 	})
 }
 
-// pickEmoji — окно выбора эмодзи у точки pos (глобальной); parent — чьё это
-// всплывающее окно (из модального диалога — сам диалог, иначе ввод заблокирован).
-func (m *MainWindow) pickEmoji(parent *qt.QWidget, pos *qt.QPoint, onPick func(name string)) {
+// pickEmoji — окно выбора эмодзи у точки pos (глобальной): ниже неё, above —
+// выше (у поля ввода внизу окна); parent — чьё это всплывающее окно (из
+// модального диалога — сам диалог, иначе ввод заблокирован).
+func (m *MainWindow) pickEmoji(parent *qt.QWidget, pos *qt.QPoint, above bool, onPick func(name string)) {
 	var picker *emojiPicker
 	var stop []func()
 	update := func() {
@@ -348,12 +349,13 @@ func (m *MainWindow) pickEmoji(parent *qt.QWidget, pos *qt.QPoint, onPick func(n
 		}
 	})
 	picker.w.AdjustSize()
-	// В пределах экрана: окно выше и левее курсора, если не помещается.
+	// В пределах экрана: окно выше (ниже) и левее точки, если не помещается.
 	scr := m.w.Screen().AvailableGeometry()
 	x := min(pos.X(), scr.X()+scr.Width()-picker.w.Width())
-	y := pos.Y() + 8
-	if y+picker.w.Height() > scr.Y()+scr.Height() {
-		y = pos.Y() - picker.w.Height() - 8
+	below, up := pos.Y()+8, pos.Y()-picker.w.Height()-8
+	y := below
+	if above && up >= scr.Y() || !above && below+picker.w.Height() > scr.Y()+scr.Height() {
+		y = up
 	}
 	picker.w.Move(max(x, scr.X()), max(y, scr.Y()))
 	picker.w.Show()
@@ -439,7 +441,19 @@ func (m *MainWindow) quickReactions() []string {
 	return quickReactions(m.recent)
 }
 
-// useEmoji — эмодзи поставили реакцией: в недавние и на сервер (общие с веб-клиентом).
+// emojiFor — кнопка эмодзи поля c: окно выбора над кнопкой, выбранное — в
+// текст и в недавние (как у веб-клиента).
+func (m *MainWindow) emojiFor(c *Composer) {
+	c.OnEmoji = func(at *qt.QPoint) {
+		m.pickEmoji(m.w, at, true, func(name string) {
+			m.useEmoji(name)
+			c.InsertEmoji(name)
+		})
+	}
+}
+
+// useEmoji — эмодзи поставили реакцией или вставили в текст: в недавние и на
+// сервер (общие с веб-клиентом).
 func (m *MainWindow) useEmoji(name string) {
 	m.recent = m.recent.Add(name)
 	value, _ := json.Marshal(m.recent)

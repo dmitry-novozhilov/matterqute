@@ -12,6 +12,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"matterqute/internal/complete"
+	"matterqute/internal/emoji"
 	"matterqute/internal/markdown"
 )
 
@@ -98,6 +99,9 @@ type Composer struct {
 	OnSchedule func(text string, fileIDs []string, at time.Time)
 	// OnShowScheduled — «показать» в подсказке об отложенных.
 	OnShowScheduled func()
+	// OnEmoji — кнопка эмодзи: окно выбора у точки at (глобальной), выбор — InsertEmoji.
+	OnEmoji  func(at *qt.QPoint)
+	emojiBtn *qt.QToolButton
 	later           *qt.QToolButton // «Отправить позже»
 	prioBtn         *qt.QToolButton // метка «Важно»/«Срочно»
 	prioNote        *qt.QLabel      // метка над текстом
@@ -265,6 +269,18 @@ func NewComposer() *Composer {
 			c.OnLater()
 		}
 	})
+	c.emojiBtn = qt.NewQToolButton2()
+	setName(c.emojiBtn.QObject, "emoji")
+	c.emojiBtn.SetFixedSize2(32, 32)
+	c.emojiBtn.SetIconSize(qt.NewQSize2(18, 18))
+	c.emojiBtn.SetFocusPolicy(qt.NoFocus)
+	c.emojiBtn.SetToolTip("Эмодзи")
+	c.emojiBtn.OnClicked(func() {
+		if c.OnEmoji != nil {
+			c.OnEmoji(c.emojiBtn.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0)))
+		}
+	})
+	row.AddWidget3(c.emojiBtn.QWidget, 0, qt.AlignBottom)
 	row.AddWidget3(c.prioBtn.QWidget, 0, qt.AlignBottom)
 	row.AddWidget3(c.later.QWidget, 0, qt.AlignBottom)
 	row.AddWidget3(c.fmtShow.QWidget, 0, qt.AlignBottom)
@@ -316,6 +332,7 @@ func (c *Composer) dispose() {
 func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
 	c.later.SetIcon(icon("clock", Pal().Tx2, 18))
+	c.emojiBtn.SetIcon(icon("smile", Pal().Tx2, 18))
 	c.updatePriority()
 	c.restyleEditBar()
 	c.edit.SetFont(feedFont())
@@ -920,6 +937,19 @@ func (c *Composer) suggestKey(k qt.Key) bool {
 		return false
 	}
 	return true
+}
+
+// InsertEmoji — эмодзи в текст у курсора: системное — символом (в поле оно
+// видно цветным), эмодзи сервера — «:имя: », как из подсказки по «:».
+func (c *Composer) InsertEmoji(name string) {
+	text := ":" + name + ": "
+	if ch, ok := emoji.Char(name); ok {
+		text = ch
+	}
+	cur := c.edit.TextCursor()
+	cur.InsertText(text)
+	c.edit.SetTextCursor(cur)
+	c.edit.SetFocus()
 }
 
 // acceptSuggestion заменяет набранное слово выбранным.

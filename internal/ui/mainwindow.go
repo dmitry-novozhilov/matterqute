@@ -230,6 +230,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.sched = newScheduler(m, filepath.Join(cacheDir, "scheduled.json"))
 	m.initTyping()
 	m.composer.OnTyping = func() { m.userTyping(m.current, "") }
+	m.emojiFor(m.composer)
 	m.laterFor(m.composer, func() (string, string) {
 		if m.st.Channel(m.current) == nil {
 			return "", ""
@@ -356,6 +357,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.panel.composer.OnSend = m.sendReply
 	m.panel.composer.OnEdit = m.saveEdit(m.panel.feed)
 	m.panel.composer.OnEditLast = func() { m.editLast(m.panel.feed) }
+	m.emojiFor(m.panel.composer)
 	m.laterFor(m.panel.composer, func() (string, string) {
 		if t := m.thread; t != nil && t.channelID != "" {
 			return t.channelID, t.rootID

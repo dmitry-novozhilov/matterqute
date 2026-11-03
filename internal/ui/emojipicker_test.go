@@ -91,3 +91,39 @@ func TestReactionPicker(t *testing.T) {
 		m.picker.w.Close()
 	})
 }
+
+// Кнопка эмодзи в поле ввода: окно над кнопкой, системное — символом в
+// тексте, эмодзи сервера — «:имя: », оба — в недавние.
+func TestComposerEmoji(t *testing.T) {
+	_, s := startFake(t, model.CollapsedThreadsAlwaysOn)
+	onMain(func() {
+		m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
+		defer m.Close()
+		if openTown(t, m) == nil {
+			return
+		}
+		c := m.composer
+		c.edit.SetPlainText("привет ")
+		cur := c.edit.TextCursor()
+		cur.MovePosition(qt.QTextCursor__End)
+		c.edit.SetTextCursor(cur)
+		c.emojiBtn.Click()
+		pk := m.picker
+		if pk == nil || pk.closed {
+			t.Error("picker not shown")
+			return
+		}
+		if btn := c.emojiBtn.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0)); pk.w.Y()+pk.w.Height() > btn.Y() {
+			t.Errorf("picker at y %d+%d, button at %d: not above the field", pk.w.Y(), pk.w.Height(), btn.Y())
+		}
+		pk.pick("tada")
+		c.emojiBtn.Click()
+		m.picker.pick("partyparrot")
+		if got := c.edit.ToPlainText(); got != "привет 🎉:partyparrot: " {
+			t.Errorf("composer text %q", got)
+		}
+		if got := m.recent.Names(); !slices.Contains(got, "partyparrot") || !slices.Contains(got, "tada") {
+			t.Errorf("recent %v", got)
+		}
+	})
+}

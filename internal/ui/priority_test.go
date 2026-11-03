@@ -30,7 +30,7 @@ func TestPostPriority(t *testing.T) {
 		// Кнопки строки поля — одного размера и на одном уровне.
 		settle()
 		want := c.later.Geometry()
-		for name, b := range map[string]*qt.QToolButton{"attach": c.attach, "priority": c.prioBtn, "format": c.fmtShow} {
+		for name, b := range map[string]*qt.QToolButton{"attach": c.attach, "emoji": c.emojiBtn, "priority": c.prioBtn, "format": c.fmtShow} {
 			if g := b.Geometry(); g.Y() != want.Y() || g.Height() != want.Height() || g.Width() != want.Width() {
 				t.Errorf("%s button %d,%d %dx%d, «later» %d,%d %dx%d", name, g.X(), g.Y(), g.Width(), g.Height(), want.X(), want.Y(), want.Width(), want.Height())
 			}

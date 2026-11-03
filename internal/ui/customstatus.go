@@ -317,7 +317,7 @@ func (m *MainWindow) editCustomStatus() {
 		text.SetText(cur.Text)
 	}
 	pick.OnClicked(func() {
-		m.pickEmoji(dlg.w.QWidget, pick.MapToGlobalWithQPoint(qt.NewQPoint2(0, pick.Height())), setEmoji)
+		m.pickEmoji(dlg.w.QWidget, pick.MapToGlobalWithQPoint(qt.NewQPoint2(0, pick.Height())), false, setEmoji)
 	})
 	top := qt.NewQHBoxLayout2()
 	top.SetSpacing(8)

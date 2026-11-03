@@ -58,9 +58,11 @@ type Server struct {
 	conns     map[*wsConn]bool
 	// Категории сайдбара: «пользователь/команда» → (categories.go).
 	categories map[string]*userCategories
-	reminders  map[string]int64         // пост → когда напомнить, секунды
-	avatars    map[string][]byte        // user id → загруженное фото
-	history    map[string][]*model.Post // пост → прежние версии (правки), новые первыми
+	reminders  map[string]int64            // пост → когда напомнить, секунды
+	actions    []ActionCall                // кнопки и списки интеграций
+	dialogs    []model.SubmitDialogRequest // отправленные окна интеграций
+	avatars    map[string][]byte           // user id → загруженное фото
+	history    map[string][]*model.Post    // пост → прежние версии (правки), новые первыми
 }
 
 type wsConn struct {
@@ -161,6 +163,8 @@ func New(log *slog.Logger) *Server {
 	s.mux.HandleFunc("DELETE /api/v4/users/{uid}/teams/{tid}/channels/categories/{cid}", s.auth(s.deleteCategory))
 	s.mux.HandleFunc("POST /api/v4/channels/members/{uid}/mark_read", s.auth(s.markRead))
 	s.mux.HandleFunc("POST /api/v4/users/{uid}/posts/{pid}/reminder", s.auth(s.setReminder))
+	s.mux.HandleFunc("POST /api/v4/posts/{pid}/actions/{aid}", s.auth(s.doAction))
+	s.mux.HandleFunc("POST /api/v4/actions/dialogs/submit", s.auth(s.submitDialog))
 	s.mux.HandleFunc("PUT /api/v4/users/{uid}/patch", s.auth(s.patchUser))
 	s.mux.HandleFunc("POST /api/v4/files/search", s.auth(s.searchFiles))
 	s.mux.HandleFunc("GET /api/v4/posts/{pid}/edit_history", s.auth(s.editHistory))
@@ -335,7 +339,8 @@ func (s *Server) seed() {
 	alert.AddProp(model.PostPropsAttachments, []*model.MessageAttachment{{
 		Color: "danger", Title: "[FIRING:1] DiskSpaceLow", TitleLink: "https://grafana.example.com/alerting/1",
 		Text: "Свободно **3%** на `/var/lib/postgresql`", Footer: "Grafana v11",
-		Fields: []*model.MessageAttachmentField{{Title: "host", Value: "db-2", Short: true}, {Title: "severity", Value: "critical", Short: true}},
+		Fields:  []*model.MessageAttachmentField{{Title: "host", Value: "db-2", Short: true}, {Title: "severity", Value: "critical", Short: true}},
+		Actions: alertActions(),
 	}})
 	s.markAllRead()
 

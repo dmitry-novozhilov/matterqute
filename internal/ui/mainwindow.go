@@ -93,6 +93,7 @@ type MainWindow struct {
 	players        map[string]*player // открытые плееры по id файла
 	deleteDialog   *dialog            // «Удалить сообщение?»
 	channelDialog  *dialog            // обзор, создание канала, «покинуть»
+	interactive    *interactiveDialog // последнее окно интеграции (open_dialog)
 	switcherDialog *dialog            // последнее окно быстрого перехода (Ctrl+K)
 	viewer         *imageViewer       // картинка во весь экран; nil — закрыта
 

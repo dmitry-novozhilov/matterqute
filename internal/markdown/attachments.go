@@ -25,8 +25,9 @@ func (r *Renderer) attachmentColor(c string) string {
 
 // Attachments рисует вложения интеграций (props.attachments, «Slack-вложения»):
 // так шлют сообщения боты вроде Grafana, и без этого их посты пустые. width —
-// ширина карточки в пикселях (по колонке ленты).
-func (r *Renderer) Attachments(atts []*model.MessageAttachment, width int) string {
+// ширина карточки в пикселях (по колонке ленты); actions — HTML кнопок и
+// списков вложения (их рисует лента: картинки и ссылки — её), nil — без них.
+func (r *Renderer) Attachments(atts []*model.MessageAttachment, width int, actions func(*model.MessageAttachment) string) string {
 	var b strings.Builder
 	for _, a := range atts {
 		if a.Pretext != "" {
@@ -38,7 +39,7 @@ func (r *Renderer) Attachments(atts []*model.MessageAttachment, width int) strin
 			`<table cellspacing="0" cellpadding="0" width="100%%"><tr>`+
 			`<td width="4" bgcolor="%s"></td><td bgcolor="%s" style="padding-top:8px;padding-left:12px;padding-right:12px;padding-bottom:10px">`,
 			width, r.attachmentColor(a.Color), r.pal.Surf2)
-		body := r.attachmentBody(a)
+		body := r.attachmentBody(a, actions)
 		if body == "" {
 			body = html.EscapeString(a.Fallback)
 		}
@@ -48,7 +49,7 @@ func (r *Renderer) Attachments(atts []*model.MessageAttachment, width int) strin
 	return b.String()
 }
 
-func (r *Renderer) attachmentBody(a *model.MessageAttachment) string {
+func (r *Renderer) attachmentBody(a *model.MessageAttachment, actions func(*model.MessageAttachment) string) string {
 	p := r.pal
 	var b strings.Builder
 	if a.AuthorName != "" {
@@ -76,6 +77,9 @@ func (r *Renderer) attachmentBody(a *model.MessageAttachment) string {
 	}
 	if a.ImageURL != "" {
 		b.WriteString(`<p style="margin:0">` + linkOrText("🖼 изображение", a.ImageURL) + "</p>")
+	}
+	if actions != nil && len(a.Actions) > 0 {
+		b.WriteString(actions(a))
 	}
 	if a.Footer != "" {
 		fmt.Fprintf(&b, `<p style="margin-top:6px;margin-bottom:0;font-size:12px;color:%s">%s</p>`, p.Tx2, html.EscapeString(a.Footer))

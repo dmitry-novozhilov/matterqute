@@ -64,6 +64,17 @@ func (m *MainWindow) decodeEvent(ev *model.WebSocketEvent) (func(), error) {
 		}
 		return func() { m.applyEphemeral(p) }, nil
 
+	case model.WebsocketEventOpenDialog:
+		raw, ok := data["dialog"].(string)
+		if !ok {
+			return nil, fmt.Errorf("open_dialog: want JSON string, got %T", data["dialog"])
+		}
+		var req model.OpenDialogRequest
+		if err := json.Unmarshal([]byte(raw), &req); err != nil {
+			return nil, fmt.Errorf("open_dialog: %w", err)
+		}
+		return func() { m.openInteractiveDialog(req) }, nil
+
 	case model.WebsocketEventPostDeleted:
 		p, err := eventPost(data)
 		if err != nil {

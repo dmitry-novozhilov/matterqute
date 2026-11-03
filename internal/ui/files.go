@@ -39,6 +39,7 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnThreadWindow = m.openThreadWindow
 	f.OnEditHistory = func(p *model.Post) { m.showEditHistory(p) }
 	f.OnForward = func(p *model.Post) { m.showForward(p) }
+	f.OnAction = func(p *model.Post, a *model.PostAction) { m.postAction(f, p, a) }
 }
 
 func (m *MainWindow) channelExists(name string) bool {

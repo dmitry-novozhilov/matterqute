@@ -65,6 +65,7 @@ const (
 	moreLink      = "mm-more:"       // mm-more:<пост> — развернуть длинное сообщение
 	lessLink      = "mm-less:"       // mm-less:<пост> — свернуть его обратно
 	historyLink   = "mm-history:"    // mm-history:<пост> — история правок (своего поста)
+	actionLink    = "mm-action:"     // mm-action:<пост>:<id действия> — кнопка или список интеграции
 	spinnerSrc    = "spinner:24"     // ресурс с текущим кадром крутилки
 )
 
@@ -151,10 +152,11 @@ type Feed struct {
 	items []*postItem
 	// Картинки, уже добавленные ресурсами документа (сбрасываются с документом).
 	resources   map[string][2]int      // имя → логический размер
-	pills       map[string]pill        // имя ресурса реакции → обычная и при наведении
+	pills       map[string]pill        // имя ресурса реакции или кнопки → обычная и при наведении
 	avatars     map[string]*qt.QPixmap // аватары у строк автора (рисует paintUnder)
 	onAvatar    bool                   // курсор над аватаром (рука)
 	expanded    map[string]bool        // длинные посты, развёрнутые пользователем
+	chosen      map[string]string      // «пост:действие» → выбранное в списке интеграции (подпись)
 	hovered     string                 // ресурс реакции под курсором
 	movies      map[string]*qt.QMovie
 	placeholder bool                    // в документе заглушка вместо постов
@@ -221,6 +223,7 @@ type Feed struct {
 	OnFollowThread   func(rootID, channelID string, follow bool) // «Подписаться на тред» / «Отписаться от треда»
 	OnLink           func(url string)                            // клик по ссылке в тексте
 	OnIntegration    func(p *model.Post)                         // клик по имени или аватару интеграции
+	OnAction         func(p *model.Post, a *model.PostAction)    // кнопка или список во вложении интеграции
 	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
 	// позиции; back — вернуть позицию и «играл ли», когда окно закроют.
 	OnFullscreenVideo func(fi *model.FileInfo, p *model.Post, path string, pos int64, playing bool, back func(pos int64, playing bool))
@@ -235,7 +238,7 @@ func NewFeed(d FeedDeps) *Feed {
 		d.Users = func(string) *model.User { return nil }
 	}
 	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, videos: map[string]*inlineVideo{},
-		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, relayout: map[*postItem]bool{}, shown: true, expanded: map[string]bool{}}
+		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, relayout: map[*postItem]bool{}, shown: true, expanded: map[string]bool{}, chosen: map[string]string{}}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.doc.SetDefaultFont(feedFont())
@@ -1708,7 +1711,7 @@ func (f *Feed) bodyHTML(p *model.Post) string {
 			body += `<p style="margin:0">` + edited + `</p>`
 		}
 	}
-	body += f.md.Attachments(atts, min(f.columnWidth(), attachmentMax))
+	body += f.md.Attachments(atts, min(f.columnWidth(), attachmentMax), f.actionsHTML(p))
 	if long {
 		body += f.moreHTML(p.Id, collapsed)
 	}
@@ -2104,7 +2107,8 @@ func (f *Feed) reactionPill(src, name string, count int, mine bool) (w, h int) {
 	return w, h
 }
 
-// onHover — курсор над ссылкой: плашке реакции подменяем картинку на «наведённую».
+// onHover — курсор над ссылкой: плашке реакции и кнопке интеграции подменяем
+// картинку на «наведённую».
 func (f *Feed) onHover(link string) {
 	src := ""
 	switch {
@@ -2112,6 +2116,8 @@ func (f *Feed) onHover(link string) {
 		src = "reaction:" + strings.TrimPrefix(link, reactLink)
 	case strings.HasPrefix(link, reactMenuLink):
 		src = "reaction-plus:" + strings.TrimPrefix(link, reactMenuLink)
+	case strings.HasPrefix(link, actionLink):
+		src = "action:" + strings.TrimPrefix(link, actionLink)
 	}
 	if src == f.hovered {
 		return
@@ -2178,6 +2184,14 @@ func (f *Feed) onAnchor(link string) {
 	case strings.HasPrefix(link, historyLink):
 		if p := f.post(strings.TrimPrefix(link, historyLink)); p != nil && f.OnEditHistory != nil {
 			f.OnEditHistory(p)
+		}
+	case strings.HasPrefix(link, actionLink):
+		postID, id, _ := strings.Cut(strings.TrimPrefix(link, actionLink), ":")
+		id, _ = url.PathUnescape(id)
+		if p := f.post(postID); p != nil && f.OnAction != nil {
+			if a := p.GetAction(id); a != nil && !a.Disabled {
+				f.OnAction(p, a)
+			}
 		}
 	case strings.HasPrefix(link, moreLink):
 		f.setExpanded(strings.TrimPrefix(link, moreLink), true)

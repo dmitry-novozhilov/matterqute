@@ -4,7 +4,7 @@
 #prices	fetched	source
 #price	key	name	from	till	in	cw5	cw1h	cr	out
 schema	2
-prices	1793710660	https://platform.claude.com/docs/en/about-claude/pricing.md https://developers.openai.com/api/docs/pricing.md
+prices	1793818740	https://platform.claude.com/docs/en/about-claude/pricing.md https://developers.openai.com/api/docs/pricing.md
 price	fable/5.1	Claude Fable 5.1			10	12.5	20	0.25	50
 price	mythos/5.1	Claude Mythos 5.1			10	12.5	20	0.25	50
 price	fable/5	Claude Fable 5			10	12.5	20	1	50
@@ -15,13 +15,13 @@ price	opus/4.8	Claude Opus 4.8			5	6.25	10	0.5	25
 price	opus/4.7	Claude Opus 4.7			5	6.25	10	0.5	25
 price	opus/4.6	Claude Opus 4.6			5	6.25	10	0.5	25
 price	opus/4.5	Claude Opus 4.5			5	6.25	10	0.5	25
-price	opus/4.1	Claude Opus 4.1 )			15	18.75	30	1.5	75
+price	opus/4.1	Claude Opus 4.1 and Bedrock)			15	18.75	30	1.5	75
 price	opus/4	Claude Opus 4 )			15	18.75	30	1.5	75
 price	sonnet/5.5	Claude Sonnet 5.5			2	2.5	4	0.1	10
 price	sonnet/5	Claude Sonnet 5			2	2.5	4	0.2	10
 price	sonnet/4.6	Claude Sonnet 4.6			3	3.75	6	0.3	15
 price	sonnet/4.5	Claude Sonnet 4.5			3	3.75	6	0.3	15
-price	sonnet/4	Claude Sonnet 4 )			3	3.75	6	0.3	15
+price	sonnet/4	Claude Sonnet 4 and Bedrock)			3	3.75	6	0.3	15
 price	haiku/5.5	Claude Haiku 5.5			0.1	0.125	0.2	0.01	0.5
 price	haiku/4.5	Claude Haiku 4.5			1	1.25	2	0.1	5
 price	haiku/3.5	Claude Haiku 3.5 )			0.8	1	1.6	0.08	4
@@ -44,4 +44,5 @@ price	chat-latest	chat-latest			5	5	5	0.5	30
 price	gpt-5.3-codex	gpt-5.3-codex			1.75	1.75	1.75	0.175	14
 price	gpt-5-search-api	gpt-5-search-api			1.25	1.25	1.25	0.125	10
 session	b6734569-8dce-425a-b6ef-7294d83a764f	laptop	b6734569-8dce-425a-b6ef-7294d83a764f.jsonl	125905952	1793715909	claude-opus-5-5	5318	0	7038832	1208401645	3484226	2536	5318	0	7038832	1208401645	3484226	367.696777
-session	bb52d918-7682-44a4-a270-0b23c139716f	laptop	bb52d918-7682-44a4-a270-0b23c139716f.jsonl	22702691	1793734077	claude-fable-5-1	8864	2245005	659614	72277546	780726	314	8864	2245005	659614	72277546	780726	98.449169
+session	bb52d918-7682-44a4-a270-0b23c139716f	laptop	bb52d918-7682-44a4-a270-0b23c139716f.jsonl	22875831	1793819637	claude-fable-5-1	8896	2245005	661630	72834114	781002	315	8896	2245005	661630	72834114	781002	98.642751
+session	df3ba838-7556-431c-ae74-760eec15b0b4	laptop	df3ba838-7556-431c-ae74-760eec15b0b4.jsonl	1640176	1793873641	claude-fable-5-1	746	0	138952	3614973	42501	28	746	0	138952	3614973	42501	5.815293

@@ -296,11 +296,14 @@ func TestThreads(t *testing.T) {
 	if unread, mentions := s.ThreadsUnread(); !unread || mentions != 1 {
 		t.Errorf("ThreadsUnread = %v %d, want true 1", unread, mentions)
 	}
+	if n := s.UnreadThreads(); n != 1 {
+		t.Errorf("UnreadThreads = %d, want 1", n)
+	}
 	if !s.ApplyThreadRead("t2", 0, 0) || s.ApplyThreadRead("nope", 0, 0) {
 		t.Error("ApplyThreadRead: want true for t2, false for unknown")
 	}
-	if unread, _ := s.ThreadsUnread(); unread {
-		t.Error("threads still unread after read")
+	if unread, _ := s.ThreadsUnread(); unread || s.UnreadThreads() != 0 {
+		t.Errorf("threads still unread after read: %d", s.UnreadThreads())
 	}
 	s.ApplyThread(&model.ThreadResponse{PostId: "t1", DeleteAt: 1})
 	if s.Thread("t1") != nil {

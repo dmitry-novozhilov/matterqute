@@ -715,6 +715,18 @@ func (s *Store) ThreadsUnread() (unread bool, mentions int64) {
 	return unread || mentions > 0, mentions
 }
 
+// UnreadThreads — сколько тредов с новыми ответами или упоминаниями: число
+// у «Треды» в сайдбаре.
+func (s *Store) UnreadThreads() int {
+	n := 0
+	for _, t := range s.threads {
+		if t.UnreadReplies > 0 || t.UnreadMentions > 0 {
+			n++
+		}
+	}
+	return n
+}
+
 // Snapshot — что сохранить на диск для быстрого запуска: сайдбар и хвосты
 // загруженных лент (до tail постов, без «только вам»); пользователи — авторы
 // этих постов и собеседники по личкам, без себя. Сохраняют снимок в главном

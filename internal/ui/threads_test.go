@@ -242,3 +242,21 @@ func TestThreadPreviewMarkdown(t *testing.T) {
 		}
 	})
 }
+
+func TestThreadMeta(t *testing.T) {
+	last := time.Date(2026, 11, 5, 14, 30, 0, 0, time.Local)
+	for _, c := range []struct {
+		replies, unread int64
+		want            string
+	}{
+		{3, 0, "3 ответа · последний 14:30"},
+		{3, 1, "1 новый · 3 ответа · последний 14:30"},
+		{7, 2, "2 новых · 7 ответов · последний 14:30"},
+		{25, 21, "21 новый · 25 ответов · последний 14:30"},
+	} {
+		th := &model.ThreadResponse{ReplyCount: c.replies, UnreadReplies: c.unread, LastReplyAt: last.UnixMilli()}
+		if got := threadMeta(th); got != c.want {
+			t.Errorf("threadMeta(%d replies, %d unread) = %q, want %q", c.replies, c.unread, got, c.want)
+		}
+	}
+}

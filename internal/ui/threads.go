@@ -345,6 +345,16 @@ func (m *MainWindow) refreshThreads() {
 	}
 }
 
+// threadMeta — третья строка треда в списке: «N ответов · последний ЧЧ:ММ»,
+// у непрочитанного впереди — сколько новых: «2 новых · 7 ответов · …».
+func threadMeta(t *model.ThreadResponse) string {
+	meta := pluralReplies(t.ReplyCount) + " · последний " + time.UnixMilli(t.LastReplyAt).Format("15:04")
+	if t.UnreadReplies > 0 {
+		meta = plural(t.UnreadReplies, "новый", "новых", "новых") + " · " + meta
+	}
+	return meta
+}
+
 func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, id string) {
 	pal := Pal()
 	r := opt.Rect()
@@ -387,7 +397,7 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 	}
 	drawRichLine(p, msg, x, y+28, w, 22, pixelFont(14, weight))
 
-	meta, metaColor := pluralReplies(t.ReplyCount)+" · последний "+time.UnixMilli(t.LastReplyAt).Format("15:04"), pal.Tx2
+	meta, metaColor := threadMeta(t), pal.Tx2
 	mx := x
 	if unread {
 		metaColor = pal.Acc

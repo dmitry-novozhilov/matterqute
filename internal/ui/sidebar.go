@@ -316,6 +316,9 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 	case threadsID:
 		label, iconName = "Треды", "messages-square"
 		unread, mentions = m.st.ThreadsUnread()
+		if n := m.st.UnreadThreads(); n > 0 {
+			suffix = fmt.Sprintf("  %d", n) // сколько тредов с новым, как у «Отложенных»
+		}
 	case schedID:
 		label, iconName = "Отложенные", "clock"
 		suffix = fmt.Sprintf("  %d", len(m.sched.posts))

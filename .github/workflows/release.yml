@@ -23,10 +23,10 @@ jobs:
     # а internal/qtx нужен QStyleHints::colorScheme из 6.5.
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -73,7 +73,7 @@ jobs:
           linuxdeploy --appdir AppDir --executable matterqute --desktop-file .github/linux/matterqute.desktop $icons \
             --plugin qt --output appimage
           ls -l "$OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: matterqute-*-linux-x86_64.AppImage
@@ -84,10 +84,10 @@ jobs:
     # 'macos-14-arm64-us-default' is not supported»); macos-15 — тоже arm64.
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -121,7 +121,7 @@ jobs:
           fi
           macdeployqt "$APP" -dmg
           mv Matterqute.dmg "matterqute-${GITHUB_REF_NAME}-macos-arm64.dmg"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: matterqute-*-macos-arm64.dmg
@@ -133,7 +133,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: msys2/setup-msys2@v2
@@ -151,7 +151,7 @@ jobs:
             mingw-w64-ucrt-x86_64-qt6-multimedia
             mingw-w64-ucrt-x86_64-qt6-tools
       - name: Кэш Go
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/go/pkg/mod
@@ -190,7 +190,7 @@ jobs:
           $version = $tag.TrimStart('v')
           if ($version -notmatch '^\d+(\.\d+)*$') { $version = '0.0.0' }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DTag=$tag /DVersion=$version /O"$PWD" .github\windows\matterqute.iss
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: |
@@ -203,10 +203,10 @@ jobs:
     needs: [linux, macos, windows]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

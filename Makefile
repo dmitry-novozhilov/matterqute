@@ -46,7 +46,7 @@ release: check-tree
 
 rerelease: check-tree
 	@test '$(LAST)' != v0.0.0 || { echo 'тегов v* нет'; exit 1; }
-	@echo "Снять тег $(LAST) с $$(git rev-parse --short '$(LAST)') и выпустить заново на $$(git rev-parse --short HEAD):"; git log --oneline '$(LAST)..HEAD'
+	@echo "Снять тег $(LAST) с $$(git rev-parse --short '$(LAST)^{commit}') и выпустить заново на $$(git rev-parse --short HEAD):"; git log --oneline '$(LAST)..HEAD'
 	@test -n '$(YES)' || { printf 'Продолжить? [y/N] '; read -r a; test "$$a" = y || { echo отмена; exit 1; }; }
 	git push origin ':refs/tags/$(LAST)' || echo 'на origin тега $(LAST) не было'
 	git tag -d '$(LAST)'

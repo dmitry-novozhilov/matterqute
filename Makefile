@@ -4,6 +4,9 @@
 # из заголовков коммитов). По умолчанию растёт патч; BUMP=minor или
 # BUMP=major — минорная или мажорная; TAG=v1.2.3 — свой тег; YES=1 — без
 # вопроса. Нужны чистое дерево и ветка main.
+# make rerelease — снять последний тег (локально и на origin) и выпустить его
+# заново на текущем коммите: сборка в Actions упала, тег есть, релиза нет.
+# Если релиз на GitHub уже есть, файлы в нём заменятся, заметки останутся.
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 LDFLAGS := -X matterqute/internal/ui.Version=$(VERSION)
@@ -19,7 +22,7 @@ TAG := $(shell echo '$(LAST)' | awk -F. -v b='$(BUMP)' '{ sub(/^v/, "", $$1); \
 	printf "v%d.%d.%d", $$1, $$2, $$3 }')
 endif
 
-.PHONY: build test release
+.PHONY: build test release rerelease check-tree
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o matterqute ./cmd/matterqute
@@ -27,10 +30,12 @@ build:
 test:
 	go test ./...
 
-release:
-	@test -n '$(TAG)' || { echo 'не вышло посчитать тег после $(LAST)'; exit 1; }
+check-tree:
 	@test "$$(git rev-parse --abbrev-ref HEAD)" = main || { echo "релиз только с main, сейчас $$(git rev-parse --abbrev-ref HEAD)"; exit 1; }
 	@test -z "$$(git status --porcelain)" || { echo 'дерево не чистое:'; git status --short; exit 1; }
+
+release: check-tree
+	@test -n '$(TAG)' || { echo 'не вышло посчитать тег после $(LAST)'; exit 1; }
 	@! git rev-parse -q --verify 'refs/tags/$(TAG)' >/dev/null || { echo 'тег $(TAG) уже есть'; exit 1; }
 	@test -n "$$(git log --oneline '$(LAST)..HEAD' 2>/dev/null)" || { echo 'после $(LAST) нет новых коммитов'; exit 1; }
 	@echo 'Релиз $(TAG) (после $(LAST)):'; git log --oneline '$(LAST)..HEAD'
@@ -38,3 +43,11 @@ release:
 	git tag -a '$(TAG)' -m '$(TAG)'
 	git push origin HEAD '$(TAG)'
 	@echo 'Сборка и релиз: https://github.com/dmitry-novozhilov/matterqute/actions'
+
+rerelease: check-tree
+	@test '$(LAST)' != v0.0.0 || { echo 'тегов v* нет'; exit 1; }
+	@echo "Снять тег $(LAST) с $$(git rev-parse --short '$(LAST)') и выпустить заново на $$(git rev-parse --short HEAD):"; git log --oneline '$(LAST)..HEAD'
+	@test -n '$(YES)' || { printf 'Продолжить? [y/N] '; read -r a; test "$$a" = y || { echo отмена; exit 1; }; }
+	git push origin ':refs/tags/$(LAST)' || echo 'на origin тега $(LAST) не было'
+	git tag -d '$(LAST)'
+	$(MAKE) release TAG='$(LAST)' YES=1

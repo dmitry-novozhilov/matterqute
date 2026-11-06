@@ -20,6 +20,7 @@ go test ./...
 ./matterqute --uninstall
 make build                # то же, но с версией из git describe в «О программе»
 make release              # следующий тег vX.Y.(Z+1) и push — GitHub Actions соберёт релиз; BUMP=minor|major, TAG=v1.2.3, YES=1 — без вопроса
+make rerelease            # снять последний тег и выпустить его заново на HEAD (сборка в Actions упала; релиз на GitHub уже есть — файлы заменятся, заметки останутся)
 ```
 
 Тесты `internal/ui` поднимают настоящий `QApplication` (без дисплея — `offscreen`). Qt привязан к главному потоку, а `go test` гоняет тесты в горутинах, поэтому `TestMain` крутит цикл событий, а тело теста идёт через `onMain` (`mainthread.Wait`). Внутри `onMain` нельзя `t.Fatal` — только `t.Error` и `return`. Сквозные тесты окна ходят в `mmfake` через `httptest`. `TestMain` применяет настоящую тему (`InitStyle`), поэтому раскладка в тестах как в жизни. `MATTERQUTE_TEST_SHOTS=<каталог>` — тесты сохраняют скриншоты окна в ключевых местах (`shot()`, `shotWidget()`), чтобы посмотреть глазами.

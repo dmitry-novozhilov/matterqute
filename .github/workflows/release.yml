@@ -80,7 +80,9 @@ jobs:
 
   macos:
     name: macOS arm64
-    runs-on: macos-14
+    # macos-14 GitHub отключил 2026-11-02 («The configuration
+    # 'macos-14-arm64-us-default' is not supported»); macos-15 — тоже arm64.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:

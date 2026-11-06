@@ -54,7 +54,7 @@ QToolButton { border: none; border-radius: 4px; padding: 0; min-width: 28px; min
 QToolButton:hover { background: #e9e5e0; }
 QToolButton:pressed { background: #d9d5cf; }
 
-/* composer: QFrame#composer > [QToolButton#attach, QTextEdit#composerEdit] */
+/* composer: QFrame#composer > [QTextEdit#composerEdit, ряд QToolButton: attach, emoji, priority, later, formatShow, send] */
 QFrame#composer { background: #fcfbf9; border: 1px solid #bcb6b0; border-radius: 6px; padding: 1px; }
 QFrame#composer[focus="true"] { border: 2px solid #007255; padding: 0; }
 QFrame#composer:disabled { background: #eeebe6; border-color: #d9d5cf; }

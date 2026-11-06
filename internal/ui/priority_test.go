@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
@@ -27,13 +26,10 @@ func TestPostPriority(t *testing.T) {
 		if c.prioBtn.IsHidden() || !m.panel.composer.prioBtn.IsHidden() {
 			t.Errorf("priority button: channel hidden %v, thread hidden %v", c.prioBtn.IsHidden(), m.panel.composer.prioBtn.IsHidden())
 		}
-		// Кнопки строки поля — одного размера и на одном уровне.
+		// Кнопка метки — в ряду с остальными (раскладка ряда — TestComposerLayout).
 		settle()
-		want := c.later.Geometry()
-		for name, b := range map[string]*qt.QToolButton{"attach": c.attach, "emoji": c.emojiBtn, "priority": c.prioBtn, "format": c.fmtShow} {
-			if g := b.Geometry(); g.Y() != want.Y() || g.Height() != want.Height() || g.Width() != want.Width() {
-				t.Errorf("%s button %d,%d %dx%d, «later» %d,%d %dx%d", name, g.X(), g.Y(), g.Width(), g.Height(), want.X(), want.Y(), want.Width(), want.Height())
-			}
+		if g, want := c.prioBtn.Geometry(), c.later.Geometry(); g.Y() != want.Y() || g.Height() != want.Height() || g.Width() != want.Width() {
+			t.Errorf("priority button %d,%d %dx%d, «later» %d,%d %dx%d", g.X(), g.Y(), g.Width(), g.Height(), want.X(), want.Y(), want.Width(), want.Height())
 		}
 		pick := func(title string) {
 			menu := c.priorityMenu()

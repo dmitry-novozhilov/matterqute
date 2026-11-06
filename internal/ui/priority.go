@@ -66,7 +66,7 @@ func withPriority(p *model.Post, pr string) *model.Post {
 func (c *Composer) buildPriority() {
 	c.prioBtn = qt.NewQToolButton2()
 	setName(c.prioBtn.QObject, "priority")
-	c.prioBtn.SetFixedSize2(32, 32)
+	c.prioBtn.SetFixedSize2(28, 28)
 	c.prioBtn.SetIconSize(qt.NewQSize2(18, 18))
 	c.prioBtn.SetFocusPolicy(qt.NoFocus)
 	c.prioBtn.SetToolTip("Метка сообщения: «Важно», «Срочно»")

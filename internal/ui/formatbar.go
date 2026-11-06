@@ -91,7 +91,7 @@ func (c *Composer) buildFormatBar() {
 	c.fmtShow = qt.NewQToolButton2()
 	setName(c.fmtShow.QObject, "formatShow")
 	c.fmtShow.SetCheckable(true)
-	c.fmtShow.SetFixedSize2(32, 32)
+	c.fmtShow.SetFixedSize2(28, 28)
 	c.fmtShow.SetIconSize(qt.NewQSize2(18, 18))
 	c.fmtShow.SetFocusPolicy(qt.NoFocus)
 	c.fmtShow.SetToolTip("Оформление текста")
@@ -117,8 +117,8 @@ func (c *Composer) restyleFormatBar() {
 QToolButton:checked { background: %s; }
 QToolButton:disabled { background: transparent; }`, pal.Hover, pal.SelBg)
 	// min-width и min-height из QSS Qt ставит кнопке минимумом поверх
-	// SetFixedSize: мелким кнопкам панели — 0, а «T» в строке поля — как у
-	// соседних (из темы), иначе она сжималась и вставала ниже их.
+	// SetFixedSize: кнопкам панели — 0 (своя QSS у панели сбрасывает тему),
+	// а «T» в ряду под текстом — как у соседних (из темы).
 	c.fmtBar.SetStyleSheet(`QToolButton { border: none; border-radius: 4px; background: transparent; min-width: 0; min-height: 0; }
 ` + states + fmt.Sprintf("\nQFrame#formatSep { background: %s; }", pal.Line))
 	c.fmtShow.SetStyleSheet("QToolButton { border: none; border-radius: 4px; background: transparent; }\n" + states)

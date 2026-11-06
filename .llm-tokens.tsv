@@ -4,7 +4,7 @@
 #prices	fetched	source
 #price	key	name	from	till	in	cw5	cw1h	cr	out
 schema	2
-prices	1793818740	https://platform.claude.com/docs/en/about-claude/pricing.md https://developers.openai.com/api/docs/pricing.md
+prices	1793959997	https://platform.claude.com/docs/en/about-claude/pricing.md https://developers.openai.com/api/docs/pricing.md
 price	fable/5.1	Claude Fable 5.1			10	12.5	20	0.25	50
 price	mythos/5.1	Claude Mythos 5.1			10	12.5	20	0.25	50
 price	fable/5	Claude Fable 5			10	12.5	20	1	50
@@ -24,7 +24,6 @@ price	sonnet/4.5	Claude Sonnet 4.5			3	3.75	6	0.3	15
 price	sonnet/4	Claude Sonnet 4 and Bedrock)			3	3.75	6	0.3	15
 price	haiku/5.5	Claude Haiku 5.5			0.1	0.125	0.2	0.01	0.5
 price	haiku/4.5	Claude Haiku 4.5			1	1.25	2	0.1	5
-price	haiku/3.5	Claude Haiku 3.5 )			0.8	1	1.6	0.08	4
 price	gpt-5.4-mini	gpt-5.4-mini			0.75	0.75	0.75	0.075	4.5
 price	gpt-5.4-nano	gpt-5.4-nano			0.2	0.2	0.2	0.02	1.25
 price	gpt-5.2	gpt-5.2			1.75	1.75	1.75	0.175	14
@@ -43,6 +42,7 @@ price	o3	o3			2	2	2	0.5	8
 price	chat-latest	chat-latest			5	5	5	0.5	30
 price	gpt-5.3-codex	gpt-5.3-codex			1.75	1.75	1.75	0.175	14
 price	gpt-5-search-api	gpt-5-search-api			1.25	1.25	1.25	0.125	10
+session	2ce3f428-9402-4d61-97c9-6e675caa6597	laptop	2ce3f428-9402-4d61-97c9-6e675caa6597.jsonl	3096477	1793970270	claude-fable-5-1	1630	0	179592	9848727	71984	61	1630	0	179592	9848727	71984	9.669522
 session	b6734569-8dce-425a-b6ef-7294d83a764f	laptop	b6734569-8dce-425a-b6ef-7294d83a764f.jsonl	125905952	1793715909	claude-opus-5-5	5318	0	7038832	1208401645	3484226	2536	5318	0	7038832	1208401645	3484226	367.696777
 session	bb52d918-7682-44a4-a270-0b23c139716f	laptop	bb52d918-7682-44a4-a270-0b23c139716f.jsonl	22875831	1793819637	claude-fable-5-1	8896	2245005	661630	72834114	781002	315	8896	2245005	661630	72834114	781002	98.642751
-session	df3ba838-7556-431c-ae74-760eec15b0b4	laptop	df3ba838-7556-431c-ae74-760eec15b0b4.jsonl	1640176	1793873641	claude-fable-5-1	746	0	138952	3614973	42501	28	746	0	138952	3614973	42501	5.815293
+session	df3ba838-7556-431c-ae74-760eec15b0b4	laptop	df3ba838-7556-431c-ae74-760eec15b0b4.jsonl	1669808	1793967694	claude-fable-5-1	780	0	139791	3951835	43747	30	780	0	139791	3951835	43747	5.978928

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unsafe"
 
 	qt "github.com/mappu/miqt/qt6"
 
@@ -37,8 +38,9 @@ type draft struct {
 	priority string // метка «Важно»/«Срочно» (priority.go)
 }
 
-// Строк в поле ввода, после которых появляется прокрутка.
-const composerMaxLines = 7
+// Поле ввода растёт с текстом до половины окна (fitHeight), но не ниже
+// composerMinCap строк, даже если окно совсем низкое.
+const composerMinCap = 3
 
 // Composer — поле ввода (QFrame#composer) с оформлением (richedit.go): Enter
 // отправляет, Shift+Enter — новая строка (в списке — пункт), в блоке кода
@@ -102,13 +104,17 @@ type Composer struct {
 	// OnShowScheduled — «показать» в подсказке об отложенных.
 	OnShowScheduled func()
 	// OnEmoji — кнопка эмодзи: окно выбора у точки at (глобальной), выбор — InsertEmoji.
-	OnEmoji  func(at *qt.QPoint)
-	emojiBtn *qt.QToolButton
-	later           *qt.QToolButton // «Отправить позже»
-	prioBtn         *qt.QToolButton // метка «Важно»/«Срочно»
-	prioNote        *qt.QLabel      // метка над текстом
-	priority        string          // метка следующего сообщения
-	priorities      bool            // сервер разрешает метки (только поле канала)
+	OnEmoji    func(at *qt.QPoint)
+	emojiBtn   *qt.QToolButton
+	later      *qt.QToolButton // «Отправить позже»
+	sendBtn    *qt.QToolButton // «Отправить» (при правке — «Сохранить»)
+	editH      int             // высота текста, выставленная fitHeight
+	winFilter  *qt.QObject     // следит за размером окна: предел высоты — его половина
+	win        unsafe.Pointer  // окно, за которым следит winFilter
+	prioBtn    *qt.QToolButton // метка «Важно»/«Срочно»
+	prioNote   *qt.QLabel      // метка над текстом
+	priority   string          // метка следующего сообщения
+	priorities bool            // сервер разрешает метки (только поле канала)
 	// OnDraft — черновик key поменялся (набор, вставка, ушли из канала):
 	// сохранить (drafts.go). Правка своего сообщения — не черновик.
 	OnDraft func(key string)
@@ -125,6 +131,18 @@ func NewComposer() *Composer {
 	c := &Composer{w: qt.NewQWidget2(), frame: qt.NewQFrame2(), edit: qt.NewQTextEdit2(), drafts: map[string]*draft{}}
 	setName(c.frame.QObject, "composer")
 	setName(c.edit.QObject, "composerEdit")
+	c.winFilter = qt.NewQObject2(c.w.QObject)
+	c.winFilter.OnEventFilter(func(super func(*qt.QObject, *qt.QEvent) bool, _ *qt.QObject, e *qt.QEvent) bool {
+		if e.Type() == qt.QEvent__Resize {
+			c.fitHeight()
+		}
+		return false
+	})
+	c.w.OnShowEvent(func(super func(*qt.QShowEvent), e *qt.QShowEvent) {
+		super(e)
+		c.fitHeight() // поле могло переехать в другое окно (панель треда)
+	})
+
 	c.edit.SetAcceptRichText(false) // вставка — простым текстом: чужое оформление в markdown не переложить
 	c.edit.SetFrameShape(qt.QFrame__NoFrame)
 	c.edit.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
@@ -142,10 +160,9 @@ func NewComposer() *Composer {
 	})
 	c.edit.Document().SetDocumentMargin(4)
 	c.edit.Document().SetIndentWidth(22) // уровень списка; у Qt по умолчанию 40
-	c.edit.Document().OnContentsChanged(func() {
-		c.fitHeight()
-		c.updatePlaceholder()
-	})
+	// Размер документа меняется и от текста, и от ширины поля (перенос строк).
+	c.edit.Document().DocumentLayout().OnDocumentSizeChanged(func(*qt.QSizeF) { c.fitHeight() })
+	c.edit.Document().OnContentsChanged(c.updatePlaceholder)
 	c.edit.OnTextChanged(c.updateSuggest)
 	c.edit.OnTextChanged(func() {
 		if c.asText != "" && strings.TrimSpace(markdown.FromBlocks(readBlocks(c.edit.Document()))) != c.asText {
@@ -155,6 +172,7 @@ func NewComposer() *Composer {
 		if c.editID == "" && c.OnDraft != nil {
 			c.OnDraft(c.key)
 		}
+		c.updateSend()
 	})
 	c.edit.OnCursorPositionChanged(c.updateSuggest)
 	c.edit.OnKeyPressEvent(func(super func(*qt.QKeyEvent), e *qt.QKeyEvent) {
@@ -239,7 +257,7 @@ func NewComposer() *Composer {
 	c.attach = qt.NewQToolButton2()
 	setName(c.attach.QObject, "attach")
 	c.attach.SetToolTip("Прикрепить файлы")
-	c.attach.SetFixedSize2(32, 32)
+	c.attach.SetFixedSize2(28, 28)
 	c.attach.SetIconSize(qt.NewQSize2(18, 18))
 	c.attach.OnClicked(func() {
 		c.AddFiles(qt.QFileDialog_GetOpenFileNames2(c.w, "Прикрепить файлы"))
@@ -255,14 +273,9 @@ func NewComposer() *Composer {
 	c.buildFormatBar()
 	c.buildPriority()
 
-	row := qt.NewQHBoxLayout2()
-	row.SetContentsMargins(0, 0, 0, 0)
-	row.SetSpacing(2)
-	row.AddWidget3(c.attach.QWidget, 0, qt.AlignBottom)
-	row.AddWidget(c.edit.QWidget)
 	c.later = qt.NewQToolButton2()
 	setName(c.later.QObject, "later")
-	c.later.SetFixedSize2(32, 32)
+	c.later.SetFixedSize2(28, 28)
 	c.later.SetIconSize(qt.NewQSize2(18, 18))
 	c.later.SetFocusPolicy(qt.NoFocus)
 	c.later.SetToolTip("Отправить позже (Ctrl+Shift+Enter)")
@@ -273,7 +286,7 @@ func NewComposer() *Composer {
 	})
 	c.emojiBtn = qt.NewQToolButton2()
 	setName(c.emojiBtn.QObject, "emoji")
-	c.emojiBtn.SetFixedSize2(32, 32)
+	c.emojiBtn.SetFixedSize2(28, 28)
 	c.emojiBtn.SetIconSize(qt.NewQSize2(18, 18))
 	c.emojiBtn.SetFocusPolicy(qt.NoFocus)
 	c.emojiBtn.SetToolTip("Эмодзи")
@@ -282,16 +295,33 @@ func NewComposer() *Composer {
 			c.OnEmoji(c.emojiBtn.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0)))
 		}
 	})
-	row.AddWidget3(c.emojiBtn.QWidget, 0, qt.AlignBottom)
-	row.AddWidget3(c.prioBtn.QWidget, 0, qt.AlignBottom)
-	row.AddWidget3(c.later.QWidget, 0, qt.AlignBottom)
-	row.AddWidget3(c.fmtShow.QWidget, 0, qt.AlignBottom)
+	c.sendBtn = qt.NewQToolButton2()
+	setName(c.sendBtn.QObject, "send")
+	c.sendBtn.SetFixedSize2(28, 28)
+	c.sendBtn.SetIconSize(qt.NewQSize2(18, 18))
+	c.sendBtn.SetFocusPolicy(qt.NoFocus)
+	c.sendBtn.OnClicked(c.send)
+
+	// Текст — на всю ширину рамки, кнопки — рядом под ним (справа от текста
+	// они отнимали у него ширину): 📎, эмодзи, метка, «позже», «T» слева,
+	// «Отправить» справа.
+	row := qt.NewQHBoxLayout2()
+	row.SetContentsMargins(0, 0, 0, 0)
+	row.SetSpacing(2)
+	row.AddWidget(c.attach.QWidget)
+	row.AddWidget(c.emojiBtn.QWidget)
+	row.AddWidget(c.prioBtn.QWidget)
+	row.AddWidget(c.later.QWidget)
+	row.AddWidget(c.fmtShow.QWidget)
+	row.AddStretch()
+	row.AddWidget(c.sendBtn.QWidget)
 	fl := qt.NewQVBoxLayout(c.frame.QWidget)
 	fl.SetContentsMargins(4, 3, 4, 3)
 	fl.SetSpacing(4)
 	fl.AddWidget(c.prioNote.QWidget)
 	fl.AddWidget(c.chips)
 	fl.AddWidget(c.fmtBar)
+	fl.AddWidget(c.edit.QWidget)
 	fl.AddLayout(row.QLayout)
 
 	c.hint = qt.NewQLabel3("Дождитесь загрузки файлов. Сообщение осталось в поле ввода.")
@@ -321,6 +351,7 @@ func NewComposer() *Composer {
 	c.setupSpelling()
 	c.restyle()
 	c.fitHeight()
+	c.updateSend()
 	return c
 }
 
@@ -335,6 +366,7 @@ func (c *Composer) restyle() {
 	c.attach.SetIcon(icon("paperclip", Pal().Tx2, 18))
 	c.later.SetIcon(icon("clock", Pal().Tx2, 18))
 	c.emojiBtn.SetIcon(icon("smile", Pal().Tx2, 18))
+	c.restyleSend()
 	c.updatePriority()
 	c.restyleEditBar()
 	c.edit.SetFont(feedFont())
@@ -368,18 +400,60 @@ func (c *Composer) setBlocks(blocks []markdown.Block) {
 	c.leaveCodeAndLink()
 }
 
-// fitHeight — поле растёт с текстом от одной строки до семи, дальше прокрутка.
+// fitHeight — поле растёт с текстом от одной строки до половины окна (вместе
+// с кнопками и плашками вокруг текста), дальше прокрутка. Зовётся при смене
+// размера документа и окна.
 func (c *Composer) fitHeight() {
+	c.watchWindow()
 	line := qt.NewQFontMetrics(c.edit.Font()).LineSpacing()
 	docH := int(math.Ceil(c.edit.Document().Size().Height()))
-	maxH := line*composerMaxLines + 8
+	// Всё, кроме текста: ряд кнопок, плашки, панель оформления, поля.
+	others := c.w.SizeHint().Height() - c.editH
+	maxH := max(c.w.Window().Height()/2-others, line*composerMinCap+8)
 	h := min(max(docH, line+8), maxH)
-	c.edit.SetFixedHeight(h)
+	if h != c.editH {
+		c.editH = h
+		c.edit.SetFixedHeight(h)
+	}
 	if docH > maxH {
 		c.edit.SetVerticalScrollBarPolicy(qt.ScrollBarAsNeeded)
 	} else {
 		c.edit.SetVerticalScrollBarPolicy(qt.ScrollBarAlwaysOff)
 	}
+}
+
+// watchWindow — следить за размером окна, в котором поле сейчас (панель
+// треда переезжает между окном сервера и своим). С прежнего окна фильтр не
+// снимаем: оно могло быть уже удалено; лишний вызов fitHeight безвреден.
+func (c *Composer) watchWindow() {
+	win := c.w.Window()
+	if p := win.UnsafePointer(); p != c.win {
+		c.win = p
+		win.InstallEventFilter(c.winFilter)
+	}
+}
+
+// updateSend — кнопка «Отправить» доступна, когда есть что отправить; при
+// правке — «Сохранить».
+func (c *Composer) updateSend() {
+	if c.editID != "" {
+		c.sendBtn.SetToolTip("Сохранить (Enter)")
+		c.sendBtn.SetEnabled(true)
+		return
+	}
+	c.sendBtn.SetToolTip("Отправить (Enter)")
+	c.sendBtn.SetEnabled(!c.empty() || len(c.files) > 0)
+}
+
+// restyleSend — «Отправить» акцентом, недоступная — бледная.
+func (c *Composer) restyleSend() {
+	pal := Pal()
+	ic := icon("send-horizontal", pal.OnAcc, 18)
+	ic.AddPixmap3(iconPixmap("send-horizontal", pal.Tx3, 18), qt.QIcon__Disabled, qt.QIcon__Off)
+	c.sendBtn.SetIcon(ic)
+	c.sendBtn.SetStyleSheet(fmt.Sprintf(`QToolButton { border: none; border-radius: 4px; background: %s; }
+QToolButton:hover { background: %s; }
+QToolButton:disabled { background: %s; }`, pal.Acc, pal.AccH, pal.Surf2))
 }
 
 // SetPlaceholder — «Сообщение в # Town Square», «Ответить в треде».
@@ -664,6 +738,7 @@ func (c *Composer) renderChips() {
 		c.chipWs = append(c.chipWs, chip)
 	}
 	c.chips.SetVisible(len(c.files) > 0)
+	c.updateSend()
 }
 
 func (c *Composer) chip(a *attachment) *qt.QWidget {
@@ -815,7 +890,6 @@ func (c *Composer) ScheduleAt(at time.Time) bool {
 	c.OnSchedule(text, ids, at, c.commit(blocks, files))
 	return true
 }
-
 
 // SetScheduledNote — «N отложенных» над полем (n=0 — прячется).
 func (c *Composer) SetScheduledNote(n int) {
@@ -1060,6 +1134,7 @@ func (c *Composer) StartEditWith(id, label string, blocks []markdown.Block) {
 	c.attach.SetEnabled(false)
 	c.hint.SetVisible(false)
 	c.updatePriority()
+	c.updateSend()
 	c.edit.SetFocus()
 }
 
@@ -1080,7 +1155,7 @@ func (c *Composer) CancelEdit() {
 		c.setBlocks(st.blocks)
 		c.files = st.files
 	}
-	c.renderChips()
+	c.renderChips() // и updateSend
 }
 
 // ShowHint — строка под полем: почему не отправилось и что делать.

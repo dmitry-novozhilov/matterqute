@@ -37,7 +37,15 @@ make rerelease            # снять последний тег и выпуст
 - Заметки к релизу пишет `.github/release-notes.py` из заголовков коммитов между предыдущим тегом и этим, группируя по префиксу заголовка: `Новое:`, `Исправлено:`, `Изменено:`, `Убрано:`, `Документация:` (или `feat:`, `fix:`, `change:`, `remove:`, `docs:`, можно с областью — `fix(лента):`); без префикса — «Прочее». Поэтому заголовок коммита — с префиксом и о том, что видно пользователю. Релиз, созданный руками до прогона, не затирается: файлы добавляются, заметки — только если пустые.
 - Версия релиза — в «О программе»: сборка передаёт тег через `-ldflags "-X matterqute/internal/ui.Version=vX.Y.Z"` (`ui.Version`), рядом коммит и время из `debug.ReadBuildInfo`.
 - Платформы: `internal/idle` и `internal/spell` через `dlopen` — файлы `*_unix.go` (`!windows`), под Windows `idle_windows.go` (`GetLastInputInfo`) и `hunspell_windows.go` (проверки орфографии нет, личный словарь работает). DBus (уведомления, один экземпляр, счётчик в доке) без шины отключается с предупреждением в лог. Что не сделано: подпись сборок, Intel-mac, AppImage, иконка и метаданные exe (go-winres), открытие `mattermost://` на macOS/Windows (схема объявлена в `Info.plist`, обработчика Apple Events нет).
-- Бейдж стоимости AI-разработки (`llm-tool count-tokens`, блок `CC-TOKENS` в README, `.llm-tokens.tsv`, `.llm-tokens-badge.svg`) обновляет pre-commit хук `.githooks/pre-commit`; в каждом клоне включить: `git config core.hooksPath .githooks`.
+- Бейдж стоимости AI-разработки (`llm-tool count-tokens`, блок `CC-TOKENS` в README, `.llm-tokens.tsv`, `.llm-tokens-badge.svg`) обновляет локальный pre-commit хук `.githooks/pre-commit`. В репозитории его нет (`.githooks` в `.gitignore`, решение 2026-11-10: на машине с `llm-tool` в хук дописывается блок, и файл вечно числился изменённым), в новом клоне его создать и включить: `git config core.hooksPath .githooks`. Хук зовёт `llm-tool count-tokens` (если утилита есть) и кладёт перечисленные файлы, `.gitattributes` и `CLAUDE.md` в индекс:
+
+```sh
+#!/bin/sh
+cd "$(git rev-parse --show-toplevel)" || exit 0
+command -v llm-tool >/dev/null 2>&1 && llm-tool count-tokens >/dev/null 2>&1
+git add -- README.md .llm-tokens.tsv .llm-tokens-badge.svg .gitattributes CLAUDE.md 2>/dev/null
+exit 0
+```
 
 ## Архитектура
 

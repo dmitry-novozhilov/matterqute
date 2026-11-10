@@ -27,6 +27,7 @@ func (m *MainWindow) wireFeed(f *Feed) {
 	f.OnFullscreenVideo = m.fullscreenVideo
 	f.OnOpenFile = m.openFile
 	f.OnOpenImage = m.openImage
+	f.OnCopyImage = m.copyImage
 	f.OnSaveFile = m.saveFile
 	f.OnEditPost = func(p *model.Post) { m.editPost(f, p) }
 	f.OnDeletePost = m.confirmDelete

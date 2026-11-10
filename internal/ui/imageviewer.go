@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
@@ -28,14 +29,16 @@ type viewerItem struct {
 // ленте): на тёмном фоне, вписана в экран, мелкая — в своём размере. Колесо и
 // +/− — масштаб у курсора, двойной клик или 1 — 1:1 и обратно, 0 — по экрану,
 // перетаскивание — сдвиг, ←/→ — соседние картинки сообщения, Esc, клик по
-// фону или ✕ — закрыть. Сверху — подпись, «Сохранить…» и «Открыть в
-// приложении» (вложение) или «Открыть в браузере» (картинка по ссылке).
+// фону или ✕ — закрыть. Сверху — подпись, «Копировать» (Ctrl+C), «Сохранить…»
+// и «Открыть в приложении» (вложение) или «Открыть в браузере» (картинка по
+// ссылке).
 type imageViewer struct {
 	m      *MainWindow
 	w      *qt.QWidget
 	canvas *qt.QWidget
 	title  *qt.QLabel
 	count  *qt.QLabel
+	copy   *qt.QToolButton
 	save   *qt.QToolButton
 	open   *qt.QToolButton
 	close  *qt.QToolButton
@@ -53,6 +56,7 @@ type imageViewer struct {
 	fit          bool    // масштаб «по экрану»: пересчитывается при смене размера окна
 	panX, panY   float64 // сдвиг центра картинки от центра окна
 	msg          string  // «Загружаем…» или ошибка — поверх картинки
+	copyWanted   bool    // Ctrl+C, пока оригинал грузится: скопировать, когда загрузится
 
 	pressAt              *qt.QPointF // где нажали левую кнопку; nil — не нажата
 	pressPanX, pressPanY float64     // сдвиг в момент нажатия
@@ -60,12 +64,15 @@ type imageViewer struct {
 
 	closed      bool
 	unsubscribe func()
+	flashTimer  *qt.QTimer // убирает «Скопировано…»
+	flashText   string     // что показал flash: убрать только её, не «Загружаем…» следующей картинки
 }
 
 const (
 	viewerBg     = "#141210"
 	viewerMargin = 24 // поле вокруг вписанной картинки
 	viewerZoom   = 1.25
+	viewerFlash  = 1500 * time.Millisecond // сколько видна подпись «Скопировано…»
 )
 
 // openImage — клик по картинке поста: просмотр с этой картинки (key — id файла
@@ -110,6 +117,66 @@ func (m *MainWindow) viewerItems(p *model.Post) []viewerItem {
 	return items
 }
 
+// original — оригинал картинки на диске: вложение качается (если ещё нет),
+// картинка по ссылке — из кэша или догружается. done — в главном потоке.
+func (m *MainWindow) original(it viewerItem, done func(path string, err error)) {
+	if it.fi != nil {
+		m.assets.Download(it.fi, done)
+		return
+	}
+	if p := m.assets.LinkImage(it.src); p != "" {
+		done(p, nil)
+		return
+	}
+	m.assets.WantLinkImage(it.src, func() {
+		if p := m.assets.LinkImage(it.src); p != "" {
+			done(p, nil)
+		} else {
+			done("", fmt.Errorf("no image at %s", truncate(it.src, 200)))
+		}
+	})
+}
+
+// copyImage — «Копировать картинку» в меню ленты (key — id файла или
+// «link:N», как у openImage): оригинал в буфер обмена, когда загрузится.
+func (m *MainWindow) copyImage(p *model.Post, key string) {
+	for _, it := range m.viewerItems(p) {
+		if it.key == key {
+			m.copyImageItem(it)
+			return
+		}
+	}
+}
+
+// copyImageItem — оригинал картинки в буфер обмена; итог — в строке состояния.
+func (m *MainWindow) copyImageItem(it viewerItem) {
+	m.original(it, func(path string, err error) {
+		if err == nil {
+			err = copyImageFile(path)
+		}
+		if err != nil {
+			m.fail("copy image", err)
+			return
+		}
+		m.message("Картинка скопирована в буфер обмена")
+	})
+}
+
+// copyImageFile — картинка с диска в буфер обмена: с поворотом по EXIF,
+// GIF — первым кадром. QImage из Read освобождает финализатор MIQT (как и
+// у Clipboard().Image()) — Delete руками удалял бы его дважды.
+func copyImageFile(path string) error {
+	r := qt.NewQImageReader3(path)
+	defer r.Delete()
+	r.SetAutoTransform(true)
+	img := r.Read()
+	if img.IsNull() {
+		return fmt.Errorf("read %s: %s", path, r.ErrorString())
+	}
+	qt.QGuiApplication_Clipboard().SetImage(img)
+	return nil
+}
+
 func newImageViewer(m *MainWindow) *imageViewer {
 	// Окно с родителем: закроется вместе с окном сервера и не держит приложение.
 	v := &imageViewer{m: m, w: qt.NewQWidget3(m.w, qt.Window), fit: true, scale: 1}
@@ -131,6 +198,8 @@ func newImageViewer(m *MainWindow) *imageViewer {
 	v.title.SetTextFormat(qt.PlainText)
 	v.count = qt.NewQLabel2()
 	setName(v.count.QObject, "viewerCount")
+	v.copy = button("viewerCopy", "Копировать в буфер обмена (Ctrl+C)")
+	v.copy.OnClicked(v.copyCurrent)
 	v.save = button("viewerSave", "Сохранить…")
 	v.save.OnClicked(v.saveCurrent)
 	v.open = button("viewerOpen", "")
@@ -146,6 +215,7 @@ func newImageViewer(m *MainWindow) *imageViewer {
 	bl.SetSpacing(8)
 	bl.AddWidget2(v.title.QWidget, 1)
 	bl.AddWidget(v.count.QWidget)
+	bl.AddWidget(v.copy.QWidget)
 	bl.AddWidget(v.save.QWidget)
 	bl.AddWidget(v.open.QWidget)
 	bl.AddWidget(v.close.QWidget)
@@ -212,6 +282,10 @@ func newImageViewer(m *MainWindow) *imageViewer {
 	lay.AddWidget2(v.canvas, 1)
 
 	v.w.OnKeyPressEvent(func(super func(*qt.QKeyEvent), e *qt.QKeyEvent) {
+		if e.Matches(qt.QKeySequence__Copy) {
+			v.copyCurrent()
+			return
+		}
 		center := qt.NewQPointF3(float64(v.canvas.Width())/2, float64(v.canvas.Height())/2)
 		switch qt.Key(e.Key()) {
 		case qt.Key_Escape:
@@ -230,6 +304,14 @@ func newImageViewer(m *MainWindow) *imageViewer {
 			v.toggleActual(center)
 		default:
 			super(e)
+		}
+	})
+	v.flashTimer = qt.NewQTimer2(v.w.QObject)
+	v.flashTimer.SetSingleShot(true)
+	v.flashTimer.OnTimeout(func() {
+		if !v.closed && v.msg == v.flashText {
+			v.msg = ""
+			v.canvas.Update()
 		}
 	})
 	v.unsubscribe = OnThemeChanged(v.restyle)
@@ -261,6 +343,7 @@ func (v *imageViewer) show(i int) {
 	it := v.items[i]
 	v.stopMovie()
 	v.img, v.path, v.msg = nil, "", "Загружаем…"
+	v.copyWanted = false
 	v.fit, v.panX, v.panY = true, 0, 0
 	v.baseW, v.baseH = 0, 0
 	if it.fi != nil && it.fi.Width > 0 && it.fi.Height > 0 {
@@ -288,7 +371,7 @@ func (v *imageViewer) show(i int) {
 	}
 	v.relayout()
 
-	loaded := func(path string, err error) {
+	v.m.original(it, func(path string, err error) {
 		if v.closed || v.gen != gen {
 			return
 		}
@@ -299,21 +382,6 @@ func (v *imageViewer) show(i int) {
 			return
 		}
 		v.loadFull(path)
-	}
-	if it.fi != nil {
-		v.m.assets.Download(it.fi, loaded)
-		return
-	}
-	if p := v.m.assets.LinkImage(it.src); p != "" {
-		loaded(p, nil)
-		return
-	}
-	v.m.assets.WantLinkImage(it.src, func() {
-		if p := v.m.assets.LinkImage(it.src); p != "" {
-			loaded(p, nil)
-		} else {
-			loaded("", fmt.Errorf("no image at %s", truncate(it.src, 200)))
-		}
 	})
 }
 
@@ -354,6 +422,28 @@ func (v *imageViewer) loaded(path string, img *qt.QImage) {
 	v.img, v.path, v.msg = img, path, ""
 	v.baseW, v.baseH = w, h
 	v.relayout()
+	if v.copyWanted {
+		v.copyCurrent()
+	}
+}
+
+// copyCurrent — «Копировать» (Ctrl+C): оригинал в буфер обмена, GIF — текущим
+// кадром. Оригинал ещё грузится — скопируется, когда загрузится.
+func (v *imageViewer) copyCurrent() {
+	if v.path == "" || v.img == nil {
+		v.copyWanted = true
+		return
+	}
+	v.copyWanted = false
+	qt.QGuiApplication_Clipboard().SetImage(v.img)
+	v.flash("Скопировано в буфер обмена")
+}
+
+// flash — подпись поверх картинки на viewerFlash.
+func (v *imageViewer) flash(text string) {
+	v.msg, v.flashText = text, text
+	v.canvas.Update()
+	v.flashTimer.Start(int(viewerFlash / time.Millisecond))
 }
 
 func (v *imageViewer) stopMovie() {
@@ -500,6 +590,7 @@ func (v *imageViewer) openCurrent() {
 // restyle — панель из текущей темы; сама картинка — всегда на тёмном.
 func (v *imageViewer) restyle() {
 	pal := Pal()
+	v.copy.SetIcon(icon("copy", pal.Tx2, 16))
 	v.save.SetIcon(icon("download", pal.Tx2, 16))
 	v.open.SetIcon(icon("external-link", pal.Tx2, 16))
 	v.close.SetIcon(icon("x", pal.Tx2, 16))

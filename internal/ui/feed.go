@@ -239,6 +239,7 @@ type Feed struct {
 	OnFullscreenVideo func(fi *model.FileInfo, p *model.Post, path string, pos int64, playing bool, back func(pos int64, playing bool))
 	OnOpenFile        func(fi *model.FileInfo)
 	OnOpenImage       func(p *model.Post, key string) // клик по картинке: key — id файла или «link:N»
+	OnCopyImage       func(p *model.Post, key string) // «Копировать картинку» у картинки под курсором; key — как у OnOpenImage
 	OnSaveFile        func(fi *model.FileInfo)
 	OnRetry           func() // «Повторить» в заглушке ошибки
 }
@@ -2336,6 +2337,23 @@ func linkAddress(anchor string) (string, bool) {
 	return "", false
 }
 
+// imageAt — картинка под курсором по её ссылке (картинки в ленте — ссылки
+// mm-img: и mm-linkimg:): пост и ключ, как у OnOpenImage.
+func (f *Feed) imageAt(anchor string) (*model.Post, string, bool) {
+	switch {
+	case strings.HasPrefix(anchor, imageLink):
+		if fi, p := f.fileAndPost(strings.TrimPrefix(anchor, imageLink)); fi != nil {
+			return p, fi.Id, true
+		}
+	case strings.HasPrefix(anchor, linkImageLink):
+		id, n, _ := strings.Cut(strings.TrimPrefix(anchor, linkImageLink), ":")
+		if p := f.post(id); p != nil {
+			return p, "link:" + n, true
+		}
+	}
+	return nil, "", false
+}
+
 // contextMenu — все действия с сообщением; при наведении — панель реакций (quickBar).
 func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	it := f.postAtY(e.Pos().Y())
@@ -2349,6 +2367,10 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	if addr, ok := linkAddress(f.view.AnchorAt(e.Pos())); ok {
 		cl := menu.QWidget.AddActionWithText("Копировать адрес ссылки")
 		cl.OnTriggered(func() { qt.QGuiApplication_Clipboard().SetText(addr) })
+	}
+	if p, key, ok := f.imageAt(f.view.AnchorAt(e.Pos())); ok && f.OnCopyImage != nil {
+		ci := menu.QWidget.AddActionWithText("Копировать картинку")
+		ci.OnTriggered(func() { f.OnCopyImage(p, key) })
 	}
 	if it != nil {
 		p := it.post

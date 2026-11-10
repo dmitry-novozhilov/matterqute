@@ -17,7 +17,8 @@ import (
 // с in:<id канала>: имя канала сервер ищет в команде поиска, а поиск — по
 // всем командам (команды нет — имени не найти, файлов ноль); id он
 // пропускает как есть (convertChannelNamesToChannelIds в app/post.go). Щелчок — открыть
-// (картинку — в просмотре), правый — «Сохранить…», «Перейти к сообщению».
+// (картинку — в просмотре), правый — «Копировать картинку» (у картинок),
+// «Сохранить…», «Перейти к сообщению».
 
 const fileIDRole = int(qt.UserRole) + 10
 
@@ -85,12 +86,16 @@ func (m *MainWindow) newFileList(where bool) *fileList {
 		}
 		menu := qt.NewQMenu(l.QWidget)
 		defer menu.DeleteLater()
-		fillMenu(menu, []menuItem{
-			{title: "Открыть", do: func() { m.openChannelFile(fi) }},
-			{title: "Сохранить…", do: func() { m.saveFile(fi) }},
-			{},
-			{title: "Перейти к сообщению", do: func() { m.openPermalink(fi.ChannelId, fi.PostId) }},
-		})
+		items := []menuItem{{title: "Открыть", do: func() { m.openChannelFile(fi) }}}
+		if isImage(fi) && !isVideo(fi) {
+			items = append(items, menuItem{title: "Копировать картинку", do: func() { m.copyImageItem(viewerItem{key: fi.Id, name: fi.Name, fi: fi}) }})
+		}
+		items = append(items,
+			menuItem{title: "Сохранить…", do: func() { m.saveFile(fi) }},
+			menuItem{},
+			menuItem{title: "Перейти к сообщению", do: func() { m.openPermalink(fi.ChannelId, fi.PostId) }},
+		)
+		fillMenu(menu, items)
 		menu.ExecWithPos(l.Viewport().MapToGlobalWithQPoint(pos))
 	})
 	return fl

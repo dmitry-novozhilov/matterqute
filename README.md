@@ -23,7 +23,7 @@
 - **Threads:** collapsed reply threads, the Threads list, following, a thread in its own window.
 - **Channels:** categories and favorites, a separate unread group, browse, create and leave, members, archived channels, quick switcher on Ctrl+K.
 - **Search:** messages and files; mentions, pinned and saved messages.
-- **Files and media:** image previews and a full-screen viewer, GIFs, video playing right in the feed, link previews.
+- **Files and media:** image previews, a full-screen viewer and copying an image to the clipboard, GIFs, video playing right in the feed, link previews.
 - **Integrations:** webhook attachments, bot buttons and menus, interactive dialogs, slash commands.
 - **Status and notifications:** presence, a custom status with emoji and expiry, Do Not Disturb, automatic "Away" when idle. Notifications follow the same rules as in the web client.
 - **Several servers** in one window, switching with Ctrl+1…9.
@@ -76,5 +76,5 @@ Tested on Linux (Debian 13, X11, XFCE) with Mattermost server 11.6.2. The interf
 Mattermost is a trademark of Mattermost, Inc. Matterqute is an independent project, not affiliated with Mattermost, Inc.
 
 <!-- CC-TOKENS:START -->
-<abbr title="opus: 1.2 G ток, $367.70&#10;fable: 96.3 M ток, $117.44&#10;итого: 1.3 G ток, $485.13&#10;обновлено 2026-11-06 13:36 UTC · сессий: 4 (хостов: 1)&#10;прайс от 2026-11-06"><img src=".llm-tokens-badge.svg" alt="AI: $485.13"></abbr>
+<abbr title="opus: 1.2 G ток, $367.70&#10;fable: 105 M ток, $128.63&#10;итого: 1.3 G ток, $496.33&#10;обновлено 2026-11-10 12:46 UTC · сессий: 5 (хостов: 1)&#10;прайс от 2026-11-10"><img src=".llm-tokens-badge.svg" alt="AI: $496.33"></abbr>
 <!-- CC-TOKENS:END -->

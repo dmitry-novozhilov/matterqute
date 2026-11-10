@@ -160,3 +160,105 @@ func TestImageViewer(t *testing.T) {
 		}
 	})
 }
+
+// Картинка копируется в буфер обмена оригиналом: из меню ленты (вложение и
+// картинка по ссылке), из списка файлов и из просмотра по Ctrl+C.
+func TestCopyImage(t *testing.T) {
+	fake, s := startFake(t, model.CollapsedThreadsAlwaysOn)
+	onMain(func() {
+		m := NewMainWindow(s, slog.New(slog.NewTextHandler(io.Discard, nil)), "", t.TempDir())
+		defer m.Close()
+		var msgs []string
+		m.OnMessage = func(text string) { msgs = append(msgs, text) }
+		m.Show()
+		if !waitFor(t, "sidebar", func() bool { return len(m.items) > 0 }) {
+			return
+		}
+		backend := channelByName(m, "dev", "backend")
+		m.selectChannel(backend.Id)
+		if !waitFor(t, "backend posts", func() bool { return len(m.feed.items) >= 5 && len(m.feed.pending) == 0 }) {
+			return
+		}
+		var img *model.FileInfo
+		for _, it := range m.feed.items {
+			if it.post.Metadata != nil && len(it.post.Metadata.Files) > 0 && it.post.Metadata.Files[0].Name == "схема.png" {
+				img = it.post.Metadata.Files[0]
+			}
+		}
+		if img == nil {
+			t.Error("seeded схема.png not in backend")
+			return
+		}
+		photo := s.ServerURL + "/static/photo.png"
+		p := fake.Post(&model.Post{ChannelId: backend.Id, UserId: m.st.UserByName("bob").Id, Message: "Две картинки " + photo,
+			Metadata: &model.PostMetadata{Files: []*model.FileInfo{img}, Embeds: []*model.PostEmbed{{Type: model.PostEmbedImage, URL: photo}},
+				Images: map[string]*model.PostImage{photo: {Width: 640, Height: 360}}}})
+		if !waitFor(t, "post with two images", func() bool { return m.feed.index(p.Id) >= 0 }) {
+			return
+		}
+		cb := qt.QGuiApplication_Clipboard()
+		clipSize := func() (int, int) {
+			i := cb.Image() // освобождает финализатор MIQT
+			return i.Width(), i.Height()
+		}
+		copied := func(w, h int) bool { cw, ch := clipSize(); return cw == w && ch == h }
+
+		// Меню ленты: по ссылке картинки под курсором — пост и ключ.
+		if owner, key, ok := m.feed.imageAt(imageLink + img.Id); !ok || owner == nil || key != img.Id {
+			t.Errorf("imageAt(attachment) = %v, %q, %v", owner != nil, key, ok)
+		}
+		if owner, key, ok := m.feed.imageAt(linkImageLink + p.Id + ":0"); !ok || owner == nil || owner.Id != p.Id || key != "link:0" {
+			t.Errorf("imageAt(link image) = %v, %q, %v", owner != nil, key, ok)
+		}
+		if _, _, ok := m.feed.imageAt("https://example.com/a.png"); ok {
+			t.Error("imageAt(web link) found an image")
+		}
+		cb.Clear()
+		m.copyImage(p, img.Id)
+		if !waitFor(t, "attachment copied", func() bool { return copied(640, 360) }) {
+			return
+		}
+		if len(msgs) == 0 || msgs[len(msgs)-1] != "Картинка скопирована в буфер обмена" {
+			t.Errorf("status after copy: %q", msgs)
+		}
+		cb.Clear()
+		m.copyImage(p, "link:0")
+		if !waitFor(t, "link image copied", func() bool { return copied(640, 360) }) {
+			return
+		}
+		// Список файлов — тем же путём, без поста.
+		cb.Clear()
+		m.copyImageItem(viewerItem{key: img.Id, name: img.Name, fi: img})
+		if !waitFor(t, "file list image copied", func() bool { return copied(640, 360) }) {
+			return
+		}
+
+		// Просмотр: Ctrl+C — оригинал; нажали до загрузки — скопируется после.
+		cb.Clear()
+		m.openImage(feedPost(m.feed, p.Id), img.Id)
+		v := m.viewer
+		if v == nil {
+			t.Error("viewer did not open")
+			return
+		}
+		qt.QCoreApplication_SendEvent(v.w.QObject, qt.NewQKeyEvent(qt.QEvent__KeyPress, int(qt.Key_C), qt.ControlModifier).QEvent)
+		if !waitFor(t, "viewer copied", func() bool { return copied(640, 360) }) {
+			return
+		}
+		if v.copyWanted || v.msg != "Скопировано в буфер обмена" {
+			t.Errorf("viewer after copy: wanted %v, msg %q", v.copyWanted, v.msg)
+		}
+		if !waitFor(t, "flash gone", func() bool { return v.msg == "" }) {
+			return
+		}
+		// Кнопка — то же.
+		cb.Clear()
+		v.copy.Click()
+		if !copied(640, 360) {
+			w, h := clipSize()
+			t.Errorf("copy button: clipboard %dx%d", w, h)
+		}
+		v.w.Close()
+		settle()
+	})
+}

@@ -2,7 +2,9 @@ package notify
 
 import (
 	"bufio"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -35,12 +37,35 @@ func (f *fakeServer) Notify(app string, replaces uint32, icon, title, body strin
 	return uint32(len(f.calls)), nil
 }
 
-// privateBus поднимает отдельный dbus-daemon и направляет на него сессионную шину теста.
+// busConf — конфиг шины теста: как стандартный session.conf, но без
+// каталогов сервисов (<standard_session_servicedirs/>): с ними демон по первому
+// обращению к org.freedesktop.Notifications запускал бы настоящий сервер
+// уведомлений рабочего стола (xfce4-notifyd и т. п. из /usr/share/dbus-1/services),
+// и TestNoServer находил сервер там, где его быть не должно.
+const busConf = `<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+`
+
+// privateBus поднимает отдельный dbus-daemon (без активации сервисов, см.
+// busConf) и направляет на него сессионную шину теста.
 func privateBus(t *testing.T) string {
 	if _, err := exec.LookPath("dbus-daemon"); err != nil {
 		t.Skip("dbus-daemon not installed")
 	}
-	cmd := exec.Command("dbus-daemon", "--session", "--nofork", "--print-address")
+	conf := filepath.Join(t.TempDir(), "bus.conf")
+	if err := os.WriteFile(conf, []byte(busConf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("dbus-daemon", "--config-file="+conf, "--nofork", "--print-address")
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

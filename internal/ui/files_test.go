@@ -76,16 +76,17 @@ func testFilesAndMarkdown(t *testing.T, fake *mmfake.Server, s *mm.Session, uplo
 	m.feed.ScrollToPost(md.post.Id)
 	shot(t, m, "markdown-post")
 
-	// GIF крутится: QMovie запущен, кадры идут в ресурс превью.
-	var gifID string
+	// GIF на экране крутится: QMovie запущен, кадры идут в ресурс превью.
+	var gifID, gifPost string
 	for _, it := range m.feed.items {
 		if it.post.Metadata != nil && len(it.post.Metadata.Files) > 0 && it.post.Metadata.Files[0].MimeType == "image/gif" {
-			gifID = it.post.Metadata.Files[0].Id
+			gifID, gifPost = it.post.Metadata.Files[0].Id, it.post.Id
 		}
 	}
 	if gifID == "" {
 		t.Error("seeded GIF not in backend")
 	} else {
+		m.feed.ScrollToPost(gifPost)
 		var frames []int
 		waitFor(t, "GIF animating", func() bool {
 			mv := m.feed.movies[gifID]

@@ -123,29 +123,20 @@ func (f *Feed) linkImageSrc(rawURL string, w, h int) string {
 	}
 	if f.d.Assets != nil {
 		if path := f.d.Assets.LinkImage(rawURL); path != "" {
-			if src := tmp(qt.NewQPixmap4(path)); !src.IsNull() {
-				pm := src.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
-				pm.SetDevicePixelRatio(resourceDPR)
-				f.addResource(name, pm, w, h)
-				free(pm)
-				return name
-			}
-		} else {
-			f.d.Assets.WantLinkImage(rawURL, f.refreshLater())
+			f.addLazy(name, w, h, lazyImage{load: func() *qt.QPixmap { return scaledFile(path, w, h) }})
+			return name
 		}
+		f.d.Assets.WantLinkImage(rawURL, f.refreshLater())
 	}
 	return f.placeholderSrc(w, h)
 }
 
-// placeholderSrc — серая заглушка w×h (пока картинка грузится).
+// placeholderSrc — серая заглушка w×h (пока картинка грузится): точка 1×1,
+// Qt растягивает её на место картинки.
 func (f *Feed) placeholderSrc(w, h int) string {
 	ph := fmt.Sprintf("placeholder:%dx%d", w, h)
 	if _, ok := f.resources[ph]; !ok {
-		img := tmp(qt.NewQImage3(w, h, qt.QImage__Format_ARGB32_Premultiplied))
-		img.FillWithColor(qcolor(Pal().Surf2))
-		pm := qt.QPixmap_FromImage(img)
-		f.addResource(ph, pm, w, h)
-		free(pm)
+		f.addResource(ph, lazyDot(), w, h)
 	}
 	return ph
 }

@@ -85,6 +85,7 @@ type postItem struct {
 	avatar  string         // аватар у строки автора: ключ в Feed.avatars; "" — без аватара
 	link    string         // клик по аватару — как по имени автора
 	bg      string         // подсветка строки (переход по ссылке, упоминание меня); "" — нет
+	images  []string       // картинки по требованию (lazyimages.go), на которые ссылается его HTML
 }
 
 // postParts — пост для вставки в документ: над текстом, текст, под ним.
@@ -270,6 +271,13 @@ type Feed struct {
 	OnCopyImage       func(p *model.Post, key string) // «Копировать картинку» у картинки под курсором; key — как у OnOpenImage
 	OnSaveFile        func(fi *model.FileInfo)
 	OnRetry           func() // «Повторить» в заглушке ошибки
+
+	// Картинки по требованию (lazyimages.go): как получить, какие раскодированы,
+	// какие посты были видны при последней отрисовке.
+	lazy               map[string]lazyImage
+	loaded             map[string]bool
+	loadedLo, loadedHi int
+	releaseTimer       *qt.QTimer // отпустить далёкие от видимого места (releaseFar)
 }
 
 func NewFeed(d FeedDeps) *Feed {
@@ -277,7 +285,8 @@ func NewFeed(d FeedDeps) *Feed {
 		d.Users = func(string) *model.User { return nil }
 	}
 	f := &Feed{d: d, view: qt.NewQTextBrowser2(), movies: map[string]*qt.QMovie{}, movieAt: map[string]movieTarget{}, videos: map[string]*inlineVideo{},
-		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, relayout: map[*postItem]bool{}, shown: true, expanded: map[string]bool{}, chosen: map[string]string{}}
+		animSubs: map[string]func(){}, dirty: map[string]bool{}, stale: map[string]bool{}, relayout: map[*postItem]bool{}, shown: true, expanded: map[string]bool{}, chosen: map[string]string{},
+		lazy: map[string]lazyImage{}, loaded: map[string]bool{}, loadedLo: -1, loadedHi: -1}
 	setName(f.view.QObject, "feed")
 	f.doc = f.view.Document()
 	f.doc.SetDefaultFont(feedFont())
@@ -323,6 +332,9 @@ func NewFeed(d FeedDeps) *Feed {
 	f.refit.SetSingleShot(true)
 	f.refit.SetInterval(50)
 	f.refit.OnTimeout(f.fitImages)
+	f.releaseTimer = qt.NewQTimer2(f.view.QObject)
+	f.releaseTimer.SetSingleShot(true)
+	f.releaseTimer.OnTimeout(f.releaseFar)
 	f.unhighlight = qt.NewQTimer2(f.view.QObject)
 	f.unhighlight.SetSingleShot(true)
 	f.unhighlight.OnTimeout(func() {
@@ -477,6 +489,8 @@ func (f *Feed) clearDoc() {
 	f.history = nil
 	f.placeholder = false
 	f.resources = map[string][2]int{}
+	f.lazy, f.loaded = map[string]lazyImage{}, map[string]bool{}
+	f.loadedLo, f.loadedHi = -1, -1
 	f.dropPills()
 	f.avatars = map[string]*qt.QPixmap{}
 	f.hovered = ""
@@ -720,6 +734,7 @@ func (f *Feed) paintUnder() {
 	if !ok {
 		return
 	}
+	f.loadImages(lo, hi) // до отрисовки документа: на экран — уже картинки
 	p := qt.NewQPainter2(f.view.Viewport().QPaintDevice)
 	defer free(p) // деструктор и заканчивает рисование
 	w := f.view.Viewport().Width()
@@ -872,6 +887,11 @@ func (f *Feed) SetShown(on bool) {
 		f.drainTimer.Stop()
 		f.stopVideos()
 		f.quick.hide()
+		// Картинки — снова заглушки (и GIF стоят): раскодирует отрисовка, когда
+		// лента вернётся на экран.
+		f.releaseTimer.Stop()
+		f.releaseImages(nil)
+		f.loadedLo, f.loadedHi = -1, -1
 		for _, mv := range f.movies {
 			if mv.State() == qt.QMovie__Running {
 				mv.SetPaused(true)
@@ -1469,6 +1489,7 @@ func (f *Feed) write(i int, c *qt.QTextCursor) {
 	pp := f.parts(i)
 	f.rendering = ""
 	it.html = pp.head + pp.body + pp.tail
+	it.images = f.lazyNames(it.html)
 	it.avatar, it.link, it.bg = pp.avatar, pp.link, pp.bg
 	// Пустой абзац, в который пишем, мог остаться от прежней отрисовки поста
 	// (render стирает текст фрейма, а последний абзац остаётся со своим
@@ -2001,39 +2022,24 @@ func (f *Feed) imageSize(fi *model.FileInfo) (int, int) {
 func (f *Feed) previewSrc(fi *model.FileInfo, w, h int) string {
 	name := fmt.Sprintf("preview:%s:%dx%d", fi.Id, w, h)
 	if _, ok := f.resources[name]; ok {
-		if fi.MimeType == "image/gif" {
+		if fi.MimeType == "image/gif" && f.loaded[name] {
 			f.animate(fi, name, w, h) // кадры — в ресурс этого размера
 		}
 		return name
 	}
 	if f.d.Assets != nil {
 		if path := f.d.Assets.Preview(fi.Id); path != "" {
-			src := qt.NewQPixmap4(path)
-			defer free(src)
-			if !src.IsNull() {
-				pm := src.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
-				pm.SetDevicePixelRatio(resourceDPR)
-				f.addResource(name, pm, w, h)
-				free(pm)
-				if fi.MimeType == "image/gif" {
-					f.animate(fi, name, w, h)
-				}
-				return name
+			lz := lazyImage{load: func() *qt.QPixmap { return scaledFile(path, w, h) }}
+			if fi.MimeType == "image/gif" {
+				lz.onLoad = func() { f.animate(fi, name, w, h) }
+				lz.onRelease = func() { f.stopMovie(fi.Id) }
 			}
-		} else {
-			f.d.Assets.WantPreview(fi.Id, f.refreshLater())
+			f.addLazy(name, w, h, lz)
+			return name
 		}
+		f.d.Assets.WantPreview(fi.Id, f.refreshLater())
 	}
-	ph := fmt.Sprintf("placeholder:%dx%d", w, h)
-	if _, ok := f.resources[ph]; !ok {
-		img := qt.NewQImage3(w, h, qt.QImage__Format_ARGB32_Premultiplied)
-		img.FillWithColor(qcolor(Pal().Surf2))
-		pm := qt.QPixmap_FromImage(img)
-		f.addResource(ph, pm, w, h)
-		free(img)
-		free(pm)
-	}
-	return ph
+	return f.placeholderSrc(w, h)
 }
 
 // movieTarget — ресурс документа (и его размер), в который идут кадры GIF.
@@ -2128,12 +2134,12 @@ func (f *Feed) sweepResources() {
 		}
 	}
 	for name := range f.resources {
-		sized := strings.HasPrefix(name, "preview:") || strings.HasPrefix(name, "link:") ||
-			strings.HasPrefix(name, "video:") || strings.HasPrefix(name, "placeholder:")
-		if sized && !used[name] {
+		if isSizedResource(name) && !used[name] {
 			// Пустое значение вместо картинки: удалить ресурс QTextDocument не умеет.
 			f.doc.AddResource(int(qt.QTextDocument__ImageResource), tmp(qt.NewQUrl3(name)), tmp(qt.NewQVariant()))
 			delete(f.resources, name)
+			delete(f.lazy, name)
+			delete(f.loaded, name)
 		}
 	}
 }

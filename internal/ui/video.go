@@ -212,9 +212,7 @@ func (f *Feed) videoHTML(fi *model.FileInfo) string {
 		if probed {
 			label, thumb = formatDuration(info.Duration), info.Thumb
 		}
-		pm := videoPixmap(thumb, w, h, label)
-		f.addResource(src, pm, w, h)
-		free(pm)
+		f.addLazy(src, w, h, lazyImage{load: func() *qt.QPixmap { return videoPixmap(thumb, w, h, label) }})
 		if !probed && f.d.Assets != nil && fi.Size <= autoProbeVideo {
 			f.d.Assets.WantVideo(fi, f.refreshLater())
 		}

@@ -103,9 +103,7 @@ func (f *Feed) linkImageSize(pv store.Preview, maxW, maxH int) (int, int) {
 	w, h := pv.ImageW, pv.ImageH
 	if (w <= 0 || h <= 0) && f.d.Assets != nil {
 		if path := f.d.Assets.LinkImage(pv.Image); path != "" {
-			if pm := qt.NewQPixmap4(path); !pm.IsNull() {
-				w, h = pm.Width(), pm.Height()
-			}
+			w, h = imageFileSize(path)
 		}
 	}
 	if w <= 0 || h <= 0 {
@@ -125,10 +123,11 @@ func (f *Feed) linkImageSrc(rawURL string, w, h int) string {
 	}
 	if f.d.Assets != nil {
 		if path := f.d.Assets.LinkImage(rawURL); path != "" {
-			if pm := qt.NewQPixmap4(path); !pm.IsNull() {
-				pm = pm.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+			if src := tmp(qt.NewQPixmap4(path)); !src.IsNull() {
+				pm := src.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
 				pm.SetDevicePixelRatio(resourceDPR)
 				f.addResource(name, pm, w, h)
+				free(pm)
 				return name
 			}
 		} else {
@@ -142,11 +141,25 @@ func (f *Feed) linkImageSrc(rawURL string, w, h int) string {
 func (f *Feed) placeholderSrc(w, h int) string {
 	ph := fmt.Sprintf("placeholder:%dx%d", w, h)
 	if _, ok := f.resources[ph]; !ok {
-		img := qt.NewQImage3(w, h, qt.QImage__Format_ARGB32_Premultiplied)
-		img.FillWithColor(qt.NewQColor6(Pal().Surf2))
-		f.addResource(ph, qt.QPixmap_FromImage(img), w, h)
+		img := tmp(qt.NewQImage3(w, h, qt.QImage__Format_ARGB32_Premultiplied))
+		img.FillWithColor(qcolor(Pal().Surf2))
+		pm := qt.QPixmap_FromImage(img)
+		f.addResource(ph, pm, w, h)
+		free(pm)
 	}
 	return ph
+}
+
+// imageFileSize — размер картинки в файле по заголовку, без разбора всей
+// картинки (её мегабайты не нужны); не прочитался — 0, 0.
+func imageFileSize(path string) (w, h int) {
+	r := qt.NewQImageReader3(path)
+	defer free(r)
+	if sz := tmp(r.Size()); sz.IsValid() {
+		return sz.Width(), sz.Height()
+	}
+	img := tmp(r.Read()) // формат без размера в заголовке
+	return img.Width(), img.Height()
 }
 
 // columnWidth — ширина колонки текста в ленте.

@@ -60,17 +60,17 @@ func (m *MainWindow) newFileList(where bool) *fileList {
 		noFocusFrame(opt)
 		super(p, opt, idx)
 		if it := l.ItemFromIndex(idx); it != nil {
-			if fi := fl.files[it.Data(fileIDRole).ToString()]; fi != nil {
+			if fi := fl.files[tmp(it.Data(fileIDRole)).ToString()]; fi != nil {
 				m.paintFileRow(p, opt, fl, fi)
 			}
 		}
 	})
 	d.OnSizeHint(func(super func(*qt.QStyleOptionViewItem, *qt.QModelIndex) *qt.QSize, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) *qt.QSize {
-		return qt.NewQSize2(opt.Rect().Width(), 52)
+		return tmp(qt.NewQSize2(tmp(opt.Rect()).Width(), 52)) // Qt копирует ответ
 	})
 	l.SetItemDelegate(d.QAbstractItemDelegate)
 	l.OnItemClicked(func(it *qt.QListWidgetItem) {
-		if fi := fl.files[it.Data(fileIDRole).ToString()]; fi != nil {
+		if fi := fl.files[tmp(it.Data(fileIDRole)).ToString()]; fi != nil {
 			m.openChannelFile(fi)
 		}
 	})
@@ -80,7 +80,7 @@ func (m *MainWindow) newFileList(where bool) *fileList {
 		if it == nil {
 			return
 		}
-		fi := fl.files[it.Data(fileIDRole).ToString()]
+		fi := fl.files[tmp(it.Data(fileIDRole)).ToString()]
 		if fi == nil {
 			return
 		}
@@ -108,7 +108,7 @@ func (fl *fileList) fill(files []*model.FileInfo) {
 	for _, fi := range files {
 		fl.files[fi.Id] = fi
 		it := qt.NewQListWidgetItem5(fl.list)
-		it.SetData(fileIDRole, qt.NewQVariant11(fi.Id))
+		it.SetData(fileIDRole, tmp(qt.NewQVariant11(fi.Id)))
 	}
 }
 
@@ -124,7 +124,7 @@ func (m *MainWindow) newFilesPanel() *filesPanel {
 	fp.timer.SetInterval(300)
 	fp.timer.OnTimeout(func() { m.loadFiles() })
 	fp.field.OnTextChanged(func(string) { fp.timer.Start2() })
-	fp.info.SetProperty("role", qt.NewQVariant11("hint"))
+	fp.info.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	fp.info.SetWordWrap(true)
 	l := fp.list
 
@@ -155,14 +155,14 @@ func (fp *filesPanel) restyle() {
 // когда, размер.
 func (m *MainWindow) paintFileRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, fl *fileList, fi *model.FileInfo) {
 	pal := Pal()
-	r := opt.Rect()
+	r := tmp(opt.Rect())
 	x, y, h := r.X()+16, r.Y(), r.Height()
 	cy := y + h/2
 	pm := fl.thumbs[fi.Id]
 	if pm == nil && isImage(fi) && !isVideo(fi) && fi.HasPreviewImage {
 		if path := m.assets.Preview(fi.Id); path != "" {
-			if img := qt.NewQPixmap4(path); !img.IsNull() {
-				pm = img.Scaled3(32, 32, qt.KeepAspectRatioByExpanding, qt.SmoothTransformation).Copy(0, 0, 32, 32)
+			if img := tmp(qt.NewQPixmap4(path)); !img.IsNull() {
+				pm = tmp(img.Scaled3(32, 32, qt.KeepAspectRatioByExpanding, qt.SmoothTransformation)).Copy(0, 0, 32, 32)
 				fl.thumbs[fi.Id] = pm
 			}
 		} else {
@@ -183,8 +183,8 @@ func (m *MainWindow) paintFileRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, 
 	w := r.X() + r.Width() - 16 - tx
 	f := sidebarFont(0, qt.QFont__DemiBold)
 	p.SetFont(f)
-	p.SetPen(qt.NewQColor6(pal.Tx))
-	p.DrawText7(tx, cy-20, w, 20, int(qt.AlignVCenter|qt.AlignLeft), qt.NewQFontMetrics(f).ElidedText(fi.Name, qt.ElideMiddle, w))
+	p.SetPen(qcolor(pal.Tx))
+	p.DrawText7(tx, cy-20, w, 20, int(qt.AlignVCenter|qt.AlignLeft), tmp(qt.NewQFontMetrics(f)).ElidedText(fi.Name, qt.ElideMiddle, w))
 	sub := m.st.Name(fi.CreatorId)
 	if ch := m.st.Channel(fi.ChannelId); fl.where && ch != nil {
 		sub += " · " + channelPrefix(ch) + m.st.Title(ch)
@@ -192,8 +192,8 @@ func (m *MainWindow) paintFileRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, 
 	sub += " · " + dayLabel(fi.CreateAt, time.Now()) + " · " + formatSize(fi.Size)
 	f = sidebarFont(-2, qt.QFont__Normal)
 	p.SetFont(f)
-	p.SetPen(qt.NewQColor6(pal.Tx2))
-	p.DrawText7(tx, cy, w, 18, int(qt.AlignVCenter|qt.AlignLeft), qt.NewQFontMetrics(f).ElidedText(sub, qt.ElideRight, w))
+	p.SetPen(qcolor(pal.Tx2))
+	p.DrawText7(tx, cy, w, 18, int(qt.AlignVCenter|qt.AlignLeft), tmp(qt.NewQFontMetrics(f)).ElidedText(sub, qt.ElideRight, w))
 }
 
 // filesShown — открыт ли список файлов.

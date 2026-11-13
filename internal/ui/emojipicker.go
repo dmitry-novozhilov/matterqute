@@ -129,8 +129,8 @@ func (p *emojiPicker) setSections(sections []*pickerSection) {
 		}
 		b := qt.NewQToolButton2()
 		b.SetFixedSize2(30, 28)
-		b.SetIcon(qt.NewQIcon2(s.tab))
-		b.SetIconSize(qt.NewQSize2(18, 18))
+		b.SetIcon(tmp(qt.NewQIcon2(s.tab)))
+		b.SetIconSize(tmp(qt.NewQSize2(18, 18)))
 		b.SetToolTip(s.title)
 		b.SetFocusPolicy(qt.NoFocus)
 		b.OnClicked(func() {
@@ -212,7 +212,7 @@ func (p *emojiPicker) setHover(name string) {
 func (p *emojiPicker) paint(clip *qt.QRect) {
 	pal := Pal()
 	painter := qt.NewQPainter2(p.grid.QPaintDevice)
-	defer painter.End()
+	defer free(painter)
 	painter.SetRenderHint(qt.QPainter__Antialiasing)
 	head := pixelFont(12, qt.QFont__DemiBold)
 	for _, s := range p.sections {
@@ -221,7 +221,7 @@ func (p *emojiPicker) paint(clip *qt.QRect) {
 			continue
 		}
 		painter.SetFont(head)
-		painter.SetPen(qt.NewQColor6(pal.Tx2))
+		painter.SetPen(qcolor(pal.Tx2))
 		painter.DrawText7(pickerPad+2, s.top, pickerCols*pickerCell, pickerHeader, int(qt.AlignVCenter|qt.AlignLeft), s.title)
 		for i, name := range s.names {
 			x, y := p.cell(s, i)
@@ -230,8 +230,8 @@ func (p *emojiPicker) paint(clip *qt.QRect) {
 			}
 			if name == p.hover {
 				painter.SetPenWithStyle(qt.NoPen)
-				painter.SetBrush(qt.NewQBrush3(qt.NewQColor6(pal.Hover)))
-				painter.DrawRoundedRect(qt.NewQRectF4(float64(x), float64(y), pickerCell, pickerCell), 4, 4)
+				painter.SetBrush(qbrush(pal.Hover))
+				painter.DrawRoundedRect(tmp(qt.NewQRectF4(float64(x), float64(y), pickerCell, pickerCell)), 4, 4)
 			}
 			off := (pickerCell - pickerIcon) / 2
 			painter.DrawPixmap9(x+off, y+off, p.image(name, pickerIcon))
@@ -248,13 +248,15 @@ func (p *emojiPicker) pick(name string) {
 
 // emojiImage — эмодзи картинкой size px: системное — цветным шрифтом
 // (явно Noto Color Emoji, не через запасные шрифты системы), кастомное — с
-// сервера; пока не загружено — пусто, done перерисует.
+// сервера; пока не загружено — пусто, done перерисует. Картинка общая или
+// временная (tmp): не удалять и не хранить.
 func (m *MainWindow) emojiImage(name string, size int, done func()) *qt.QPixmap {
 	if c, ok := emoji.Char(name); ok {
 		return emojiPixmapSized(c, size)
 	}
 	if frame := m.assets.EmojiFrame(name); frame != nil { // анимированное — текущий кадр
-		pm := frame.Scaled3(size*resourceDPR, size*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+		pm := tmp(frame.Scaled3(size*resourceDPR, size*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation))
+		free(frame)
 		pm.SetDevicePixelRatio(resourceDPR)
 		return pm
 	}
@@ -267,17 +269,26 @@ func (m *MainWindow) emojiImage(name string, size int, done func()) *qt.QPixmap 
 		m.assets.WantEmoji(name, done)
 		return emptyPixmap(size)
 	}
-	pm := qt.NewQPixmap4(path).Scaled3(size*resourceDPR, size*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+	src := qt.NewQPixmap4(path)
+	pm := src.Scaled3(size*resourceDPR, size*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+	free(src)
 	pm.SetDevicePixelRatio(resourceDPR)
 	style.icons[key] = pm
 	return pm
 }
 
+// emptyPixmap — прозрачная картинка size px (общая: не удалять).
 func emptyPixmap(size int) *qt.QPixmap {
+	key := fmt.Sprintf("empty|%d", size)
+	if pm := style.icons[key]; pm != nil {
+		return pm
+	}
 	img := qt.NewQImage3(size*resourceDPR, size*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
 	img.Fill2(qt.Transparent)
 	pm := qt.QPixmap_FromImage(img)
+	free(img)
 	pm.SetDevicePixelRatio(resourceDPR)
+	style.icons[key] = pm
 	return pm
 }
 
@@ -288,15 +299,13 @@ func emojiPixmapSized(char string, size int) *qt.QPixmap {
 		return pm
 	}
 	img := qt.NewQImage3(size*resourceDPR, size*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+	defer free(img)
 	img.SetDevicePixelRatio(resourceDPR)
 	img.Fill2(qt.Transparent)
 	p := qt.NewQPainter2(img.QPaintDevice)
-	f := qt.NewQFont()
-	f.SetFamilies([]string{theme.EmojiFamily})
-	f.SetPixelSize(size * 4 / 5)
-	p.SetFont(f)
+	p.SetFont(cachedFont([]string{theme.EmojiFamily}, size*4/5, qt.QFont__Normal))
 	p.DrawText7(0, 0, size, size, int(qt.AlignCenter), char)
-	p.End()
+	free(p)
 	pm := qt.QPixmap_FromImage(img)
 	pm.SetDevicePixelRatio(resourceDPR)
 	style.icons[key] = pm

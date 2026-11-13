@@ -163,13 +163,14 @@ func (m *MainWindow) copyImageItem(it viewerItem) {
 }
 
 // copyImageFile — картинка с диска в буфер обмена: с поворотом по EXIF,
-// GIF — первым кадром. QImage из Read освобождает финализатор MIQT (как и
-// у Clipboard().Image()) — Delete руками удалял бы его дважды.
+// GIF — первым кадром. Картинку из Read (по значению, с финализатором MIQT)
+// удаляет free: снимает финализатор, иначе удаление второй раз.
 func copyImageFile(path string) error {
 	r := qt.NewQImageReader3(path)
-	defer r.Delete()
+	defer free(r)
 	r.SetAutoTransform(true)
 	img := r.Read()
+	defer free(img)
 	if img.IsNull() {
 		return fmt.Errorf("read %s: %s", path, r.ErrorString())
 	}
@@ -188,7 +189,7 @@ func newImageViewer(m *MainWindow) *imageViewer {
 		b := qt.NewQToolButton2()
 		setName(b.QObject, name)
 		b.SetFixedSize2(32, 32)
-		b.SetIconSize(qt.NewQSize2(16, 16))
+		b.SetIconSize(tmp(qt.NewQSize2(16, 16)))
 		b.SetFocusPolicy(qt.NoFocus)
 		b.SetToolTip(tip)
 		return b
@@ -253,7 +254,7 @@ func newImageViewer(m *MainWindow) *imageViewer {
 			return
 		}
 		v.dragged = true
-		v.canvas.SetCursor(qt.NewQCursor2(qt.ClosedHandCursor))
+		v.canvas.SetCursor(tmp(qt.NewQCursor2(qt.ClosedHandCursor)))
 		v.panX, v.panY = v.pressPanX+dx, v.pressPanY+dy
 		v.clampPan()
 		v.canvas.Update()
@@ -286,7 +287,7 @@ func newImageViewer(m *MainWindow) *imageViewer {
 			v.copyCurrent()
 			return
 		}
-		center := qt.NewQPointF3(float64(v.canvas.Width())/2, float64(v.canvas.Height())/2)
+		center := tmp(qt.NewQPointF3(float64(v.canvas.Width())/2, float64(v.canvas.Height())/2))
 		switch qt.Key(e.Key()) {
 		case qt.Key_Escape:
 			v.w.Close()
@@ -327,6 +328,7 @@ func newImageViewer(m *MainWindow) *imageViewer {
 		v.closed = true
 		v.unsubscribe()
 		v.stopMovie()
+		v.setImage(nil)
 		if m.viewer == v {
 			m.viewer = nil
 		}
@@ -342,7 +344,8 @@ func (v *imageViewer) show(i int) {
 	gen := v.gen
 	it := v.items[i]
 	v.stopMovie()
-	v.img, v.path, v.msg = nil, "", "Загружаем…"
+	v.setImage(nil)
+	v.path, v.msg = "", "Загружаем…"
 	v.copyWanted = false
 	v.fit, v.panX, v.panY = true, 0, 0
 	v.baseW, v.baseH = 0, 0
@@ -351,10 +354,12 @@ func (v *imageViewer) show(i int) {
 	}
 	if it.preview != "" {
 		if img := qt.NewQImage8(it.preview); !img.IsNull() {
-			v.img = img
+			v.setImage(img)
 			if v.baseW == 0 {
 				v.baseW, v.baseH = float64(img.Width()), float64(img.Height())
 			}
+		} else {
+			free(img)
 		}
 	}
 	v.title.SetText(v.m.mediaTitle(it.name, v.post))
@@ -388,6 +393,7 @@ func (v *imageViewer) show(i int) {
 // loadFull — оригинал с диска: GIF — анимацией, остальное — с поворотом по EXIF.
 func (v *imageViewer) loadFull(path string) {
 	r := qt.NewQImageReader3(path)
+	defer free(r)
 	r.SetAutoTransform(true)
 	if r.SupportsAnimation() && r.ImageCount() != 1 {
 		mv := qt.NewQMovie3(path)
@@ -397,7 +403,7 @@ func (v *imageViewer) loadFull(path string) {
 				if v.closed || v.movie != mv {
 					return
 				}
-				v.img = mv.CurrentImage()
+				v.setImage(mv.CurrentImage())
 				v.canvas.Update()
 			})
 			mv.Start()
@@ -407,6 +413,7 @@ func (v *imageViewer) loadFull(path string) {
 	}
 	img := r.Read()
 	if img.IsNull() {
+		free(img)
 		v.msg = "Не удалось открыть картинку: " + r.ErrorString()
 		v.canvas.Update()
 		return
@@ -419,7 +426,8 @@ func (v *imageViewer) loaded(path string, img *qt.QImage) {
 	if !v.fit && v.baseW > 0 {
 		v.scale *= v.baseW / w // тот же размер на экране, что у превью
 	}
-	v.img, v.path, v.msg = img, path, ""
+	v.setImage(img)
+	v.path, v.msg = path, ""
 	v.baseW, v.baseH = w, h
 	v.relayout()
 	if v.copyWanted {
@@ -444,6 +452,15 @@ func (v *imageViewer) flash(text string) {
 	v.msg, v.flashText = text, text
 	v.canvas.Update()
 	v.flashTimer.Start(int(viewerFlash / time.Millisecond))
+}
+
+// setImage — картинка на экране; прежняя (кадр GIF — на каждом шаге, мегабайты)
+// удаляется сразу.
+func (v *imageViewer) setImage(img *qt.QImage) {
+	if v.img != img {
+		free(v.img)
+	}
+	v.img = img
 }
 
 func (v *imageViewer) stopMovie() {
@@ -527,21 +544,21 @@ func (v *imageViewer) clampPan() {
 // imageRect — где картинка в окне.
 func (v *imageViewer) imageRect() *qt.QRectF {
 	w, h := v.baseW*v.scale, v.baseH*v.scale
-	return qt.NewQRectF4(float64(v.canvas.Width())/2+v.panX-w/2, float64(v.canvas.Height())/2+v.panY-h/2, w, h)
+	return tmp(qt.NewQRectF4(float64(v.canvas.Width())/2+v.panX-w/2, float64(v.canvas.Height())/2+v.panY-h/2, w, h))
 }
 
 func (v *imageViewer) paint() {
 	p := qt.NewQPainter2(v.canvas.QPaintDevice)
-	defer p.End()
-	p.FillRect5(0, 0, v.canvas.Width(), v.canvas.Height(), qt.NewQColor6(viewerBg))
+	defer free(p)
+	p.FillRect5(0, 0, v.canvas.Width(), v.canvas.Height(), qcolor(viewerBg))
 	if v.img != nil && v.baseW > 0 {
 		p.SetRenderHint(qt.QPainter__SmoothPixmapTransform)
 		p.DrawImage5(v.imageRect(), v.img)
 	}
 	if v.msg != "" {
-		p.SetPen(qt.NewQColor6("#a8a49e"))
+		p.SetPen(qcolor("#a8a49e"))
 		p.SetFont(feedFont())
-		r := qt.NewQRect4(viewerMargin, 0, max(1, v.canvas.Width()-2*viewerMargin), v.canvas.Height()-viewerMargin)
+		r := tmp(qt.NewQRect4(viewerMargin, 0, max(1, v.canvas.Width()-2*viewerMargin), v.canvas.Height()-viewerMargin))
 		align := qt.AlignHCenter | qt.AlignBottom
 		if v.img == nil {
 			align = qt.AlignCenter

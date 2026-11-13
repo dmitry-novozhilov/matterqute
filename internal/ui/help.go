@@ -29,7 +29,7 @@ type helpWindow struct {
 func (s *Shell) buildHelpMenu() {
 	menu := s.w.MenuBar().AddMenuWithTitle("Сп&равка")
 	keys := menu.QWidget.AddActionWithText("Сочетания клавиш")
-	keys.SetShortcut(qt.NewQKeySequence2("Ctrl+/"))
+	keys.SetShortcut(tmp(qt.NewQKeySequence2("Ctrl+/")))
 	keys.OnTriggered(s.showShortcuts)
 	menu.AddSeparator()
 	for _, a := range help.Articles() {
@@ -94,7 +94,7 @@ func (h *helpWindow) render() {
 func (h *helpWindow) follow(link string) {
 	switch {
 	case strings.HasPrefix(link, "http://"), strings.HasPrefix(link, "https://"):
-		qt.QDesktopServices_OpenUrl(qt.NewQUrl3(link))
+		qt.QDesktopServices_OpenUrl(tmp(qt.NewQUrl3(link)))
 	case strings.HasSuffix(link, ".md") && help.Text(path.Base(link)) != "":
 		h.open(path.Base(link))
 	}
@@ -128,7 +128,7 @@ func (s *Shell) showAbout() {
 	d.lay.AddLayout(row.QLayout)
 	d.bottom.AddStretch()
 	ok := qt.NewQPushButton3("Закрыть")
-	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	ok.SetDefault(true)
 	ok.OnClicked(func() { d.w.Close() })
 	d.bottom.AddWidget(ok.QWidget)

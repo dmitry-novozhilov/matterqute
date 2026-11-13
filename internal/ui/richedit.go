@@ -88,9 +88,10 @@ func sameStyle(a, b markdown.Span) bool {
 	return a == b
 }
 
-// spanFormat — формат символов для оформления sp в текущей теме.
+// spanFormat — формат символов для оформления sp в текущей теме. Форматы
+// здесь временные (tmp): Qt их копирует.
 func spanFormat(sp markdown.Span) *qt.QTextCharFormat {
-	cf := qt.NewQTextCharFormat()
+	cf := tmp(qt.NewQTextCharFormat())
 	pal := Pal()
 	if sp.Bold {
 		cf.SetFontWeight(boldWeight)
@@ -103,13 +104,13 @@ func spanFormat(sp markdown.Span) *qt.QTextCharFormat {
 	}
 	if sp.Code {
 		cf.SetFontFamilies([]string{monoFamily()})
-		cf.SetBackground(qt.NewQBrush3(qt.NewQColor6(pal.Surf2)))
-		cf.SetProperty(propCode, qt.NewQVariant8(true))
+		cf.SetBackground(qbrush(pal.Surf2))
+		cf.SetProperty(propCode, tmp(qt.NewQVariant8(true)))
 	}
 	if sp.Link != "" {
 		cf.SetAnchor(true)
 		cf.SetAnchorHref(sp.Link)
-		cf.SetForeground(qt.NewQBrush3(qt.NewQColor6(pal.Acc)))
+		cf.SetForeground(qbrush(pal.Acc))
 		cf.SetFontUnderline(true)
 	}
 	return cf
@@ -117,14 +118,14 @@ func spanFormat(sp markdown.Span) *qt.QTextCharFormat {
 
 // blockFormat — формат абзаца вида kind (списки — отдельно, QTextList).
 func blockFormat(kind markdown.BlockKind) *qt.QTextBlockFormat {
-	bf := qt.NewQTextBlockFormat()
+	bf := tmp(qt.NewQTextBlockFormat())
 	switch kind {
 	case markdown.Quote:
-		bf.SetProperty(propQuote, qt.NewQVariant8(true))
+		bf.SetProperty(propQuote, tmp(qt.NewQVariant8(true)))
 		bf.SetLeftMargin(quoteIndent)
 	case markdown.Code:
-		bf.SetProperty(propCodeBlock, qt.NewQVariant8(true))
-		bf.SetBackground(qt.NewQBrush3(qt.NewQColor6(Pal().Surf2)))
+		bf.SetProperty(propCodeBlock, tmp(qt.NewQVariant8(true)))
+		bf.SetBackground(qbrush(Pal().Surf2))
 		bf.SetLeftMargin(4)
 		bf.SetRightMargin(4)
 	}
@@ -133,7 +134,7 @@ func blockFormat(kind markdown.BlockKind) *qt.QTextBlockFormat {
 
 // blockCharFormat — формат символов абзаца: в блоке кода — моноширинный.
 func blockCharFormat(kind markdown.BlockKind) *qt.QTextCharFormat {
-	cf := qt.NewQTextCharFormat()
+	cf := tmp(qt.NewQTextCharFormat())
 	if kind == markdown.Code {
 		cf.SetFontFamilies([]string{monoFamily()})
 	}
@@ -141,7 +142,7 @@ func blockCharFormat(kind markdown.BlockKind) *qt.QTextCharFormat {
 }
 
 func listFormat(kind markdown.BlockKind, level int) *qt.QTextListFormat {
-	lf := qt.NewQTextListFormat()
+	lf := tmp(qt.NewQTextListFormat())
 	styles := []qt.QTextListFormat__Style{qt.QTextListFormat__ListDisc, qt.QTextListFormat__ListCircle, qt.QTextListFormat__ListSquare}
 	if kind == markdown.Ordered {
 		lf.SetStyle(qt.QTextListFormat__ListDecimal)
@@ -180,7 +181,7 @@ func writeBlocks(cur *qt.QTextCursor, blocks []markdown.Block) {
 					// Редактор нумерует с 1 (QTextListFormat без start), а в
 					// markdown вернётся исходный номер.
 					bf := cur.BlockFormat()
-					bf.SetProperty(propListStart, qt.NewQVariant4(b.Start))
+					bf.SetProperty(propListStart, tmp(qt.NewQVariant4(b.Start)))
 					cur.SetBlockFormat(bf)
 				}
 			}
@@ -223,7 +224,7 @@ func selectedBlocks(doc *qt.QTextDocument, cur *qt.QTextCursor) []*qt.QTextBlock
 // будет набрано: каждый кусок перечитывается в Span, меняется change и
 // пишется заново. В блоках кода оформления нет — их не трогает.
 func (c *Composer) restyleSelection(change func(*markdown.Span)) {
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	if !cur.HasSelection() {
 		sp := spanOf(c.edit.CurrentCharFormat())
 		change(&sp)
@@ -250,7 +251,7 @@ func (c *Composer) restyleSelection(change func(*markdown.Span)) {
 			}
 		}
 	}
-	w := qt.NewQTextCursor2(c.edit.Document())
+	w := tmp(qt.NewQTextCursor2(c.edit.Document()))
 	w.BeginEditBlock()
 	for _, p := range pieces {
 		w.SetPosition(p.from)
@@ -262,7 +263,7 @@ func (c *Composer) restyleSelection(change func(*markdown.Span)) {
 
 // selectionSpans — оформление выделенного (без выделения — набираемого).
 func (c *Composer) selectionSpans() []markdown.Span {
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	if !cur.HasSelection() {
 		return []markdown.Span{spanOf(c.edit.CurrentCharFormat())}
 	}
@@ -303,7 +304,7 @@ func (c *Composer) setBlockKind(cur *qt.QTextCursor, kind markdown.BlockKind) {
 	var list *qt.QTextList
 	for _, b := range selectedBlocks(doc, cur) {
 		was := blockKind(b)
-		w := qt.NewQTextCursor4(b)
+		w := tmp(qt.NewQTextCursor4(b))
 		if l := b.TextList(); l != nil {
 			l.Remove(b)
 		}
@@ -327,7 +328,7 @@ func (c *Composer) setBlockKind(cur *qt.QTextCursor, kind markdown.BlockKind) {
 // toggleBlock — абзацы выделения становятся видом kind, а если уже все такие —
 // обычными строками.
 func (c *Composer) toggleBlock(kind markdown.BlockKind) {
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	all := true
 	for _, b := range selectedBlocks(c.edit.Document(), cur) {
 		if blockKind(b) != kind {
@@ -346,7 +347,7 @@ func (c *Composer) toggleBlock(kind markdown.BlockKind) {
 // Пункт встаёт в список того же уровня выше по тексту (нумерация
 // продолжается), если до него нет пунктов мельче; иначе — в новый.
 func (c *Composer) indentList(d int) bool {
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	l := cur.CurrentList()
 	if l == nil {
 		return false
@@ -370,7 +371,7 @@ func (c *Composer) indentList(d int) bool {
 		}
 	}
 	l.Remove(b)
-	w := qt.NewQTextCursor4(b)
+	w := tmp(qt.NewQTextCursor4(b))
 	w.SetBlockFormat(blockFormat(kind))
 	w.CreateList(listFormat(kind, level))
 	return true
@@ -380,7 +381,7 @@ func (c *Composer) indentList(d int) bool {
 // кода или ссылки: набор дальше — обычным текстом, а не продолжением их. При
 // наборе с клавиатуры не зовётся: включённый код набирается подряд.
 func (c *Composer) leaveCodeAndLink() {
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	if cur.HasSelection() || blockKind(cur.Block()) == markdown.Code {
 		return
 	}
@@ -390,7 +391,7 @@ func (c *Composer) leaveCodeAndLink() {
 	}
 	next := markdown.Span{}
 	if !cur.AtBlockEnd() {
-		n := qt.NewQTextCursor2(c.edit.Document())
+		n := tmp(qt.NewQTextCursor2(c.edit.Document()))
 		n.SetPosition(cur.Position())
 		n.MovePosition2(qt.QTextCursor__NextCharacter, qt.QTextCursor__KeepAnchor)
 		next = spanOf(n.CharFormat())
@@ -406,7 +407,7 @@ func (c *Composer) leaveCodeAndLink() {
 // пункт списка, строка цитаты или кода. Пустая строка такого вида вместо этого
 // становится обычной: так из списка, цитаты и кода выходят.
 func (c *Composer) newLine() {
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	b := cur.Block()
 	kind := blockKind(b)
 	last := !b.Next().IsValid() || blockKind(b.Next()) != markdown.Code
@@ -427,7 +428,7 @@ func (c *Composer) newLine() {
 // абзацами (шрифт от курсора — моноширинный, но не код).
 func (c *Composer) pasteText(text string) {
 	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	cur.BeginEditBlock() // одна правка для Ctrl+Z
 	cur.InsertText(text) // \n — InsertBlock с форматом текущего абзаца
 	cur.EndEditBlock()
@@ -457,7 +458,7 @@ func (c *Composer) Quote(text string, md bool) {
 		}
 	}
 	blocks = append(blocks, markdown.Block{Kind: markdown.Para})
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	cur.BeginEditBlock()
 	cur.MovePosition(qt.QTextCursor__End)
 	// Последняя строка — пустая обычная: цитата встаёт в неё, иначе — ниже.
@@ -475,7 +476,7 @@ func (c *Composer) Quote(text string, md bool) {
 // backspaceAtStart — Backspace в начале цитаты, кода или пункта списка делает
 // абзац обычным (а не склеивает его с предыдущим).
 func (c *Composer) backspaceAtStart() bool {
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	if cur.HasSelection() || !cur.AtBlockStart() || blockKind(cur.Block()) == markdown.Para {
 		return false
 	}
@@ -509,7 +510,7 @@ func (c *Composer) autoformat(typed string) {
 	if typed == "" || strings.ContainsAny(typed, "\r\n") {
 		return
 	}
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	b := cur.Block()
 	if cur.HasSelection() || blockKind(b) == markdown.Code || spanOf(c.edit.CurrentCharFormat()).Code {
 		return
@@ -596,9 +597,9 @@ func (c *Composer) paintQuotes() {
 		}
 		if p == nil {
 			p = qt.NewQPainter2(vp.QPaintDevice)
-			defer p.End()
+			defer free(p)
 		}
 		// Прямоугольник абзаца начинается до его отступа: полоса — в отступе.
-		p.FillRect5(int(r.X())+2, top, 3, int(r.Height()), qt.NewQColor6(Pal().Line2))
+		p.FillRect5(int(r.X())+2, top, 3, int(r.Height()), qcolor(Pal().Line2))
 	}
 }

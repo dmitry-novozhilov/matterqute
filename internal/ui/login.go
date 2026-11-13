@@ -41,18 +41,18 @@ type LoginView struct {
 	OnRetry  func() // повторить вход по сохранённому токену
 }
 
-func setName(o *qt.QObject, name string) { o.SetObjectName(*qt.NewQAnyStringView3(name)) }
+func setName(o *qt.QObject, name string) { o.SetObjectName(*tmp(qt.NewQAnyStringView3(name))) }
 
 func fieldLabel(text string) *qt.QLabel {
 	l := qt.NewQLabel3(text)
-	l.SetProperty("role", qt.NewQVariant11("fieldLabel"))
+	l.SetProperty("role", tmp(qt.NewQVariant11("fieldLabel")))
 	return l
 }
 
 func roleLabel(role string) *qt.QLabel {
 	l := qt.NewQLabel2()
 	l.SetWordWrap(true)
-	l.SetProperty("role", qt.NewQVariant11(role))
+	l.SetProperty("role", tmp(qt.NewQVariant11(role)))
 	l.SetVisible(false)
 	return l
 }
@@ -66,7 +66,7 @@ func NewLoginView(server, loginID string) *LoginView {
 	title := qt.NewQLabel3(AppTitle)
 	title.SetFont(pixelFont(20, qt.QFont__DemiBold))
 	sub := qt.NewQLabel3("Вход в Mattermost")
-	sub.SetProperty("role", qt.NewQVariant11("hint"))
+	sub.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	heads := qt.NewQVBoxLayout2()
 	heads.SetSpacing(0)
 	heads.AddWidget(title.QWidget)
@@ -120,7 +120,7 @@ func NewLoginView(server, loginID string) *LoginView {
 		}
 	})
 	l.submit = qt.NewQPushButton3("Войти")
-	l.submit.SetProperty("primary", qt.NewQVariant11("true"))
+	l.submit.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	l.submit.SetDefault(true)
 	l.submit.OnClicked(l.doSubmit)
 	buttons := qt.NewQHBoxLayout2()
@@ -228,7 +228,7 @@ func (l *LoginView) showNotice(kind, iconName, title, text string, mono bool) {
 	l.nText.SetVisible(text != "")
 	f := pixelFont(12, qt.QFont__Normal)
 	if mono {
-		f.SetFamilies([]string{monoFamily()})
+		f = cachedFont([]string{monoFamily()}, 12, qt.QFont__Normal)
 	}
 	l.nText.SetFont(f)
 	l.restyle()

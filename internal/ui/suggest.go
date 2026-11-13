@@ -52,7 +52,7 @@ func newSuggestPopup(parent *qt.QWidget) *suggestPopup {
 		}
 	})
 	d.OnSizeHint(func(_ func(*qt.QStyleOptionViewItem, *qt.QModelIndex) *qt.QSize, opt *qt.QStyleOptionViewItem, _ *qt.QModelIndex) *qt.QSize {
-		return qt.NewQSize2(opt.Rect().Width(), suggestRow)
+		return tmp(qt.NewQSize2(tmp(opt.Rect()).Width(), suggestRow)) // Qt копирует ответ
 	})
 	p.list.SetItemDelegate(d.QAbstractItemDelegate)
 	p.list.OnItemClicked(func(it *qt.QListWidgetItem) {
@@ -91,7 +91,7 @@ func (p *suggestPopup) show(items []Suggestion, anchor *qt.QWidget) {
 	p.list.SetCurrentRow(cur)
 	h := min(len(items), 8)*suggestRow + 8 + 2
 	w := min(anchor.Width(), 520)
-	at := anchor.MapTo2(p.frame.ParentWidget(), qt.NewQPoint2(0, 0))
+	at := anchor.MapTo2(p.frame.ParentWidget(), tmp(qt.NewQPoint2(0, 0)))
 	p.frame.SetGeometry(at.X(), at.Y()-h-4, w, h)
 	p.frame.Raise()
 	p.frame.Show()
@@ -128,7 +128,7 @@ QListWidget { background: transparent; border: none; outline: none; }`, pal.Surf
 
 func (p *suggestPopup) paintRow(painter *qt.QPainter, opt *qt.QStyleOptionViewItem, s Suggestion) {
 	pal := Pal()
-	r := opt.Rect()
+	r := tmp(opt.Rect())
 	selected := opt.State()&qt.QStyle__State_Selected != 0
 	hover := opt.State()&qt.QStyle__State_MouseOver != 0
 	painter.Save()
@@ -140,8 +140,8 @@ func (p *suggestPopup) paintRow(painter *qt.QPainter, opt *qt.QStyleOptionViewIt
 			bg = pal.AccW
 		}
 		painter.SetPenWithStyle(qt.NoPen)
-		painter.SetBrush(qt.NewQBrush3(qt.NewQColor6(bg)))
-		painter.DrawRoundedRect(qt.NewQRectF4(float64(r.X()), float64(r.Y()), float64(r.Width()), float64(r.Height())), 4, 4)
+		painter.SetBrush(qbrush(bg))
+		painter.DrawRoundedRect(tmp(qt.NewQRectF4(float64(r.X()), float64(r.Y()), float64(r.Width()), float64(r.Height()))), 4, 4)
 	}
 	x, cy := r.X()+8, r.Y()+r.Height()/2
 	if s.Icon != nil {
@@ -153,19 +153,19 @@ func (p *suggestPopup) paintRow(painter *qt.QPainter, opt *qt.QStyleOptionViewIt
 		titleColor = pal.SelTx
 	}
 	tf := pixelFont(14, qt.QFont__DemiBold)
-	fm := qt.NewQFontMetrics(tf)
+	fm := tmp(qt.NewQFontMetrics(tf))
 	right := r.X() + r.Width() - 8
 	title := fm.ElidedText(s.Title, qt.ElideRight, right-x)
 	painter.SetFont(tf)
-	painter.SetPen(qt.NewQColor6(titleColor))
+	painter.SetPen(qcolor(titleColor))
 	painter.DrawText7(x, r.Y(), right-x, r.Height(), int(qt.AlignVCenter|qt.AlignLeft), title)
 	x += fm.HorizontalAdvance(title) + 8
 	if s.Sub != "" && x < right {
 		sf := pixelFont(13, qt.QFont__Normal)
 		painter.SetFont(sf)
-		painter.SetPen(qt.NewQColor6(pal.Tx2))
+		painter.SetPen(qcolor(pal.Tx2))
 		painter.DrawText7(x, r.Y(), right-x, r.Height(), int(qt.AlignVCenter|qt.AlignLeft),
-			qt.NewQFontMetrics(sf).ElidedText(s.Sub, qt.ElideRight, right-x))
+			tmp(qt.NewQFontMetrics(sf)).ElidedText(s.Sub, qt.ElideRight, right-x))
 	}
 }
 
@@ -246,7 +246,7 @@ func (m *MainWindow) suggestions(tok complete.Token, chID string, r *remote) []S
 			if c, ok := emoji.Char(name); ok {
 				s.Icon = emojiPixmapSized(c, 20)
 			} else if path := m.assets.Emoji(name); path != "" {
-				pm := qt.NewQPixmap4(path).Scaled3(20*resourceDPR, 20*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+				pm := tmp(qt.NewQPixmap4(path)).Scaled3(20*resourceDPR, 20*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
 				pm.SetDevicePixelRatio(resourceDPR)
 				s.Icon = pm
 			} else {

@@ -105,20 +105,27 @@ func actionColor(pal theme.Palette, style string) string {
 func (f *Feed) actionPill(src, label, style string, menu, disabled bool) (w, h int) {
 	pal := Pal()
 	font := pixelFont(13, qt.QFont__DemiBold)
-	fm := qt.NewQFontMetrics(font)
+	fm := tmp(qt.NewQFontMetrics(font))
 	label = fm.ElidedText(label, qt.ElideRight, actionLabelMax)
 	h = 28
 	w = 12 + fm.HorizontalAdvance(label) + 12
 	if menu {
 		w += 16
 	}
-	type colors struct{ bg, border, fg *qt.QColor }
-	solid := func(c string) *qt.QColor { return qt.NewQColor6(c) }
-	faint := func(c string, a float32) *qt.QColor {
-		q := qt.NewQColor6(c)
-		q.SetAlphaF(a)
+	// Цвета — строками и прозрачностью: render зовут и позже (кадр эмодзи),
+	// а цвет Qt временный (tmp).
+	type color struct {
+		name  string
+		alpha float32
+	}
+	qc := func(c color) *qt.QColor {
+		q := qcolor(c.name)
+		q.SetAlphaF(c.alpha)
 		return q
 	}
+	type colors struct{ bg, border, fg color }
+	solid := func(c string) color { return color{c, 1} }
+	faint := func(c string, a float32) color { return color{c, a} }
 	normal := colors{solid(pal.Surf), solid(pal.Line), solid(pal.Tx)}
 	hover := colors{solid(pal.Hover), solid(pal.Line), solid(pal.Tx)}
 	if c := actionColor(pal, style); style == "primary" {
@@ -130,6 +137,7 @@ func (f *Feed) actionPill(src, label, style string, menu, disabled bool) (w, h i
 	}
 	draw := func(c colors) *qt.QPixmap {
 		img := qt.NewQImage3(w*resourceDPR, h*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+		defer free(img)
 		img.Fill2(qt.Transparent)
 		img.SetDevicePixelRatio(resourceDPR)
 		p := qt.NewQPainter2(img.QPaintDevice)
@@ -137,24 +145,25 @@ func (f *Feed) actionPill(src, label, style string, menu, disabled bool) (w, h i
 		if disabled {
 			p.SetOpacity(0.45)
 		}
-		p.SetPenWithPen(qt.NewQPen4(qt.NewQBrush3(c.border), 1))
-		p.SetBrush(qt.NewQBrush3(c.bg))
-		p.DrawRoundedRect(qt.NewQRectF4(0.5, 0.5, float64(w-1), float64(h-1)), 4, 4)
+		p.SetPenWithPen(tmp(qt.NewQPen4(tmp(qt.NewQBrush3(qc(c.border))), 1)))
+		p.SetBrush(tmp(qt.NewQBrush3(qc(c.bg))))
+		p.DrawRoundedRect(tmp(qt.NewQRectF4(0.5, 0.5, float64(w-1), float64(h-1))), 4, 4)
 		p.SetFont(font)
-		p.SetPen(c.fg)
+		p.SetPen(qc(c.fg))
 		p.DrawText7(12, 0, w-24, h, int(qt.AlignVCenter|qt.AlignLeft), label)
 		if menu {
-			p.DrawPixmap9(w-12-14, (h-14)/2, iconPixmap("chevron-down", c.fg.Name(), 14))
+			p.DrawPixmap9(w-12-14, (h-14)/2, iconPixmap("chevron-down", c.fg.name, 14))
 		}
-		p.End()
+		free(p)
 		return qt.QPixmap_FromImage(img)
 	}
 	pl := pill{render: func() (*qt.QPixmap, *qt.QPixmap) { return draw(normal), draw(hover) }}
 	pl.normal, pl.hover = pl.render()
 	if disabled {
+		free(pl.hover)
 		pl.hover = pl.normal
 	}
-	f.pills[src] = pl
+	f.setPill(src, pl)
 	cur := pl.normal
 	if f.hovered == src {
 		cur = pl.hover
@@ -289,7 +298,7 @@ func (m *MainWindow) chooseItem(title, placeholder string, all []switchItem, don
 	field.SetPlaceholderText(placeholder)
 	field.SetClearButtonEnabled(true)
 	list := qt.NewQListWidget2()
-	list.SetIconSize(qt.NewQSize2(20, 20))
+	list.SetIconSize(tmp(qt.NewQSize2(20, 20)))
 	list.SetMinimumHeight(260)
 	list.SetFocusPolicy(qt.NoFocus)
 	d.lay.AddWidget(field.QWidget)
@@ -305,7 +314,7 @@ func (m *MainWindow) chooseItem(title, placeholder string, all []switchItem, don
 			}
 			row := qt.NewQListWidgetItem7(label, list)
 			if it.icon != nil {
-				row.SetIcon(qt.NewQIcon2(it.icon))
+				row.SetIcon(tmp(qt.NewQIcon2(it.icon)))
 			}
 		}
 		if len(shown) > 0 {

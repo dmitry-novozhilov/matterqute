@@ -59,6 +59,7 @@ func (a *Assets) WantVideo(fi *model.FileInfo, done func()) {
 			return
 		}
 		probeVideo(path, func(img *qt.QImage, duration int64, err error) {
+			defer free(img)
 			if a.ctx.Err() != nil {
 				return // окно закрыто, пока разбирали: в кэш больше не пишем
 			}
@@ -100,11 +101,13 @@ func probeVideo(path string, done func(img *qt.QImage, duration int64, err error
 		done(img, duration, err)
 	}
 	sink.OnVideoFrameChanged(func(f *multimedia.QVideoFrame) {
-		if !f.IsValid() {
+		if finished || !f.IsValid() {
 			return
 		}
 		if img := f.ToImage(); !img.IsNull() {
 			finish(img, nil)
+		} else {
+			free(img)
 		}
 	})
 	mp.OnErrorOccurred(func(_ multimedia.QMediaPlayer__Error, text string) {
@@ -149,14 +152,15 @@ func videoSize(info cache.VideoInfo, probed bool, maxW int) (int, int) {
 // воспроизведения 48 px, внизу слева длительность (пока не знаем — размер файла).
 func videoPixmap(thumb string, w, h int, label string) *qt.QPixmap {
 	img := qt.NewQImage3(w*resourceDPR, h*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+	defer free(img)
 	img.SetDevicePixelRatio(resourceDPR)
-	img.FillWithColor(qt.NewQColor6("#141210"))
+	img.FillWithColor(qcolor("#141210"))
 	p := qt.NewQPainter2(img.QPaintDevice)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
 	p.SetRenderHint(qt.QPainter__SmoothPixmapTransform)
 	if thumb != "" {
-		if pm := qt.NewQPixmap4(thumb); !pm.IsNull() {
-			pm = pm.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+		if src := tmp(qt.NewQPixmap4(thumb)); !src.IsNull() {
+			pm := tmp(src.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation))
 			pm.SetDevicePixelRatio(resourceDPR)
 			pw, ph := pm.Width()/resourceDPR, pm.Height()/resourceDPR
 			p.DrawPixmap9((w-pw)/2, (h-ph)/2, pm)
@@ -164,26 +168,25 @@ func videoPixmap(thumb string, w, h int, label string) *qt.QPixmap {
 	}
 	cx, cy := float64(w)/2, float64(h)/2
 	p.SetPenWithStyle(qt.NoPen)
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor11(0, 0, 0, 140)))
-	p.DrawEllipse(qt.NewQRectF4(cx-24, cy-24, 48, 48))
-	tri := qt.NewQPainterPath()
+	p.SetBrush(tmp(qt.NewQBrush3(tmp(qt.NewQColor11(0, 0, 0, 140)))))
+	p.DrawEllipse(tmp(qt.NewQRectF4(cx-24, cy-24, 48, 48)))
+	tri := tmp(qt.NewQPainterPath())
 	tri.MoveTo2(cx-7, cy-11)
 	tri.LineTo2(cx-7, cy+11)
 	tri.LineTo2(cx+12, cy)
 	tri.CloseSubpath()
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor6("#ffffff")))
+	p.SetBrush(qbrush("#ffffff"))
 	p.DrawPath(tri)
 
-	f := pixelFont(12, qt.QFont__Normal)
-	f.SetFamilies([]string{monoFamily()})
-	lw := float64(qt.NewQFontMetrics(f).HorizontalAdvance(label)) + 12
-	r := qt.NewQRectF4(8, float64(h)-8-20, lw, 20)
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor11(0, 0, 0, 150)))
+	f := cachedFont([]string{monoFamily()}, 12, qt.QFont__Normal)
+	lw := float64(tmp(qt.NewQFontMetrics(f)).HorizontalAdvance(label)) + 12
+	r := tmp(qt.NewQRectF4(8, float64(h)-8-20, lw, 20))
+	p.SetBrush(tmp(qt.NewQBrush3(tmp(qt.NewQColor11(0, 0, 0, 150)))))
 	p.DrawRoundedRect(r, 4, 4)
 	p.SetFont(f)
-	p.SetPen(qt.NewQColor6("#ffffff"))
+	p.SetPen(qcolor("#ffffff"))
 	p.DrawText5(r, int(qt.AlignCenter), label)
-	p.End()
+	free(p)
 	pm := qt.QPixmap_FromImage(img)
 	pm.SetDevicePixelRatio(resourceDPR)
 	return pm
@@ -209,7 +212,9 @@ func (f *Feed) videoHTML(fi *model.FileInfo) string {
 		if probed {
 			label, thumb = formatDuration(info.Duration), info.Thumb
 		}
-		f.addResource(src, videoPixmap(thumb, w, h, label), w, h)
+		pm := videoPixmap(thumb, w, h, label)
+		f.addResource(src, pm, w, h)
+		free(pm)
 		if !probed && f.d.Assets != nil && fi.Size <= autoProbeVideo {
 			f.d.Assets.WantVideo(fi, f.refreshLater())
 		}

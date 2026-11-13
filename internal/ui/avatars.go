@@ -95,17 +95,18 @@ func roundAvatar(photo string, u *model.User, name string, bot bool, size int) *
 	}
 	px := size * resourceDPR
 	img := qt.NewQImage3(px, px, qt.QImage__Format_ARGB32_Premultiplied)
+	defer free(img)
 	img.Fill2(qt.Transparent)
 	p := qt.NewQPainter2(img.QPaintDevice)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
-	path := qt.NewQPainterPath()
+	path := tmp(qt.NewQPainterPath())
 	path.AddEllipse2(0, 0, float64(px), float64(px))
 	p.SetClipPath(path)
 
 	drawn := false
 	if photo != "" {
-		if pm := qt.NewQPixmap4(photo); !pm.IsNull() {
-			pm = pm.Scaled3(px, px, qt.KeepAspectRatioByExpanding, qt.SmoothTransformation)
+		if src := tmp(qt.NewQPixmap4(photo)); !src.IsNull() {
+			pm := tmp(src.Scaled3(px, px, qt.KeepAspectRatioByExpanding, qt.SmoothTransformation))
 			p.DrawPixmap9((px-pm.Width())/2, (px-pm.Height())/2, pm)
 			drawn = true
 		}
@@ -115,13 +116,13 @@ func roundAvatar(photo string, u *model.User, name string, bot bool, size int) *
 			name = u.Username
 		}
 		bg, fg := Pal().Avatar(name, bot)
-		p.FillRect5(0, 0, px, px, qt.NewQColor6(bg))
-		p.SetPen(qt.NewQColor6(fg))
+		p.FillRect5(0, 0, px, px, qcolor(bg))
+		p.SetPen(qcolor(fg))
 		f := pixelFont(max(8, px*36/100), qt.QFont__DemiBold)
 		p.SetFont(f)
 		p.DrawText7(0, 0, px, px, int(qt.AlignCenter), initials(u, name))
 	}
-	p.End()
+	free(p)
 	pm := qt.QPixmap_FromImage(img)
 	pm.SetDevicePixelRatio(resourceDPR)
 	style.avatars[key] = pm
@@ -160,9 +161,9 @@ func drawStatusDot(p *qt.QPainter, x, y, size float64, status, ring string) {
 	p.Save()
 	p.SetRenderHint(qt.QPainter__Antialiasing)
 	p.SetPenWithStyle(qt.NoPen)
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(ring)))
-	p.DrawEllipse(qt.NewQRectF4(x-1.5, y-1.5, size+3, size+3))
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(statusColor(status))))
-	p.DrawEllipse(qt.NewQRectF4(x, y, size, size))
+	p.SetBrush(qbrush(ring))
+	p.DrawEllipse(tmp(qt.NewQRectF4(x-1.5, y-1.5, size+3, size+3)))
+	p.SetBrush(qbrush(statusColor(status)))
+	p.DrawEllipse(tmp(qt.NewQRectF4(x, y, size, size)))
 	p.Restore()
 }

@@ -332,7 +332,7 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 	m.searchBtn = m.head.addTool("Поиск по сообщениям (Ctrl+F)", m.openSearch)
 	// Ctrl+K — быстрый переход, как в веб-клиенте (ссылка в поле ввода — Ctrl+Alt+K).
 	sw := qt.NewQAction5("Перейти к каналу", m.w.QObject)
-	sw.SetShortcut(qt.NewQKeySequence2("Ctrl+K"))
+	sw.SetShortcut(tmp(qt.NewQKeySequence2("Ctrl+K")))
 	sw.SetShortcutContext(qt.WidgetWithChildrenShortcut)
 	sw.OnTriggered(m.showSwitcher)
 	m.w.AddAction(sw)
@@ -343,23 +343,23 @@ func NewMainWindow(s *mm.Session, log *slog.Logger, initialChannel, cacheDir str
 		unread bool
 	}{{"Alt+Up", -1, false}, {"Alt+Down", 1, false}, {"Alt+Shift+Up", -1, true}, {"Alt+Shift+Down", 1, true}} {
 		a := qt.NewQAction5(k.keys, m.w.QObject)
-		a.SetShortcut(qt.NewQKeySequence2(k.keys))
+		a.SetShortcut(tmp(qt.NewQKeySequence2(k.keys)))
 		a.SetShortcutContext(qt.WidgetWithChildrenShortcut)
 		a.OnTriggered(func() { m.stepChannel(k.delta, k.unread) })
 		m.w.AddAction(a)
 	}
 	men := qt.NewQAction5("Упоминания", m.w.QObject)
-	men.SetShortcut(qt.NewQKeySequence2("Ctrl+Shift+M")) // как в веб-клиенте
+	men.SetShortcut(tmp(qt.NewQKeySequence2("Ctrl+Shift+M"))) // как в веб-клиенте
 	men.SetShortcutContext(qt.WidgetWithChildrenShortcut)
 	men.OnTriggered(func() { m.toggleList(listMentions) })
 	m.w.AddAction(men)
 	dm := qt.NewQAction5("Новое личное сообщение", m.w.QObject)
-	dm.SetShortcut(qt.NewQKeySequence2("Ctrl+Shift+K"))
+	dm.SetShortcut(tmp(qt.NewQKeySequence2("Ctrl+Shift+K")))
 	dm.SetShortcutContext(qt.WidgetWithChildrenShortcut)
 	dm.OnTriggered(func() { m.showNewMessage() })
 	m.w.AddAction(dm)
 	find := qt.NewQAction5("Поиск", m.w.QObject)
-	find.SetShortcut(qt.NewQKeySequence2("Ctrl+F"))
+	find.SetShortcut(tmp(qt.NewQKeySequence2("Ctrl+F")))
 	find.SetShortcutContext(qt.WidgetWithChildrenShortcut)
 	find.OnTriggered(m.openSearch)
 	m.w.AddAction(find)
@@ -855,7 +855,7 @@ func (m *MainWindow) refreshHeader() {
 	m.updateMembersButton()
 	m.head.chev.SetVisible(ch != nil)
 	if ch != nil {
-		m.head.title.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
+		m.head.title.SetCursor(tmp(qt.NewQCursor2(qt.PointingHandCursor)))
 	} else {
 		m.head.title.UnsetCursor()
 	}

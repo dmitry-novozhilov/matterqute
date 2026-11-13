@@ -135,7 +135,7 @@ func (v *interactiveDialog) build(dlg model.Dialog) {
 	v.d.bottom.AddWidget(cancel.QWidget)
 	add := func(label string, extra func(map[string]any)) {
 		b := qt.NewQPushButton3(label)
-		b.SetProperty("primary", qt.NewQVariant11("true"))
+		b.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 		b.OnClicked(func() { v.send(extra) })
 		v.d.bottom.AddWidget(b.QWidget)
 		v.submit = append(v.submit, b)
@@ -163,7 +163,7 @@ func (v *interactiveDialog) addElement(lay *qt.QVBoxLayout, el model.DialogEleme
 	if el.Type == "collapsible" {
 		if el.DisplayName != "" {
 			head := qt.NewQLabel3(el.DisplayName)
-			head.SetProperty("role", qt.NewQVariant11("fieldLabel"))
+			head.SetProperty("role", tmp(qt.NewQVariant11("fieldLabel")))
 			lay.AddSpacing(6)
 			lay.AddWidget(head.QWidget)
 		}
@@ -185,7 +185,7 @@ func (v *interactiveDialog) addElement(lay *qt.QVBoxLayout, el model.DialogEleme
 	lay.AddWidget(w)
 	if el.HelpText != "" {
 		help := qt.NewQLabel3(el.HelpText)
-		help.SetProperty("role", qt.NewQVariant11("hint"))
+		help.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 		help.SetWordWrap(true)
 		lay.AddWidget(help.QWidget)
 	}
@@ -300,7 +300,7 @@ func (v *interactiveDialog) widget(f *dialogField) *qt.QWidget {
 		return dateWidget(f)
 	}
 	note := qt.NewQLabel3("Такое поле приложение не показывает — откройте это окно в веб-клиенте.")
-	note.SetProperty("role", qt.NewQVariant11("hint"))
+	note.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	note.SetWordWrap(true)
 	return note.QWidget
 }

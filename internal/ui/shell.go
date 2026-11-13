@@ -143,12 +143,12 @@ func NewShell() *Shell {
 	// Панель статуса — всегда над своим именем в строке состояния, и из меню тоже.
 	s.myStatus.OnTriggered(func() {
 		if s.OnStatus != nil {
-			s.OnStatus(s.user.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0)))
+			s.OnStatus(s.user.MapToGlobalWithQPoint(tmp(qt.NewQPoint2(0, 0))))
 		}
 	})
 	file.AddSeparator()
 	quit := file.QWidget.AddActionWithText("Выход")
-	quit.SetShortcut(qt.NewQKeySequence2("Ctrl+Q"))
+	quit.SetShortcut(tmp(qt.NewQKeySequence2("Ctrl+Q")))
 	quit.OnTriggered(s.Quit)
 	s.w.OnCloseEvent(func(super func(*qt.QCloseEvent), e *qt.QCloseEvent) {
 		if s.OnClose != nil {
@@ -247,11 +247,11 @@ func NewShell() *Shell {
 	s.server = qt.NewQLabel2()
 	// Клик по своему имени или статусу — панель статуса, как аватар в веб-клиенте.
 	for _, l := range []*qt.QLabel{s.user, s.mood, s.moodText} {
-		l.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
+		l.SetCursor(tmp(qt.NewQCursor2(qt.PointingHandCursor)))
 		l.SetToolTip("Статус")
 		l.OnMousePressEvent(func(_ func(*qt.QMouseEvent), e *qt.QMouseEvent) {
 			if e.Button() == qt.LeftButton && s.OnStatus != nil {
-				s.OnStatus(s.user.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0)))
+				s.OnStatus(s.user.MapToGlobalWithQPoint(tmp(qt.NewQPoint2(0, 0))))
 			}
 		})
 	}
@@ -355,7 +355,7 @@ func (s *Shell) SetServers(items []ServerItem) {
 		a.SetCheckable(true)
 		a.SetChecked(it.Active)
 		if i < 9 {
-			a.SetShortcut(qt.NewQKeySequence2(fmt.Sprintf("Ctrl+%d", i+1)))
+			a.SetShortcut(tmp(qt.NewQKeySequence2(fmt.Sprintf("Ctrl+%d", i+1))))
 		}
 		a.OnTriggered(func() {
 			if s.OnSelectServer != nil {
@@ -475,7 +475,7 @@ func (s *Shell) buildZoomMenu(menu *qt.QMenu) {
 		a := menu.QWidget.AddActionWithText(z.title)
 		var keys []qt.QKeySequence
 		for _, k := range z.keys {
-			keys = append(keys, *qt.NewQKeySequence2(k))
+			keys = append(keys, *tmp(qt.NewQKeySequence2(k)))
 		}
 		a.SetShortcuts(keys)
 		a.SetShortcutContext(qt.ApplicationShortcut)

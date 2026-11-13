@@ -98,7 +98,7 @@ func (m *MainWindow) confirmDelete(p *model.Post) {
 	if preview := editPreview(p); preview != "" {
 		quote := qt.NewQLabel3(preview)
 		quote.SetTextFormat(qt.PlainText)
-		quote.SetProperty("role", qt.NewQVariant11("hint"))
+		quote.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 		d.lay.AddWidget(quote.QWidget)
 	}
 	danger(d.buttons("Удалить", func() { m.deletePost(p) }))

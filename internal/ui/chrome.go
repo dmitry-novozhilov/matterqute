@@ -78,7 +78,7 @@ func newHeader(objectName string, closable bool, onLink func(string)) *header {
 func (h *header) addTool(tip string, do func()) *qt.QToolButton {
 	b := qt.NewQToolButton2()
 	b.SetFixedSize2(28, 28)
-	b.SetIconSize(qt.NewQSize2(18, 18))
+	b.SetIconSize(tmp(qt.NewQSize2(18, 18)))
 	b.SetToolTip(tip)
 	b.SetFocusPolicy(qt.NoFocus)
 	b.OnClicked(do)

@@ -52,7 +52,7 @@ func (m *MainWindow) newMembersPanel() *membersPanel {
 	mp.filter.OnTextChanged(func(string) { mp.fill() })
 	mp.add = qt.NewQPushButton3("Добавить…")
 	mp.add.OnClicked(func() { m.showAddMembers(mp.channel) })
-	mp.info.SetProperty("role", qt.NewQVariant11("hint"))
+	mp.info.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 
 	l := mp.list
 	setName(l.QObject, "members")
@@ -65,17 +65,17 @@ func (m *MainWindow) newMembersPanel() *membersPanel {
 		noFocusFrame(opt)
 		super(p, opt, idx)
 		if it := l.ItemFromIndex(idx); it != nil {
-			if u := m.st.User(it.Data(memberIDRole).ToString()); u != nil {
+			if u := m.st.User(tmp(it.Data(memberIDRole)).ToString()); u != nil {
 				m.paintMemberRow(p, opt, u, mp.admins[u.Id])
 			}
 		}
 	})
 	d.OnSizeHint(func(super func(*qt.QStyleOptionViewItem, *qt.QModelIndex) *qt.QSize, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) *qt.QSize {
-		return qt.NewQSize2(opt.Rect().Width(), 44)
+		return tmp(qt.NewQSize2(tmp(opt.Rect()).Width(), 44)) // Qt копирует ответ
 	})
 	l.SetItemDelegate(d.QAbstractItemDelegate)
 	l.OnItemClicked(func(it *qt.QListWidgetItem) {
-		if u := m.st.User(it.Data(memberIDRole).ToString()); u != nil {
+		if u := m.st.User(tmp(it.Data(memberIDRole)).ToString()); u != nil {
 			m.openUserCard(u, qt.QCursor_Pos())
 		}
 	})
@@ -85,7 +85,7 @@ func (m *MainWindow) newMembersPanel() *membersPanel {
 		if it == nil {
 			return
 		}
-		items := m.memberItems(mp.channel, it.Data(memberIDRole).ToString())
+		items := m.memberItems(mp.channel, tmp(it.Data(memberIDRole)).ToString())
 		if len(items) == 0 {
 			return
 		}
@@ -134,7 +134,7 @@ func (mp *membersPanel) restyle() {
 // справа — «администратор» у администраторов канала.
 func (m *MainWindow) paintMemberRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, u *model.User, admin bool) {
 	pal := Pal()
-	r := opt.Rect()
+	r := tmp(opt.Rect())
 	x, y, h := r.X()+16, r.Y(), r.Height()
 	cy := y + h/2
 	ring := pal.Surf
@@ -147,11 +147,11 @@ func (m *MainWindow) paintMemberRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 	right := r.X() + r.Width() - 16
 	if admin {
 		f := sidebarFont(-2, qt.QFont__Normal)
-		fm := qt.NewQFontMetrics(f)
+		fm := tmp(qt.NewQFontMetrics(f))
 		label := "администратор"
 		w := fm.HorizontalAdvance(label)
 		p.SetFont(f)
-		p.SetPen(qt.NewQColor6(pal.Tx3))
+		p.SetPen(qcolor(pal.Tx3))
 		p.DrawText7(right-w, y, w, h, int(qt.AlignVCenter|qt.AlignLeft), label)
 		right -= w + 8
 	}
@@ -160,17 +160,17 @@ func (m *MainWindow) paintMemberRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 		name += " (вы)"
 	}
 	f := sidebarFont(0, qt.QFont__DemiBold)
-	fm := qt.NewQFontMetrics(f)
+	fm := tmp(qt.NewQFontMetrics(f))
 	name = fm.ElidedText(name, qt.ElideRight, max(right-tx, 0))
 	p.SetFont(f)
-	p.SetPen(qt.NewQColor6(pal.Tx))
+	p.SetPen(qcolor(pal.Tx))
 	p.DrawText7(tx, y, right-tx, h, int(qt.AlignVCenter|qt.AlignLeft), name)
 	tx += fm.HorizontalAdvance(name) + 8
 	if dn := displayName(u); dn != u.Username && tx < right {
 		f := sidebarFont(0, qt.QFont__Normal)
 		p.SetFont(f)
-		p.SetPen(qt.NewQColor6(pal.Tx2))
-		dn = qt.NewQFontMetrics(f).ElidedText(dn, qt.ElideRight, right-tx)
+		p.SetPen(qcolor(pal.Tx2))
+		dn = tmp(qt.NewQFontMetrics(f)).ElidedText(dn, qt.ElideRight, right-tx)
 		p.DrawText7(tx, y, right-tx, h, int(qt.AlignVCenter|qt.AlignLeft), dn)
 	}
 }
@@ -185,7 +185,7 @@ func (mp *membersPanel) fill() {
 			continue
 		}
 		it := qt.NewQListWidgetItem5(mp.list)
-		it.SetData(memberIDRole, qt.NewQVariant11(u.Id))
+		it.SetData(memberIDRole, tmp(qt.NewQVariant11(u.Id)))
 		n++
 	}
 	switch {
@@ -376,7 +376,7 @@ func (m *MainWindow) showAddMembers(channelID string) *peoplePicker {
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
 	ok := qt.NewQPushButton3("Добавить")
-	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	ok.SetEnabled(false)
 	pp.OnChange = func() { ok.SetEnabled(len(pp.chosen) > 0) }
 	pp.OnSubmit = func() {

@@ -61,10 +61,10 @@ func (m *MainWindow) newPeoplePicker(d *dialog, limit int, local func(string) []
 		pp.changed()
 		pp.field.SetFocus()
 	})
-	pp.list.SetIconSize(qt.NewQSize2(24, 24))
+	pp.list.SetIconSize(tmp(qt.NewQSize2(24, 24)))
 	pp.list.SetMinimumHeight(280)
 	pp.list.SetFocusPolicy(qt.NoFocus) // стрелки и Enter — из строки поиска
-	pp.hint.SetProperty("role", qt.NewQVariant11("hint"))
+	pp.hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	pp.hint.SetWordWrap(true)
 	d.lay.AddWidget(pp.picked.QWidget)
 	d.lay.AddWidget(pp.field.QWidget)
@@ -169,7 +169,7 @@ func (pp *peoplePicker) fill() {
 			text += "   " + dn
 		}
 		row := qt.NewQListWidgetItem7(text, pp.list)
-		row.SetIcon(qt.NewQIcon2(avatarPixmap(pp.m.assets, u, u.Username, u.IsBot, 24, nil)))
+		row.SetIcon(tmp(qt.NewQIcon2(avatarPixmap(pp.m.assets, u, u.Username, u.IsBot, 24, nil))))
 	}
 	// В пустой строке ничего не выделено: Enter — готово, ↓ — к списку.
 	if q != "" && len(pp.shown) > 0 {
@@ -268,7 +268,7 @@ func (m *MainWindow) showNewMessage() *peoplePicker {
 	m.channelDialog = d
 	d.w.SetMinimumWidth(460)
 	note := qt.NewQLabel3("Один человек — личка, несколько — групповая (до 7 человек).")
-	note.SetProperty("role", qt.NewQVariant11("hint"))
+	note.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	note.SetWordWrap(true)
 	d.lay.AddWidget(note.QWidget)
 	local := func(q string) []*model.User {
@@ -299,7 +299,7 @@ func (m *MainWindow) showNewMessage() *peoplePicker {
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
 	ok := qt.NewQPushButton3("Написать")
-	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	ok.SetEnabled(false)
 	pp.OnChange = func() { ok.SetEnabled(len(pp.chosen) > 0) }
 	pp.OnSubmit = func() {

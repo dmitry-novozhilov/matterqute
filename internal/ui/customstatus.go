@@ -96,7 +96,7 @@ QFrame[role="line"] { background: %s; max-height: 1px; min-height: 1px; border: 
 
 	row := func(icon *qt.QPixmap, text string, check bool) *qt.QPushButton {
 		b := qt.NewQPushButton2()
-		b.SetProperty("role", qt.NewQVariant11("row"))
+		b.SetProperty("role", tmp(qt.NewQVariant11("row")))
 		b.SetFocusPolicy(qt.NoFocus)
 		l := qt.NewQHBoxLayout(b.QWidget)
 		l.SetContentsMargins(8, 0, 8, 0)
@@ -122,7 +122,7 @@ QFrame[role="line"] { background: %s; max-height: 1px; min-height: 1px; border: 
 	}
 	line := func() {
 		f := qt.NewQFrame2()
-		f.SetProperty("role", qt.NewQVariant11("line"))
+		f.SetProperty("role", tmp(qt.NewQVariant11("line")))
 		c.lay.AddWidget(f.QWidget)
 	}
 
@@ -178,7 +178,7 @@ QFrame[role="line"] { background: %s; max-height: 1px; min-height: 1px; border: 
 					m.setPresence(model.StatusDnd, status.ExpiresAt(id, time.Now(), time.Time{}))
 				})
 			}
-			menu.ExecWithPos(b.MapToGlobalWithQPoint(qt.NewQPoint2(0, b.Height())))
+			menu.ExecWithPos(b.MapToGlobalWithQPoint(tmp(qt.NewQPoint2(0, b.Height()))))
 			menu.DeleteLater()
 		})
 		c.lay.AddWidget(b.QWidget)
@@ -298,7 +298,7 @@ func (m *MainWindow) editCustomStatus() {
 	}
 	pick := qt.NewQToolButton2()
 	pick.SetFixedSize2(36, 36)
-	pick.SetIconSize(qt.NewQSize2(22, 22))
+	pick.SetIconSize(tmp(qt.NewQSize2(22, 22)))
 	pick.SetToolTip("Выбрать эмодзи")
 	setEmoji := func(name string) {
 		emojiName = name
@@ -306,7 +306,7 @@ func (m *MainWindow) editCustomStatus() {
 			pick.SetIcon(icon("smile-plus", pal.Tx2, 22))
 			return
 		}
-		pick.SetIcon(qt.NewQIcon2(m.emojiImage(name, 22, nil)))
+		pick.SetIcon(tmp(qt.NewQIcon2(m.emojiImage(name, 22, nil))))
 	}
 	setEmoji(emojiName)
 	text := qt.NewQLineEdit2()
@@ -317,7 +317,7 @@ func (m *MainWindow) editCustomStatus() {
 		text.SetText(cur.Text)
 	}
 	pick.OnClicked(func() {
-		m.pickEmoji(dlg.w.QWidget, pick.MapToGlobalWithQPoint(qt.NewQPoint2(0, pick.Height())), false, setEmoji)
+		m.pickEmoji(dlg.w.QWidget, pick.MapToGlobalWithQPoint(tmp(qt.NewQPoint2(0, pick.Height()))), false, setEmoji)
 	})
 	top := qt.NewQHBoxLayout2()
 	top.SetSpacing(8)
@@ -353,8 +353,8 @@ func (m *MainWindow) editCustomStatus() {
 	dlg.lay.AddWidget(presets.QWidget)
 	for _, p := range status.Presets {
 		b := qt.NewQPushButton3(p.Text)
-		b.SetIcon(qt.NewQIcon2(m.emojiImage(p.Emoji, 20, nil)))
-		b.SetIconSize(qt.NewQSize2(20, 20))
+		b.SetIcon(tmp(qt.NewQIcon2(m.emojiImage(p.Emoji, 20, nil))))
+		b.SetIconSize(tmp(qt.NewQSize2(20, 20)))
 		b.SetFlat(true)
 		b.SetStyleSheet(fmt.Sprintf("QPushButton { text-align: left; padding: 0 8px; min-height: 30px; border: none; border-radius: 4px; background: transparent; } QPushButton:hover { background: %s; }", pal.Hover))
 		b.OnClicked(func() {
@@ -427,7 +427,7 @@ func (d *dialog) buttons(ok string, do func()) *qt.QPushButton {
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
 	okb := qt.NewQPushButton3(ok)
-	okb.SetProperty("primary", qt.NewQVariant11("true"))
+	okb.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	okb.SetDefault(true)
 	okb.OnClicked(func() { do(); d.w.Close() })
 	d.bottom.AddWidget(cancel.QWidget)
@@ -443,7 +443,7 @@ QPushButton:hover, QPushButton:pressed { background: %[2]s; border-color: %[2]s;
 }
 
 // darker — цвет на 12 % темнее.
-func darker(c string) string { return qt.NewQColor6(c).DarkerWithInt(112).Name() }
+func darker(c string) string { return qcolor(c).DarkerWithInt(112).Name() }
 
 func newDateTimeEdit(t time.Time) *qt.QDateTimeEdit {
 	e := qt.NewQDateTimeEdit2()

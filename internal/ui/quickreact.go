@@ -60,7 +60,7 @@ func newQuickBar(f *Feed) *quickBar {
 func (q *quickBar) button(tip string) *qt.QToolButton {
 	b := qt.NewQToolButton2()
 	b.SetFixedSize2(quickButton, quickButton)
-	b.SetIconSize(qt.NewQSize2(20, 20))
+	b.SetIconSize(tmp(qt.NewQSize2(20, 20)))
 	b.SetFocusPolicy(qt.NoFocus)
 	b.SetCheckable(true)
 	b.SetToolTip(tip)
@@ -123,11 +123,11 @@ func (q *quickBar) setIcon(b *qt.QToolButton, name string) {
 	if q.f.d.EmojiImage == nil {
 		return
 	}
-	b.SetIcon(qt.NewQIcon2(q.f.d.EmojiImage(name, 20, func() {
+	b.SetIcon(tmp(qt.NewQIcon2(q.f.d.EmojiImage(name, 20, func() {
 		if !q.f.disposed && slices.Contains(q.names, name) {
 			q.refresh() // кастомное догрузилось
 		}
-	})))
+	}))))
 }
 
 // wants — панель у поста: не системного, уже отправленного и не в архиве.

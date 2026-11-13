@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"net/url"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -141,6 +142,31 @@ type pill struct {
 	render        func() (normal, hover *qt.QPixmap)
 }
 
+// free — картинки плашки (у выключенной кнопки обе — одна): в ресурсе
+// документа своя копия.
+func (pl pill) free() {
+	free(pl.normal)
+	if pl.hover != pl.normal {
+		free(pl.hover)
+	}
+}
+
+// setPill — плашка src: прежние её картинки больше не нужны.
+func (f *Feed) setPill(src string, pl pill) {
+	if old, ok := f.pills[src]; ok {
+		old.free()
+	}
+	f.pills[src] = pl
+}
+
+// dropPills — плашки всех постов прочь (лента очищается или перерисовывается вся).
+func (f *Feed) dropPills() {
+	for _, pl := range f.pills {
+		pl.free()
+	}
+	f.pills = map[string]pill{}
+}
+
 // Feed — лента постов одним документом (QTextBrowser): выделение и копирование
 // идут через любые сообщения, как в браузере. Каждый пост — свой QTextFrame,
 // поэтому новые, изменённые и удалённые посты правятся точечно: позиции
@@ -155,6 +181,7 @@ type Feed struct {
 	items []*postItem
 	// Картинки, уже добавленные ресурсами документа (сбрасываются с документом).
 	resources   map[string][2]int      // имя → логический размер
+	sweepWanted bool                   // ширина сменилась: картинки прежнего размера убрать (sweepResources)
 	pills       map[string]pill        // имя ресурса реакции или кнопки → обычная и при наведении
 	avatars     map[string]*qt.QPixmap // аватары у строк автора (рисует paintUnder)
 	onAvatar    bool                   // курсор над аватаром (рука)
@@ -168,6 +195,7 @@ type Feed struct {
 	newSince    int64                   // посты новее — «Новые сообщения»
 	newMarker   string                  // id поста, над которым отметка
 	lastWidth   int                     // ширина, под которую вписаны картинки
+	built       time.Time               // документ собран заново (SetPosts, Rebuild)
 	refit       *qt.QTimer              // отложенная перерисовка картинок после ресайза
 	spin        *spinner                // крутилка заглушки «Загружаем сообщения…»
 	videos      map[string]*inlineVideo // ролики, которые играют в ленте, по id файла
@@ -208,32 +236,32 @@ type Feed struct {
 	pausedAnims []string
 	OnWork      func() // у скрытой ленты есть порции для отрисовки
 
-	OnNeedOlder      func()                                      // докрутили до верха, а на сервере есть ещё
-	OnOpenThread     func(rootID string)                         // открыть тред поста
-	OnThreadWindow   func(rootID string)                         // «Открыть тред в отдельном окне»
-	OnEditHistory    func(p *model.Post)                         // щелчок по «(изменено)» у своего поста
-	OnToggleReaction func(p *model.Post, emoji string)           // поставить или снять свою реакцию
-	OnPickReaction   func(p *model.Post)                         // окно выбора эмодзи для реакции
-	OnPermalink      func(channelID, postID string)              // «Перейти к сообщению» в предпросмотре ссылки
-	OnRemovePreview  func(p *model.Post)                         // автор убирает предпросмотр ссылки
-	OnEditPost       func(p *model.Post)                         // «Изменить» своё сообщение
-	OnDeletePost     func(p *model.Post)                         // «Удалить…» своё сообщение
-	OnCopyLink       func(p *model.Post)                         // «Копировать ссылку на сообщение»
-	OnRemind         func(p *model.Post, at time.Time)           // «Напомнить»; at нулевое — спросить время
-	OnForward        func(p *model.Post)                         // «Переслать…»
-	OnQuote          func(p *model.Post, selected string)        // «Цитировать»: выделенное в нём или ("") всё сообщение
-	OnOutbox         func(id string, retry bool)                 // у сообщения из очереди отправки: «Повторить» или «Удалить»
+	OnNeedOlder      func()                               // докрутили до верха, а на сервере есть ещё
+	OnOpenThread     func(rootID string)                  // открыть тред поста
+	OnThreadWindow   func(rootID string)                  // «Открыть тред в отдельном окне»
+	OnEditHistory    func(p *model.Post)                  // щелчок по «(изменено)» у своего поста
+	OnToggleReaction func(p *model.Post, emoji string)    // поставить или снять свою реакцию
+	OnPickReaction   func(p *model.Post)                  // окно выбора эмодзи для реакции
+	OnPermalink      func(channelID, postID string)       // «Перейти к сообщению» в предпросмотре ссылки
+	OnRemovePreview  func(p *model.Post)                  // автор убирает предпросмотр ссылки
+	OnEditPost       func(p *model.Post)                  // «Изменить» своё сообщение
+	OnDeletePost     func(p *model.Post)                  // «Удалить…» своё сообщение
+	OnCopyLink       func(p *model.Post)                  // «Копировать ссылку на сообщение»
+	OnRemind         func(p *model.Post, at time.Time)    // «Напомнить»; at нулевое — спросить время
+	OnForward        func(p *model.Post)                  // «Переслать…»
+	OnQuote          func(p *model.Post, selected string) // «Цитировать»: выделенное в нём или ("") всё сообщение
+	OnOutbox         func(id string, retry bool)          // у сообщения из очереди отправки: «Повторить» или «Удалить»
 
 	// ReadOnly — канал в архиве: без панели реакций, реакций, цитаты,
 	// правки, удаления и закрепления в меню.
-	ReadOnly bool
-	OnPin            func(p *model.Post, pin bool)               // «Закрепить в канале» / «Открепить»
-	OnSave           func(p *model.Post, save bool)              // «Сохранить» / «Убрать из сохранённых»
-	OnMarkUnread     func(p *model.Post)                         // «Пометить непрочитанным»
-	OnFollowThread   func(rootID, channelID string, follow bool) // «Подписаться на тред» / «Отписаться от треда»
-	OnLink           func(url string)                            // клик по ссылке в тексте
-	OnIntegration    func(p *model.Post)                         // клик по имени или аватару интеграции
-	OnAction         func(p *model.Post, a *model.PostAction)    // кнопка или список во вложении интеграции
+	ReadOnly       bool
+	OnPin          func(p *model.Post, pin bool)               // «Закрепить в канале» / «Открепить»
+	OnSave         func(p *model.Post, save bool)              // «Сохранить» / «Убрать из сохранённых»
+	OnMarkUnread   func(p *model.Post)                         // «Пометить непрочитанным»
+	OnFollowThread func(rootID, channelID string, follow bool) // «Подписаться на тред» / «Отписаться от треда»
+	OnLink         func(url string)                            // клик по ссылке в тексте
+	OnIntegration  func(p *model.Post)                         // клик по имени или аватару интеграции
+	OnAction       func(p *model.Post, a *model.PostAction)    // кнопка или список во вложении интеграции
 	// OnFullscreenVideo — «Во весь экран» у ролика в ленте: окно с той же
 	// позиции; back — вернуть позицию и «играл ли», когда окно закроют.
 	OnFullscreenVideo func(fi *model.FileInfo, p *model.Post, path string, pos int64, playing bool, back func(pos int64, playing bool))
@@ -319,7 +347,7 @@ func NewFeed(d FeedDeps) *Feed {
 		}
 	})
 	f.spin = newSpinner(f.view.QObject, func(pm *qt.QPixmap) {
-		f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(spinnerSrc), pm.ToQVariant())
+		f.setResource(spinnerSrc, pm)
 		f.view.Viewport().Update()
 	})
 	f.bar = f.view.VerticalScrollBar()
@@ -343,6 +371,7 @@ func (f *Feed) dispose() {
 	f.stopMovies()
 	f.stopEmojiAnimations()
 	f.quick.hide() // и её подписки на кадры — до stopAnimations окна
+	f.dropPills()
 }
 
 func (f *Feed) restyleRenderer() {
@@ -362,7 +391,7 @@ func (f *Feed) restyle() {
 	f.doc.SetDefaultFont(feedFont())
 	f.setTabs()
 	f.resources = map[string][2]int{}
-	f.pills = map[string]pill{}
+	f.dropPills()
 	f.avatars = map[string]*qt.QPixmap{}
 	if f.spin.timer.IsActive() {
 		f.spin.start(Pal().Tx3, 24)
@@ -377,7 +406,7 @@ func (f *Feed) restyle() {
 // setTabs — табуляция в коде — 4 знака моноширинного (по умолчанию у Qt —
 // 80 px: код с табами в узкой колонке треда переносился).
 func (f *Feed) setTabs() {
-	f.view.SetTabStopDistance(4 * qt.NewQFontMetricsF(font(style.fonts.Mono, style.fonts.Mono.Size, qt.QFont__Normal)).HorizontalAdvance(" "))
+	f.view.SetTabStopDistance(4 * tmp(qt.NewQFontMetricsF(font(style.fonts.Mono, style.fonts.Mono.Size, qt.QFont__Normal))).HorizontalAdvance(" "))
 }
 
 // Reset очищает ленту; msg — текст вместо постов.
@@ -428,7 +457,7 @@ func (f *Feed) placeholderHTML(iconName, title, text, extra string) {
 		fmt.Fprintf(&b, `<p align="center" style="margin:0;font-size:13px;color:%s">%s</p>`, p.Tx2, html.EscapeString(text))
 	}
 	b.WriteString(extra)
-	qt.NewQTextCursor2(f.doc).InsertHtml(scaleFonts(b.String()))
+	tmp(qt.NewQTextCursor2(f.doc)).InsertHtml(scaleFonts(b.String()))
 	f.pinToBottom()
 }
 
@@ -448,7 +477,7 @@ func (f *Feed) clearDoc() {
 	f.history = nil
 	f.placeholder = false
 	f.resources = map[string][2]int{}
-	f.pills = map[string]pill{}
+	f.dropPills()
 	f.avatars = map[string]*qt.QPixmap{}
 	f.hovered = ""
 	f.quick.hide()
@@ -519,6 +548,7 @@ func (f *Feed) posts() []*model.Post {
 
 func (f *Feed) SetPosts(posts []*model.Post, hasMore bool) {
 	f.Reset("")
+	f.built = time.Now()
 	f.hasMore = hasMore
 	f.newMarker = f.markerFor(posts)
 	if f.d.Search {
@@ -536,6 +566,45 @@ func (f *Feed) SetPosts(posts []*model.Post, hasMore bool) {
 		f.insertPending()
 	}
 	f.drainSoon()
+}
+
+// Rebuild — документ скрытой ленты заново из тех же постов (отрисованных и
+// ждущих очереди). Перерисовка поста стирает его текст, а фреймы и таблицы
+// из него (фрейм текста у поста с разделителем, блоки кода, вложения) Qt
+// держит в документе до его очистки — около 2 КБ на перерисовку. Посты
+// встают в очередь и рисуются фоном, порциями, как при первой сборке; место,
+// где лента была, и развёрнутые посты остаются. false — сейчас нельзя: на
+// экране (был бы виден пустой документ), заглушка, грузится история.
+func (f *Feed) Rebuild() bool {
+	if f.shown || !f.ready || f.placeholder || f.history != nil || f.loadingOlder || f.d.Search || f.d.Thread || len(f.items) == 0 {
+		return false
+	}
+	posts := append(slices.Clone(f.pending), f.posts()...)
+	saved, hasMore := f.saved, f.hasMore
+	f.SetPosts(posts, hasMore)
+	f.saved, f.ready = saved, true
+	return true
+}
+
+// orphans — фреймы и таблицы, которые документ держит после удаления их
+// текста: его дети, которых нет в дереве фреймов.
+func (f *Feed) orphans() int {
+	live := 0
+	var walk func(fr *qt.QTextFrame)
+	walk = func(fr *qt.QTextFrame) {
+		live++
+		for _, c := range fr.ChildFrames() {
+			walk(c)
+		}
+	}
+	walk(f.doc.RootFrame())
+	all := 0
+	for _, o := range f.doc.Children() {
+		if o.Inherits("QTextFrame") { // и QTextTable
+			all++
+		}
+	}
+	return all - live
 }
 
 // contentHeight — высота постов в документе (без поля, которым короткая
@@ -559,6 +628,9 @@ func (f *Feed) hasWork() bool { return len(f.pending) > 0 || len(f.stale) > 0 }
 func (f *Feed) drainSoon() {
 	switch {
 	case !f.hasWork():
+		if f.sweepWanted {
+			f.sweepResources()
+		}
 	case f.shown:
 		f.drainTimer.Start(0)
 	case f.OnWork != nil:
@@ -649,7 +721,7 @@ func (f *Feed) paintUnder() {
 		return
 	}
 	p := qt.NewQPainter2(f.view.Viewport().QPaintDevice)
-	defer p.End()
+	defer free(p) // деструктор и заканчивает рисование
 	w := f.view.Viewport().Width()
 	for _, it := range f.items[lo : hi+1] {
 		if it.content == nil {
@@ -658,10 +730,10 @@ func (f *Feed) paintUnder() {
 		f.checkLayout(it)
 		r := f.contentRect(it)
 		if it.bg != "" {
-			p.FillRect5(0, r.Y(), w, r.Height(), qt.NewQColor6(it.bg))
+			p.FillRect5(0, r.Y(), w, r.Height(), qcolor(it.bg))
 		}
 		if pm := f.avatars[it.avatar]; pm != nil {
-			p.DrawPixmap9(16, r.Y()+int(it.content.FrameFormat().TopMargin()), pm)
+			p.DrawPixmap9(16, r.Y()+int(tmp(it.content.FrameFormat()).TopMargin()), pm)
 		}
 	}
 }
@@ -676,13 +748,15 @@ func (f *Feed) checkLayout(it *postItem) {
 	if f.relayout[it] {
 		return
 	}
+	// На каждой отрисовке, по каждому абзацу видимых постов: блоки и
+	// прямоугольники, которые Qt отдаёт по значению, — сразу прочь (tmp).
 	lay := f.doc.DocumentLayout()
-	bottom := lay.FrameBoundingRect(it.content).Bottom()
-	for b := f.doc.FindBlock(it.content.FirstPosition()); b.IsValid() && b.Position() <= it.content.LastPosition(); b = b.Next() {
+	bottom := tmp(lay.FrameBoundingRect(it.content)).Bottom()
+	for b := tmp(f.doc.FindBlock(it.content.FirstPosition())); b.IsValid() && b.Position() <= it.content.LastPosition(); b = tmp(b.Next()) {
 		if b.Length() <= 1 {
 			continue // пустые абзацы бывают ужаты до 0–1 px — их не меряем
 		}
-		if b.Layout().LineCount() == 0 || lay.BlockBoundingRect(b).Bottom() > bottom+1 {
+		if b.Layout().LineCount() == 0 || tmp(lay.BlockBoundingRect(b)).Bottom() > bottom+1 {
 			if len(f.relayout) == 0 {
 				mainthread.Start(f.fixLayout)
 			}
@@ -719,7 +793,8 @@ func (f *Feed) fixLayout() {
 // contentRect — фрейм текста поста в координатах viewport (с полями).
 func (f *Feed) contentRect(it *postItem) *qt.QRect {
 	r := f.doc.DocumentLayout().FrameBoundingRect(it.content)
-	return qt.NewQRect4(int(r.Left()), int(r.Top())-f.bar.Value(), int(r.Width()), int(r.Height()))
+	defer free(r)
+	return tmp(qt.NewQRect4(int(r.Left()), int(r.Top())-f.bar.Value(), int(r.Width()), int(r.Height())))
 }
 
 // avatarAt — пост, на чей аватар показывает pos (viewport); nil — не на аватаре.
@@ -735,7 +810,7 @@ func (f *Feed) avatarAt(pos *qt.QPoint) *postItem {
 		if it.avatar == "" || it.content == nil {
 			continue
 		}
-		top := f.contentRect(it).Y() + int(it.content.FrameFormat().TopMargin())
+		top := f.contentRect(it).Y() + int(tmp(it.content.FrameFormat()).TopMargin())
 		if pos.Y() >= top && pos.Y() < top+32 {
 			return it
 		}
@@ -752,9 +827,9 @@ func (f *Feed) hoverAvatar(pos *qt.QPoint) {
 	}
 	f.onAvatar = on
 	if on {
-		f.view.Viewport().SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
+		f.view.Viewport().SetCursor(tmp(qt.NewQCursor2(qt.PointingHandCursor)))
 	} else {
-		f.view.Viewport().SetCursor(qt.NewQCursor2(qt.IBeamCursor))
+		f.view.Viewport().SetCursor(tmp(qt.NewQCursor2(qt.IBeamCursor)))
 	}
 }
 
@@ -765,11 +840,11 @@ func (f *Feed) visibleRange() (lo, hi int, ok bool) {
 		return 0, 0, false
 	}
 	h := float64(f.view.Viewport().Height())
-	f.doc.Size()
+	tmp(f.doc.Size())
 	lay, y := f.doc.DocumentLayout(), float64(f.bar.Value())
 	lo, hi = -1, -1
 	for i, it := range f.items {
-		r := lay.FrameBoundingRect(it.frame)
+		r := tmp(lay.FrameBoundingRect(it.frame)) // на каждой отрисовке, по каждому посту
 		if r.Bottom() <= y {
 			continue
 		}
@@ -824,13 +899,17 @@ func (f *Feed) SetShown(on bool) {
 		f.animateEmoji(name)
 	}
 	f.pausedAnims = nil
-	f.doc.Size() // раскладка до конца, если не успела
+	tmp(f.doc.Size()) // раскладка до конца, если не успела
 	f.pinToBottom()
 	f.programmatic = true
 	switch sv := f.saved; {
 	case sv.stick:
 		f.bar.SetValue(f.bar.Maximum())
 	case sv.anchor != "":
+		if f.pendingIndex(sv.anchor) >= 0 {
+			f.flushPending() // пересобранная фоном (Rebuild) не дорисовалась до него
+			tmp(f.doc.Size())
+		}
 		if i := f.index(sv.anchor); i >= 0 {
 			f.bar.SetValue(f.bar.Value() + f.postTop(i) - sv.top)
 		}
@@ -851,7 +930,7 @@ func (f *Feed) fitTo(size *qt.QSize) {
 	}
 	for _, x := range []*qt.QWidget{w, f.view.Viewport()} {
 		if x.TestAttribute(qt.WA_PendingResizeEvent) {
-			qt.QCoreApplication_SendEvent(x.QObject, qt.NewQResizeEvent(x.Size(), qt.NewQSize()).QEvent)
+			qt.QCoreApplication_SendEvent(x.QObject, tmp(qt.NewQResizeEvent(x.Size(), tmp(qt.NewQSize()))).QEvent)
 			x.SetAttribute2(qt.WA_PendingResizeEvent, false)
 		}
 	}
@@ -925,7 +1004,7 @@ func (f *Feed) showHistoryLoading() {
 	if f.history != nil || len(f.items) == 0 {
 		return
 	}
-	c := qt.NewQTextCursor2(f.doc)
+	c := tmp(qt.NewQTextCursor2(f.doc))
 	c.SetPosition(f.items[0].frame.FirstPosition() - 1)
 	f.history = c.InsertFrame(frameFormat())
 	c.InsertHtml(scaleFonts(fmt.Sprintf(`<p align="center" style="margin-top:8px;margin-bottom:8px;font-size:13px;color:%s">Загружаем историю…</p>`, Pal().Tx2)))
@@ -939,7 +1018,7 @@ func (f *Feed) hideHistoryLoading() {
 		return
 	}
 	f.history = nil // до удаления фрейма — см. clearDoc
-	c := qt.NewQTextCursor2(f.doc)
+	c := tmp(qt.NewQTextCursor2(f.doc))
 	c.SetPosition(fr.FirstPosition() - 1)
 	c.SetPosition2(fr.LastPosition()+1, qt.QTextCursor__KeepAnchor)
 	c.RemoveSelectedText()
@@ -1025,7 +1104,7 @@ func (f *Feed) remove(id string) {
 	}
 	fr := f.items[i].frame
 	f.items = slices.Delete(f.items, i, i+1) // до удаления фрейма — см. clearDoc
-	c := qt.NewQTextCursor2(f.doc)
+	c := tmp(qt.NewQTextCursor2(f.doc))
 	c.SetPosition(fr.FirstPosition() - 1)
 	c.SetPosition2(fr.LastPosition()+1, qt.QTextCursor__KeepAnchor)
 	c.RemoveSelectedText()
@@ -1068,7 +1147,7 @@ func (f *Feed) edit(do func()) {
 	do()
 	f.editing = false
 	f.programmatic = true
-	f.doc.Size() // раскладка до конца: дальше нужны настоящие позиции
+	tmp(f.doc.Size()) // раскладка до конца: дальше нужны настоящие позиции
 	switch {
 	case stick:
 		f.bar.SetValue(f.bar.Maximum())
@@ -1100,7 +1179,7 @@ func (f *Feed) topPost() (string, int) {
 // бывает сдвинут на старое смещение — и восстановление места в edit() сдвигало
 // ленту на эту разницу.
 func (f *Feed) postTop(i int) int {
-	f.doc.Size() // раскладка ленивая: без этого место фрейма бывает старым
+	tmp(f.doc.Size()) // раскладка ленивая: без этого место фрейма бывает старым
 	return int(f.doc.DocumentLayout().FrameBoundingRect(f.items[i].frame).Top()) - f.bar.Value()
 }
 
@@ -1110,9 +1189,9 @@ func (f *Feed) postTop(i int) int {
 // раскладкой документа.
 func (f *Feed) cursorRect(c *qt.QTextCursor) *qt.QRect {
 	r := f.view.CursorRect(c)
-	start := qt.NewQTextCursor2(f.doc)
+	start := tmp(qt.NewQTextCursor2(f.doc))
 	start.SetPosition(c.Block().Position())
-	f.doc.Size()
+	tmp(f.doc.Size())
 	top := int(f.doc.DocumentLayout().BlockBoundingRect(c.Block()).Top()) - f.bar.Value()
 	r.Translate(0, top-f.view.CursorRect(start).Top())
 	return r
@@ -1128,7 +1207,7 @@ func (f *Feed) ScrollToPost(id string) {
 	if i < 0 {
 		return
 	}
-	c := qt.NewQTextCursor2(f.doc)
+	c := tmp(qt.NewQTextCursor2(f.doc))
 	c.SetPosition(f.items[i].frame.FirstPosition())
 	f.view.SetTextCursor(c)
 	f.programmatic = true
@@ -1198,7 +1277,9 @@ func (f *Feed) customEmoji(name string) string {
 	}
 	src := "emoji:" + name
 	if _, ok := f.resources[src]; !ok {
-		f.addResource(src, f.emojiPixmap(name, path, 20), 20, 20)
+		pm := f.emojiPixmap(name, path, 20)
+		f.addResource(src, pm, 20, 20)
+		free(pm)
 		f.animateEmoji(name)
 	}
 	return src
@@ -1216,13 +1297,15 @@ func (f *Feed) customEmojiPath(name string) string {
 	return p
 }
 
-// emojiPixmap — кастомное эмодзи size px: текущий кадр анимированного или картинка с диска.
+// emojiPixmap — кастомное эмодзи size px: текущий кадр анимированного или
+// картинка с диска. Картинка новая: free, когда станет не нужна.
 func (f *Feed) emojiPixmap(name, path string, size int) *qt.QPixmap {
-	pm := f.d.Assets.EmojiFrame(name)
-	if pm == nil {
-		pm = qt.NewQPixmap4(path)
+	src := f.d.Assets.EmojiFrame(name)
+	if src == nil {
+		src = qt.NewQPixmap4(path)
 	}
-	pm = pm.Scaled3(size*resourceDPR, size*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+	defer free(src)
+	pm := src.Scaled3(size*resourceDPR, size*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
 	pm.SetDevicePixelRatio(resourceDPR)
 	return pm
 }
@@ -1246,20 +1329,23 @@ func (f *Feed) animateEmoji(name string) {
 func (f *Feed) emojiFrame(name string) {
 	changed := false
 	if src := "emoji:" + name; f.resources[src] != [2]int{} {
-		f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(src), f.emojiPixmap(name, f.d.Assets.Emoji(name), 20).ToQVariant())
+		pm := f.emojiPixmap(name, f.d.Assets.Emoji(name), 20)
+		f.setResource(src, pm)
+		free(pm)
 		changed = true
 	}
 	for src, pl := range f.pills {
 		if pl.emoji != name || pl.render == nil {
 			continue
 		}
+		pl.free() // прежний кадр: в ресурсе его заменит новый
 		pl.normal, pl.hover = pl.render()
 		f.pills[src] = pl
 		cur := pl.normal
 		if f.hovered == src {
 			cur = pl.hover
 		}
-		f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(src), cur.ToQVariant())
+		f.setResource(src, cur)
 		changed = true
 	}
 	if changed {
@@ -1297,14 +1383,14 @@ const highlightFor = 4000
 // CursorForPosition для этого не годится: в верхнем поле поста он отдаёт
 // ближайшую позицию — конец предыдущего.
 func (f *Feed) postAtY(y int) *postItem {
-	f.doc.Size() // раскладка ленивая: без этого место фрейма бывает старым
+	tmp(f.doc.Size()) // раскладка ленивая: без этого место фрейма бывает старым
 	lay := f.doc.DocumentLayout()
 	dy := float64(y + f.bar.Value())
 	i := sort.Search(len(f.items), func(i int) bool {
-		r := lay.FrameBoundingRect(f.items[i].frame)
+		r := tmp(lay.FrameBoundingRect(f.items[i].frame))
 		return r.Y()+r.Height() > dy
 	})
-	if i < len(f.items) && lay.FrameBoundingRect(f.items[i].frame).Y() <= dy {
+	if i < len(f.items) && tmp(lay.FrameBoundingRect(f.items[i].frame)).Y() <= dy {
 		return f.items[i]
 	}
 	return nil
@@ -1326,7 +1412,7 @@ func (f *Feed) insert(i int, p *model.Post) {
 		f.clearDoc()
 		f.ready = ready
 	}
-	c := qt.NewQTextCursor2(f.doc)
+	c := tmp(qt.NewQTextCursor2(f.doc))
 	switch {
 	case i < len(f.items):
 		c.SetPosition(f.items[i].frame.FirstPosition() - 1)
@@ -1359,7 +1445,7 @@ func (f *Feed) renderThreadRoot() {
 // документ сохраняет сам: его курсор сдвигается вместе с текстом.
 func (f *Feed) render(i int) {
 	fr := f.items[i].frame
-	c := qt.NewQTextCursor2(f.doc)
+	c := tmp(qt.NewQTextCursor2(f.doc))
 	c.SetPosition(fr.FirstPosition())
 	c.SetPosition2(fr.LastPosition(), qt.QTextCursor__KeepAnchor)
 	c.RemoveSelectedText()
@@ -1389,7 +1475,7 @@ func (f *Feed) write(i int, c *qt.QTextCursor) {
 	// форматом) — ужатый до 0–1 px пустой абзац вокруг фрейма текста. Первый
 	// абзац HTML встаёт в него и берёт его высоту строки: пост «пропадал»,
 	// когда с него уходила черта «Новые сообщения». Пишем с чистого формата.
-	c.SetBlockFormat(qt.NewQTextBlockFormat())
+	c.SetBlockFormat(tmp(qt.NewQTextBlockFormat()))
 	// Обычный пост — один фрейм с полями; с разделителем над текстом или
 	// «N ответов» под ним — фрейм на всю ширину и в нём фрейм текста.
 	nested := pp.head != "" || pp.tail != ""
@@ -1399,7 +1485,7 @@ func (f *Feed) write(i int, c *qt.QTextCursor) {
 			c.InsertHtml(scaleFonts(pp.head))
 		}
 		it.content = c.InsertFrame(contentFormat(pp.top))
-		c.SetBlockFormat(qt.NewQTextBlockFormat())
+		c.SetBlockFormat(tmp(qt.NewQTextBlockFormat()))
 	} else {
 		it.frame.SetFrameFormat(contentFormat(pp.top))
 		it.content = it.frame
@@ -1471,11 +1557,11 @@ func (f *Feed) applyMarkers(fr *qt.QTextFrame) {
 		default:
 			continue
 		}
-		c := qt.NewQTextCursor2(f.doc)
+		c := tmp(qt.NewQTextCursor2(f.doc))
 		c.SetPosition(b.Position())
 		c.SetPosition2(b.Position()+2, qt.QTextCursor__KeepAnchor)
 		c.RemoveSelectedText()
-		bf := qt.NewQTextBlockFormat()
+		bf := tmp(qt.NewQTextBlockFormat())
 		bf.SetMarker(marker)
 		c.MergeBlockFormat(bf)
 	}
@@ -1489,18 +1575,19 @@ func (f *Feed) squashTo(pos, px int) {
 	if pos < 0 || pos >= f.doc.CharacterCount() {
 		return
 	}
-	c := qt.NewQTextCursor2(f.doc)
+	c := tmp(qt.NewQTextCursor2(f.doc))
 	c.SetPosition(pos)
 	if c.Block().Length() != 1 {
 		return
 	}
-	bf := qt.NewQTextBlockFormat()
+	bf := tmp(qt.NewQTextBlockFormat())
 	bf.SetLineHeight(float64(px), int(qt.QTextBlockFormat__FixedHeight))
 	c.SetBlockFormat(bf)
 }
 
+// frameFormat — формат фрейма без рамок и полей (временный, см. tmp).
 func frameFormat() *qt.QTextFrameFormat {
-	ff := qt.NewQTextFrameFormat()
+	ff := tmp(qt.NewQTextFrameFormat())
 	ff.SetBorder(0)
 	ff.SetPadding(0)
 	ff.SetMargin(0)
@@ -1593,7 +1680,7 @@ func (f *Feed) whereHTML(p *model.Post) string {
 // ячейка с фоном и шрифтом в 1 px (height у ячейки Qt не слушает).
 func (f *Feed) separatorHTML(label, textColor, lineColor string, labelRight bool) string {
 	// Ширина — метриками шрифта ленты: размер подписи пересчитает scaleFonts.
-	labelW := qt.NewQFontMetrics(font(style.fonts.Feed, feedPx(12), qt.QFont__DemiBold)).HorizontalAdvance(label) + 22
+	labelW := tmp(qt.NewQFontMetrics(font(style.fonts.Feed, feedPx(12), qt.QFont__DemiBold))).HorizontalAdvance(label) + 22
 	line := fmt.Sprintf(`<td valign="middle" style="padding-top:12px;padding-bottom:4px"><table width="100%%" cellspacing="0" cellpadding="0"><tr><td bgcolor="%s" style="font-size:1px">&nbsp;</td></tr></table></td>`, lineColor)
 	text := fmt.Sprintf(`<td width="%d" valign="middle" style="padding-top:12px;padding-bottom:4px;padding-left:10px;padding-right:10px;font-size:12px;font-weight:600;color:%s">%s</td>`, labelW, textColor, html.EscapeString(label))
 	if labelRight {
@@ -1921,10 +2008,13 @@ func (f *Feed) previewSrc(fi *model.FileInfo, w, h int) string {
 	}
 	if f.d.Assets != nil {
 		if path := f.d.Assets.Preview(fi.Id); path != "" {
-			if pm := qt.NewQPixmap4(path); !pm.IsNull() {
-				pm = pm.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+			src := qt.NewQPixmap4(path)
+			defer free(src)
+			if !src.IsNull() {
+				pm := src.Scaled3(w*resourceDPR, h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
 				pm.SetDevicePixelRatio(resourceDPR)
 				f.addResource(name, pm, w, h)
+				free(pm)
 				if fi.MimeType == "image/gif" {
 					f.animate(fi, name, w, h)
 				}
@@ -1937,8 +2027,11 @@ func (f *Feed) previewSrc(fi *model.FileInfo, w, h int) string {
 	ph := fmt.Sprintf("placeholder:%dx%d", w, h)
 	if _, ok := f.resources[ph]; !ok {
 		img := qt.NewQImage3(w, h, qt.QImage__Format_ARGB32_Premultiplied)
-		img.FillWithColor(qt.NewQColor6(Pal().Surf2))
-		f.addResource(ph, qt.QPixmap_FromImage(img), w, h)
+		img.FillWithColor(qcolor(Pal().Surf2))
+		pm := qt.QPixmap_FromImage(img)
+		f.addResource(ph, pm, w, h)
+		free(img)
+		free(pm)
 	}
 	return ph
 }
@@ -1993,28 +2086,66 @@ func (f *Feed) putFrame(id string, mv *qt.QMovie) {
 	if !ok {
 		return
 	}
-	pm := mv.CurrentPixmap().Scaled3(t.w*resourceDPR, t.h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+	// Кадр — на каждом шаге GIF: и он, и уменьшенный удаляются сразу, иначе
+	// до сборки мусора копятся мегабайты (см. tmp).
+	cur := mv.CurrentPixmap()
+	pm := cur.Scaled3(t.w*resourceDPR, t.h*resourceDPR, qt.KeepAspectRatio, qt.SmoothTransformation)
+	free(cur)
 	pm.SetDevicePixelRatio(resourceDPR)
 	gifBadge(pm)
-	f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(t.name), pm.ToQVariant())
+	f.setResource(t.name, pm)
+	free(pm)
 	f.view.Viewport().Update()
 }
 
 // gifBadge — метка «GIF» в углу кадра.
 func gifBadge(pm *qt.QPixmap) {
 	p := qt.NewQPainter2(pm.QPaintDevice)
+	defer free(p)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
 	p.SetPenWithStyle(qt.NoPen)
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor11(0, 0, 0, 150)))
-	p.DrawRoundedRect(qt.NewQRectF4(6, 6, 30, 16), 3, 3)
-	p.SetPen(qt.NewQColor6("#ffffff"))
+	p.SetBrush(tmp(qt.NewQBrush3(tmp(qt.NewQColor11(0, 0, 0, 150)))))
+	p.DrawRoundedRect(tmp(qt.NewQRectF4(6, 6, 30, 16)), 3, 3)
+	p.SetPen(qcolor("#ffffff"))
 	p.SetFont(pixelFont(10, qt.QFont__DemiBold))
 	p.DrawText7(6, 6, 30, 16, int(qt.AlignCenter), "GIF")
-	p.End()
+}
+
+// resourceSrcRe — картинки в HTML поста.
+var resourceSrcRe = regexp.MustCompile(`<img src="([^"]+)"`)
+
+// sweepResources — картинки прежних размеров прочь из документа. Имя ресурса
+// картинки, ролика, предпросмотра и заглушки — с размером: после смены ширины
+// посты нарисованы с ресурсами нового размера, а документ держал бы и старые
+// (мегабайты на картинку) до своей очистки. Убираем те, на которые не
+// ссылается ни один пост; неотрисованные создадут свои сами.
+func (f *Feed) sweepResources() {
+	f.sweepWanted = false
+	used := map[string]bool{}
+	for _, it := range f.items {
+		for _, m := range resourceSrcRe.FindAllStringSubmatch(it.html, -1) {
+			used[m[1]] = true
+		}
+	}
+	for name := range f.resources {
+		sized := strings.HasPrefix(name, "preview:") || strings.HasPrefix(name, "link:") ||
+			strings.HasPrefix(name, "video:") || strings.HasPrefix(name, "placeholder:")
+		if sized && !used[name] {
+			// Пустое значение вместо картинки: удалить ресурс QTextDocument не умеет.
+			f.doc.AddResource(int(qt.QTextDocument__ImageResource), tmp(qt.NewQUrl3(name)), tmp(qt.NewQVariant()))
+			delete(f.resources, name)
+		}
+	}
+}
+
+// setResource — картинка pm ресурсом документа name (документ держит свою
+// копию: pm можно удалять).
+func (f *Feed) setResource(name string, pm *qt.QPixmap) {
+	f.doc.AddResource(int(qt.QTextDocument__ImageResource), tmp(qt.NewQUrl3(name)), tmp(pm.ToQVariant()))
 }
 
 func (f *Feed) addResource(name string, pm *qt.QPixmap, w, h int) {
-	f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(name), pm.ToQVariant())
+	f.setResource(name, pm)
 	f.resources[name] = [2]int{w, h}
 }
 
@@ -2112,37 +2243,41 @@ func (f *Feed) reactionPill(src, name string, count int, mine bool) (w, h int) {
 	emojiFont := pixelFont(16, qt.QFont__Normal)
 	emojiW := 16
 	if custom == "" && emojiText != "" {
-		emojiW = qt.NewQFontMetrics(emojiFont).HorizontalAdvance(emojiText)
+		emojiW = tmp(qt.NewQFontMetrics(emojiFont)).HorizontalAdvance(emojiText)
 	}
 	if name == "" {
 		w = 32
 	} else {
-		w = 6 + emojiW + 4 + qt.NewQFontMetrics(countFont).HorizontalAdvance(label) + 8
+		w = 6 + emojiW + 4 + tmp(qt.NewQFontMetrics(countFont)).HorizontalAdvance(label) + 8
 	}
 	draw := func(bg, border, fg string) *qt.QPixmap {
+		// Плашка с анимированным эмодзи рисуется на каждом его кадре.
 		img := qt.NewQImage3(w*resourceDPR, h*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+		defer free(img)
 		img.Fill2(qt.Transparent)
 		img.SetDevicePixelRatio(resourceDPR)
 		p := qt.NewQPainter2(img.QPaintDevice)
 		p.SetRenderHint(qt.QPainter__Antialiasing)
-		p.SetPenWithPen(qt.NewQPen4(qt.NewQBrush3(qt.NewQColor6(border)), 1))
-		p.SetBrush(qt.NewQBrush3(qt.NewQColor6(bg)))
-		p.DrawRoundedRect(qt.NewQRectF4(0.5, 0.5, float64(w-1), float64(h-1)), 11.5, 11.5)
+		p.SetPenWithPen(qpen(border, 1))
+		p.SetBrush(qbrush(bg))
+		p.DrawRoundedRect(tmp(qt.NewQRectF4(0.5, 0.5, float64(w-1), float64(h-1))), 11.5, 11.5)
 		if name == "" {
 			p.DrawPixmap9((w-16)/2, (h-16)/2, iconPixmap("smile-plus", pal.Tx2, 16))
 		} else {
 			if custom != "" {
-				p.DrawPixmap9(6, (h-16)/2, f.emojiPixmap(name, custom, 16))
+				em := f.emojiPixmap(name, custom, 16)
+				p.DrawPixmap9(6, (h-16)/2, em)
+				free(em)
 			} else {
 				p.SetFont(emojiFont)
-				p.SetPen(qt.NewQColor6(fg))
+				p.SetPen(qcolor(fg))
 				p.DrawText7(6, 0, emojiW+1, h, int(qt.AlignVCenter|qt.AlignLeft), emojiText)
 			}
 			p.SetFont(countFont)
-			p.SetPen(qt.NewQColor6(fg))
+			p.SetPen(qcolor(fg))
 			p.DrawText7(6+emojiW+4, 0, w-emojiW-10, h, int(qt.AlignVCenter|qt.AlignLeft), label)
 		}
-		p.End()
+		free(p) // до картинки: рисование кончается в деструкторе
 		return qt.QPixmap_FromImage(img)
 	}
 	bg, border, fg := pal.Surf, pal.Line, pal.Tx
@@ -2151,15 +2286,17 @@ func (f *Feed) reactionPill(src, name string, count int, mine bool) (w, h int) {
 	}
 	pl := pill{emoji: name, render: func() (*qt.QPixmap, *qt.QPixmap) { return draw(bg, border, fg), draw(pal.Hover, border, fg) }}
 	pl.normal, pl.hover = pl.render()
-	f.pills[src] = pl
-	if custom != "" {
-		f.animateEmoji(name)
-	}
+	f.setPill(src, pl)
 	cur := pl.normal
 	if f.hovered == src {
 		cur = pl.hover
 	}
 	f.addResource(src, cur, w, h)
+	if custom != "" {
+		// После ресурса: QMovie отдаёт первый кадр прямо из start, и
+		// emojiFrame перерисовывает плашку — картинки pl уже удалены.
+		f.animateEmoji(name)
+	}
 	return w, h
 }
 
@@ -2187,7 +2324,7 @@ func (f *Feed) onHover(link string) {
 		if hover {
 			pm = pl.hover
 		}
-		f.doc.AddResource(int(qt.QTextDocument__ImageResource), qt.NewQUrl3(name), pm.ToQVariant())
+		f.setResource(name, pm)
 	}
 	if f.hovered != "" {
 		set(f.hovered, false)
@@ -2359,7 +2496,7 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 	it := f.postAtY(e.Pos().Y())
 	menu := qt.NewQMenu(f.view.QWidget)
 	cp := menu.QWidget.AddActionWithText("Копировать выделенное")
-	cp.SetShortcut(qt.NewQKeySequence2("Ctrl+C"))
+	cp.SetShortcut(tmp(qt.NewQKeySequence2("Ctrl+C")))
 	cp.SetEnabled(f.view.TextCursor().HasSelection())
 	cp.OnTriggered(f.view.Copy)
 	// Адрес ссылки — только если щёлкнули по ссылке; ссылка на само
@@ -2469,7 +2606,7 @@ func (f *Feed) contextMenu(e *qt.QContextMenuEvent) {
 		menu.AddSeparator()
 	}
 	all := menu.QWidget.AddActionWithText("Выделить всё")
-	all.SetShortcut(qt.NewQKeySequence2("Ctrl+A"))
+	all.SetShortcut(tmp(qt.NewQKeySequence2("Ctrl+A")))
 	all.OnTriggered(f.view.SelectAll)
 	if dbg := f.debugItems(); len(dbg) > 0 {
 		menu.AddSeparator()
@@ -2533,7 +2670,7 @@ func copiedText(text string) string {
 
 // selectionIn — выделенный текст, если выделение целиком внутри поста it; иначе "".
 func (f *Feed) selectionIn(it *postItem) string {
-	cur := f.view.TextCursor()
+	cur := tmp(f.view.TextCursor())
 	if it == nil || !cur.HasSelection() || cur.SelectionStart() < it.frame.FirstPosition() || cur.SelectionEnd() > it.frame.LastPosition() {
 		return ""
 	}
@@ -2670,6 +2807,7 @@ func (f *Feed) fitImages() {
 		return
 	}
 	f.lastWidth = w
+	f.sweepWanted = true
 	// Картинки, видео и вложения интеграций — по ширине колонки.
 	f.invalidate(func(p *model.Post) bool {
 		return len(p.Attachments()) > 0 || p.Metadata != nil && (len(p.Metadata.Embeds) > 0 ||

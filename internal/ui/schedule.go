@@ -467,7 +467,7 @@ QPushButton:hover { color: %s; text-decoration: underline; }`, pal.Line, pal.Acc
 	acts.SetSpacing(4)
 	act := func(title string, do func()) {
 		b := qt.NewQPushButton3(title)
-		b.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
+		b.SetCursor(tmp(qt.NewQCursor2(qt.PointingHandCursor)))
 		b.SetFocusPolicy(qt.NoFocus)
 		b.OnClicked(do)
 		acts.AddWidget(b.QWidget)
@@ -529,7 +529,7 @@ func (m *MainWindow) showScheduleDialog(title, ok string, initial time.Time, pic
 	now := time.Now()
 	for _, pr := range sched.Presets(now) {
 		b := qt.NewQPushButton3(pr.Title)
-		b.SetProperty("role", qt.NewQVariant11("preset"))
+		b.SetProperty("role", tmp(qt.NewQVariant11("preset")))
 		b.SetStyleSheet("text-align: left; padding-left: 10px")
 		at := pr.At
 		b.OnClicked(func() {
@@ -543,14 +543,14 @@ func (m *MainWindow) showScheduleDialog(title, ok string, initial time.Time, pic
 	edit := newDateTimeEdit(initial)
 	d.lay.AddWidget(edit.QWidget)
 	hint := qt.NewQLabel2()
-	hint.SetProperty("role", qt.NewQVariant11("hint"))
+	hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	hint.SetVisible(false)
 	d.lay.AddWidget(hint.QWidget)
 	d.bottom.AddStretch()
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
 	okb := qt.NewQPushButton3(ok)
-	okb.SetProperty("primary", qt.NewQVariant11("true"))
+	okb.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	okb.SetDefault(true)
 	okb.OnClicked(func() {
 		at := time.UnixMilli(edit.DateTime().ToMSecsSinceEpoch())

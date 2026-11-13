@@ -130,9 +130,9 @@ func (c *Composer) highlightSpelling(text string) {
 		}
 	}
 	typing := c.edit.TextCursor().Position() - b.Position()
-	f := qt.NewQTextCharFormat()
+	f := tmp(qt.NewQTextCharFormat())
 	f.SetUnderlineStyle(qt.QTextCharFormat__SpellCheckUnderline)
-	f.SetUnderlineColor(qt.NewQColor6(Pal().Dang))
+	f.SetUnderlineColor(qcolor(Pal().Dang))
 	for _, w := range spell.Words(text) {
 		if w.End16 == typing || inRanges(code, w.Start16, w.End16) || sc.Correct(w.Text) {
 			continue
@@ -192,7 +192,7 @@ func (c *Composer) spellItemsAt(cur *qt.QTextCursor) []menuItem {
 
 // replaceRange — текст поля с from до to (в символах документа) заменить на s.
 func (c *Composer) replaceRange(from, to int, s string) {
-	tc := c.edit.TextCursor()
+	tc := tmp(c.edit.TextCursor())
 	tc.SetPosition(from)
 	tc.SetPosition2(to, qt.QTextCursor__KeepAnchor)
 	tc.InsertText(s)

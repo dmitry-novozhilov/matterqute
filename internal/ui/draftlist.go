@@ -162,7 +162,7 @@ QPushButton:hover { color: %s; text-decoration: underline; }`, pal.Line, pal.Acc
 	acts.SetSpacing(4)
 	act := func(title string, do func()) {
 		b := qt.NewQPushButton3(title)
-		b.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
+		b.SetCursor(tmp(qt.NewQCursor2(qt.PointingHandCursor)))
 		b.SetFocusPolicy(qt.NoFocus)
 		b.OnClicked(do)
 		acts.AddWidget(b.QWidget)

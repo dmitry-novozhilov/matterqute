@@ -24,7 +24,7 @@ import (
 // toggleCategory — щелчок по группе: свернуть или развернуть (у категории — и на сервере).
 func (m *MainWindow) toggleCategory(g *qt.QTreeWidgetItem) {
 	collapsed := !g.Data(0, collapsedRole).ToBool()
-	g.SetData(0, collapsedRole, qt.NewQVariant8(collapsed))
+	g.SetData(0, collapsedRole, tmp(qt.NewQVariant8(collapsed)))
 	m.applyCollapsed()
 	m.sidebar.Viewport().Update()
 	team, id := g.Data(0, teamRole).ToString(), g.Data(0, categoryRole).ToString()

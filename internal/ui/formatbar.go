@@ -36,7 +36,7 @@ func (c *Composer) buildFormatBar() {
 	a.icons = map[*qt.QAction]string{}
 	act := func(iconName, tip, keys string, do func()) *qt.QAction {
 		x := qt.NewQAction5(tip, c.edit.QObject)
-		x.SetShortcut(qt.NewQKeySequence2(keys))
+		x.SetShortcut(tmp(qt.NewQKeySequence2(keys)))
 		x.SetShortcutContext(qt.WidgetShortcut)
 		x.SetToolTip(tip + " (" + keys + ")")
 		x.SetCheckable(true)
@@ -81,7 +81,7 @@ func (c *Composer) buildFormatBar() {
 			b := qt.NewQToolButton2()
 			b.SetDefaultAction(x)
 			b.SetFixedSize2(28, 28)
-			b.SetIconSize(qt.NewQSize2(16, 16))
+			b.SetIconSize(tmp(qt.NewQSize2(16, 16)))
 			b.SetFocusPolicy(qt.NoFocus)
 			lay.AddWidget(b.QWidget)
 		}
@@ -92,7 +92,7 @@ func (c *Composer) buildFormatBar() {
 	setName(c.fmtShow.QObject, "formatShow")
 	c.fmtShow.SetCheckable(true)
 	c.fmtShow.SetFixedSize2(28, 28)
-	c.fmtShow.SetIconSize(qt.NewQSize2(18, 18))
+	c.fmtShow.SetIconSize(tmp(qt.NewQSize2(18, 18)))
 	c.fmtShow.SetFocusPolicy(qt.NoFocus)
 	c.fmtShow.SetToolTip("Оформление текста")
 	c.fmtShow.OnToggled(func(on bool) {

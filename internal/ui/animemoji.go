@@ -45,7 +45,7 @@ func (a *Assets) EmojiMovie(name string) *qt.QMovie {
 	return mv
 }
 
-// EmojiFrame — текущий кадр анимированного эмодзи или nil.
+// EmojiFrame — текущий кадр анимированного эмодзи или nil; копия: free после.
 func (a *Assets) EmojiFrame(name string) *qt.QPixmap {
 	if mv := a.EmojiMovie(name); mv != nil {
 		return mv.CurrentPixmap()

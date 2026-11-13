@@ -73,9 +73,14 @@ func newInlineVideo(f *Feed, fi *model.FileInfo) *inlineVideo {
 	v.mp.SetVideoSink(sink)
 	sink.OnVideoFrameChanged(func(fr *multimedia.QVideoFrame) {
 		if fr.IsValid() {
+			// Кадр ролика — мегабайты, и их десятки в секунду: прежний
+			// удаляем сразу, сборщик мусора Go о его размере не знает.
 			if img := fr.ToImage(); !img.IsNull() {
+				free(v.frame)
 				v.frame = img
 				v.w.Update()
+			} else {
+				free(img)
 			}
 		}
 	})
@@ -90,7 +95,7 @@ func newInlineVideo(f *Feed, fi *model.FileInfo) *inlineVideo {
 		b := qt.NewQToolButton2()
 		setName(b.QObject, name)
 		b.SetFixedSize2(28, 28)
-		b.SetIconSize(qt.NewQSize2(16, 16))
+		b.SetIconSize(tmp(qt.NewQSize2(16, 16)))
 		b.SetFocusPolicy(qt.NoFocus)
 		b.SetToolTip(tip)
 		return b
@@ -195,6 +200,9 @@ func (v *inlineVideo) stop() {
 	v.mp.Stop()
 	v.w.Hide()
 	v.w.DeleteLater()
+	free(v.frame)
+	free(v.thumb)
+	v.frame, v.thumb = nil, nil
 }
 
 func (v *inlineVideo) showTime() {
@@ -203,9 +211,9 @@ func (v *inlineVideo) showTime() {
 
 func (v *inlineVideo) paint() {
 	p := qt.NewQPainter2(v.w.QPaintDevice)
-	defer p.End()
+	defer free(p)
 	r := v.w.Rect()
-	p.FillRect5(0, 0, r.Width(), r.Height(), qt.NewQColor6("#141210"))
+	p.FillRect5(0, 0, r.Width(), r.Height(), qcolor("#141210"))
 	p.SetRenderHint(qt.QPainter__SmoothPixmapTransform)
 	var img *qt.QImage
 	switch {
@@ -213,16 +221,19 @@ func (v *inlineVideo) paint() {
 		img = v.frame
 	case v.thumb != nil && !v.thumb.IsNull():
 		img = v.thumb.ToImage()
+		defer free(img)
 	}
 	if img != nil {
+		// Уменьшенный кадр — на каждой перерисовке: сразу прочь.
 		s := img.Scaled3(r.Width(), r.Height(), qt.KeepAspectRatio, qt.SmoothTransformation)
-		p.DrawImage8(qt.NewQPoint2((r.Width()-s.Width())/2, (r.Height()-s.Height())/2), s)
+		p.DrawImage8(tmp(qt.NewQPoint2((r.Width()-s.Width())/2, (r.Height()-s.Height())/2)), s)
+		free(s)
 	}
 	if v.status != "" {
-		p.FillRect5(0, 0, r.Width(), r.Height(), qt.NewQColor11(0, 0, 0, 120))
-		p.SetPen(qt.NewQColor6("#e9e6e1"))
+		p.FillRect5(0, 0, r.Width(), r.Height(), tmp(qt.NewQColor11(0, 0, 0, 120)))
+		p.SetPen(qcolor("#e9e6e1"))
 		p.SetFont(pixelFont(13, qt.QFont__Normal))
-		p.DrawText6(qt.NewQRect4(12, 0, r.Width()-24, r.Height()-36), int(qt.AlignCenter)|int(qt.TextWordWrap), v.status)
+		p.DrawText6(tmp(qt.NewQRect4(12, 0, r.Width()-24, r.Height()-36)), int(qt.AlignCenter)|int(qt.TextWordWrap), v.status)
 	}
 }
 
@@ -288,7 +299,7 @@ func (f *Feed) placeVideos() {
 			v.w.Hide()
 			continue
 		}
-		c := qt.NewQTextCursor2(f.doc)
+		c := tmp(qt.NewQTextCursor2(f.doc))
 		c.SetPosition(v.pos)
 		img := v.imageAt(v.pos)
 		r := f.cursorRect(c)
@@ -304,7 +315,7 @@ func (v *inlineVideo) imageAt(pos int) *qt.QTextImageFormat {
 	}
 	// Курсор после картинки: charFormat — формат символа перед ним. (В начале
 	// блока он вернул бы формат символа после — поэтому и проверяем символ.)
-	c := qt.NewQTextCursor2(v.f.doc)
+	c := tmp(qt.NewQTextCursor2(v.f.doc))
 	c.SetPosition(pos + 1)
 	if f := c.CharFormat(); f.IsImageFormat() {
 		return f.ToImageFormat()

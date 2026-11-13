@@ -91,13 +91,13 @@ func (m *MainWindow) showForward(p *model.Post) *dialog {
 	field.SetPlaceholderText("Куда: канал, личка или человек")
 	field.SetClearButtonEnabled(true)
 	list := qt.NewQListWidget2()
-	list.SetIconSize(qt.NewQSize2(20, 20))
+	list.SetIconSize(tmp(qt.NewQSize2(20, 20)))
 	list.SetMinimumHeight(220)
 	list.SetFocusPolicy(qt.NoFocus)
 	comment := qt.NewQLineEdit2()
 	comment.SetPlaceholderText("Комментарий (необязательно)")
 	hint := qt.NewQLabel2()
-	hint.SetProperty("role", qt.NewQVariant11("hint"))
+	hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	hint.SetWordWrap(true)
 	if ch := m.st.Channel(p.ChannelId); ch != nil && ch.Type != model.ChannelTypeOpen {
 		hint.SetText("Сообщение из закрытого канала или лички: кто его не видит, получит только ссылку.")
@@ -125,7 +125,7 @@ func (m *MainWindow) showForward(p *model.Post) *dialog {
 				label += "   " + it.sub
 			}
 			row := qt.NewQListWidgetItem7(label, list)
-			row.SetIcon(qt.NewQIcon2(it.icon))
+			row.SetIcon(tmp(qt.NewQIcon2(it.icon)))
 		}
 		if len(shown) > 0 {
 			list.SetCurrentRow(0)
@@ -149,7 +149,7 @@ func (m *MainWindow) showForward(p *model.Post) *dialog {
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
 	ok := qt.NewQPushButton3("Переслать")
-	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	send := func() {
 		i := list.CurrentRow()
 		if i < 0 || i >= len(shown) {

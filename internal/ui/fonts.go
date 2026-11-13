@@ -95,13 +95,10 @@ func applyFonts() {
 	}
 }
 
+// font — шрифт семейства f (общий, см. cachedFont: не менять).
 func font(f config.Font, px int, weight qt.QFont__Weight) *qt.QFont {
-	q := qt.NewQFont()
 	// Эмодзи — запасным цветным шрифтом, как у всего приложения.
-	q.SetFamilies([]string{f.Family, theme.EmojiFamily})
-	q.SetPixelSize(max(minFontSize-2, px))
-	q.SetWeight(weight)
-	return q
+	return cachedFont([]string{f.Family, theme.EmojiFamily}, max(minFontSize-2, px), weight)
 }
 
 // sidebarFont — шрифт сайдбара; delta — к размеру (подписи групп мельче на 2).
@@ -171,7 +168,7 @@ func showFontsDialog(parent *qt.QWidget) {
 	set := func(f config.Fonts) {
 		applying = true
 		for i, v := range []config.Font{f.Sidebar, f.Feed, f.Mono} {
-			qf := qt.NewQFont()
+			qf := tmp(qt.NewQFont())
 			qf.SetFamily(v.Family)
 			rows[i].family.SetCurrentFont(qf)
 			rows[i].size.SetValue(v.Size)
@@ -211,7 +208,7 @@ func showFontsDialog(parent *qt.QWidget) {
 	d.bottom.AddWidget(reset.QWidget)
 	d.bottom.AddStretch()
 	done := qt.NewQPushButton3("Готово")
-	done.SetProperty("primary", qt.NewQVariant11("true"))
+	done.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	done.SetDefault(true)
 	done.OnClicked(func() { d.w.Close() })
 	d.bottom.AddWidget(done.QWidget)

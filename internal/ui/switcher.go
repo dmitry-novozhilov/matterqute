@@ -170,10 +170,10 @@ func (m *MainWindow) showSwitcher() {
 	field.SetPlaceholderText("Канал, личка или человек")
 	field.SetClearButtonEnabled(true)
 	list := qt.NewQListWidget2()
-	list.SetIconSize(qt.NewQSize2(20, 20))
+	list.SetIconSize(tmp(qt.NewQSize2(20, 20)))
 	list.SetMinimumHeight(320)
 	hint := qt.NewQLabel3("↑↓ — выбрать, Enter — перейти, Esc — закрыть")
-	hint.SetProperty("role", qt.NewQVariant11("hint"))
+	hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	d.lay.AddWidget(field.QWidget)
 	d.lay.AddWidget(list.QWidget)
 	d.lay.AddWidget(hint.QWidget)
@@ -190,7 +190,7 @@ func (m *MainWindow) showSwitcher() {
 				text += "   " + it.sub
 			}
 			row := qt.NewQListWidgetItem7(text, list)
-			row.SetIcon(qt.NewQIcon2(it.icon))
+			row.SetIcon(tmp(qt.NewQIcon2(it.icon)))
 			if it.unread {
 				f := row.Font()
 				f.SetBold(true)

@@ -61,7 +61,7 @@ func newSearchPanel(deps FeedDeps, onClose func(), onSearch func(q string)) *sea
 		}
 		super(e)
 	})
-	sp.info.SetProperty("role", qt.NewQVariant11("hint"))
+	sp.info.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	sp.info.SetWordWrap(true)
 	deps.Search, deps.Thread = true, false
 	sp.feed = NewFeed(deps)
@@ -77,7 +77,7 @@ func newSearchPanel(deps FeedDeps, onClose func(), onSearch func(q string)) *sea
 	tab := func(title string, files bool) *qt.QPushButton {
 		b := qt.NewQPushButton3(title)
 		b.SetCheckable(true)
-		b.SetProperty("role", qt.NewQVariant11("tab"))
+		b.SetProperty("role", tmp(qt.NewQVariant11("tab")))
 		b.SetFocusPolicy(qt.NoFocus)
 		b.OnClicked(func() {
 			sp.setFilesMode(files)

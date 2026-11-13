@@ -95,7 +95,7 @@ func newPlayer(parent *qt.QWidget, title string) *player {
 		b := qt.NewQToolButton2()
 		setName(b.QObject, name)
 		b.SetFixedSize2(32, 32)
-		b.SetIconSize(qt.NewQSize2(16, 16))
+		b.SetIconSize(tmp(qt.NewQSize2(16, 16)))
 		b.SetFocusPolicy(qt.NoFocus)
 		return b
 	}

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
@@ -16,6 +17,7 @@ import (
 	"matterqute/internal/config"
 	"matterqute/internal/desktop"
 	"matterqute/internal/instance"
+	"matterqute/internal/memstat"
 	"matterqute/internal/notify"
 	"matterqute/internal/ui"
 )
@@ -64,6 +66,7 @@ func main() {
 	app := qt.NewQApplication(os.Args)
 	if level == slog.LevelDebug {
 		defer ui.WatchMainThread(log, os.Stderr)()
+		go memstat.Log(log, 10*time.Minute)
 	}
 	// Имя приложения — служебное (WM_CLASS для дока, как StartupWMClass ярлыка),
 	// показываемое — с большой буквы.

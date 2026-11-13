@@ -125,3 +125,6 @@ func aviMJPEG(w, h, fps int, frames [][]byte) []byte {
 	body.Write(chunk("idx1", idx.Bytes()))
 	return chunk("RIFF", body.Bytes())
 }
+
+// DemoAVI — ролик w×h из frames кадров MJPEG (fps в секунду) для тестов вне пакета.
+func DemoAVI(w, h, frames, fps int) []byte { return demoAVI(w, h, frames, fps) }

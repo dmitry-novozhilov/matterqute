@@ -67,14 +67,14 @@ func (c *Composer) buildPriority() {
 	c.prioBtn = qt.NewQToolButton2()
 	setName(c.prioBtn.QObject, "priority")
 	c.prioBtn.SetFixedSize2(28, 28)
-	c.prioBtn.SetIconSize(qt.NewQSize2(18, 18))
+	c.prioBtn.SetIconSize(tmp(qt.NewQSize2(18, 18)))
 	c.prioBtn.SetFocusPolicy(qt.NoFocus)
 	c.prioBtn.SetToolTip("Метка сообщения: «Важно», «Срочно»")
 	c.prioBtn.SetVisible(false)
 	c.prioBtn.OnClicked(func() {
 		menu := c.priorityMenu()
 		menu.SetAttribute(qt.WA_DeleteOnClose)
-		menu.Popup(c.prioBtn.MapToGlobalWithQPoint(qt.NewQPoint2(0, -menu.SizeHint().Height()))) // над полем
+		menu.Popup(c.prioBtn.MapToGlobalWithQPoint(tmp(qt.NewQPoint2(0, -menu.SizeHint().Height())))) // над полем
 	})
 	c.prioNote = qt.NewQLabel2()
 	c.prioNote.SetTextFormat(qt.RichText)

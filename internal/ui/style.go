@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/svg"
@@ -36,15 +37,17 @@ var style = struct {
 	nextID     int
 	icons      map[string]*qt.QPixmap
 	avatars    map[string]*qt.QPixmap
-	fonts      config.Fonts // шрифты в деле: выбранные с масштабом
-	chosen     config.Fonts // выбранные в «Шрифтах», умолчания подставлены
-	zoom       int          // масштаб, % (Ctrl+= / Ctrl+− / Ctrl+0)
-	formatBar  bool         // панель оформления над полем ввода
-	typingShow bool         // показывать, кто печатает
-	typingSend bool         // сообщать, что печатаю я
-	alert      bool         // мигать значком окна на панели задач при уведомлении
+	qfonts     map[string]*qt.QFont // готовые шрифты (cachedFont)
+	fonts      config.Fonts         // шрифты в деле: выбранные с масштабом
+	chosen     config.Fonts         // выбранные в «Шрифтах», умолчания подставлены
+	zoom       int                  // масштаб, % (Ctrl+= / Ctrl+− / Ctrl+0)
+	formatBar  bool                 // панель оформления над полем ввода
+	typingShow bool                 // показывать, кто печатает
+	typingSend bool                 // сообщать, что печатаю я
+	alert      bool                 // мигать значком окна на панели задач при уведомлении
 }{mode: ThemeSystem, pal: theme.Light, listeners: map[int]func(){}, icons: map[string]*qt.QPixmap{}, avatars: map[string]*qt.QPixmap{},
-	fonts: defaultFonts, chosen: defaultFonts, zoom: 100, typingShow: true, typingSend: true, alert: true}
+	qfonts: map[string]*qt.QFont{},
+	fonts:  defaultFonts, chosen: defaultFonts, zoom: 100, typingShow: true, typingSend: true, alert: true}
 
 // Pal — палитра текущей темы.
 func Pal() theme.Palette { return style.pal }
@@ -57,7 +60,7 @@ func InitStyle(app *qt.QApplication, mode ThemeMode, log *slog.Logger) {
 			log.Warn("load font", "file", f.Name)
 		}
 	}
-	font := qt.NewQFont()
+	font := tmp(qt.NewQFont())
 	// Эмодзи — запасной шрифт: иначе Qt берёт первый попавшийся, часто чёрно-белый.
 	font.SetFamilies([]string{theme.SansFamily, theme.EmojiFamily})
 	font.SetPixelSize(14)
@@ -99,8 +102,8 @@ func applyTheme() {
 	style.icons = map[string]*qt.QPixmap{}
 	style.avatars = map[string]*qt.QPixmap{}
 
-	qp := qt.NewQPalette()
-	set := func(role qt.QPalette__ColorRole, c string) { qp.SetColor2(role, qt.NewQColor6(c)) }
+	qp := tmp(qt.NewQPalette())
+	set := func(role qt.QPalette__ColorRole, c string) { qp.SetColor2(role, qcolor(c)) }
 	set(qt.QPalette__Window, pal.Win)
 	set(qt.QPalette__WindowText, pal.Tx)
 	set(qt.QPalette__Base, pal.Surf)
@@ -137,12 +140,13 @@ func iconPixmap(name, color string, size int) *qt.QPixmap {
 		return pm
 	}
 	img := qt.NewQImage3(size*resourceDPR, size*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+	defer free(img)
 	img.Fill2(qt.Transparent)
 	if data, err := theme.Icon(name, color); err == nil {
 		r := svg.NewQSvgRenderer3(data)
 		p := qt.NewQPainter2(img.QPaintDevice)
-		r.Render2(p, qt.NewQRectF4(0, 0, float64(size*resourceDPR), float64(size*resourceDPR)))
-		p.End()
+		r.Render2(p, tmp(qt.NewQRectF4(0, 0, float64(size*resourceDPR), float64(size*resourceDPR))))
+		free(p)
 		r.Delete()
 	}
 	pm := qt.QPixmap_FromImage(img)
@@ -151,19 +155,23 @@ func iconPixmap(name, color string, size int) *qt.QPixmap {
 	return pm
 }
 
-func icon(name, color string, size int) *qt.QIcon { return qt.NewQIcon2(iconPixmap(name, color, size)) }
+// icon — иконка для SetIcon (временная, см. tmp).
+func icon(name, color string, size int) *qt.QIcon {
+	return tmp(qt.NewQIcon2(iconPixmap(name, color, size)))
+}
 
-// dotPixmap — круглая точка статуса.
+// dotPixmap — круглая точка статуса (временная, см. tmp).
 func dotPixmap(color string, size int) *qt.QPixmap {
 	img := qt.NewQImage3(size*resourceDPR, size*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+	defer free(img)
 	img.Fill2(qt.Transparent)
 	p := qt.NewQPainter2(img.QPaintDevice)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
 	p.SetPenWithStyle(qt.NoPen)
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(color)))
+	p.SetBrush(qbrush(color))
 	p.DrawEllipse2(0, 0, size*resourceDPR, size*resourceDPR)
-	p.End()
-	pm := qt.QPixmap_FromImage(img)
+	free(p)
+	pm := tmp(qt.QPixmap_FromImage(img))
 	pm.SetDevicePixelRatio(resourceDPR)
 	return pm
 }
@@ -183,21 +191,34 @@ func appIconPixmap(size int) *qt.QPixmap {
 	return bubblePixmap(size, appGreen, "#fcfbf9", "", 0)
 }
 
-// appIcon — иконка окна: каждый размер нарисован отдельно.
+// appIcon — иконка окна: каждый размер нарисован отдельно (временная, см. tmp).
 func appIcon() *qt.QIcon {
-	ic := qt.NewQIcon()
+	ic := tmp(qt.NewQIcon())
 	for _, size := range []int{16, 20, 22, 24, 32, 40, 48, 64, 96, 128, 256} {
 		ic.AddPixmap(appIconPixmap(size))
 	}
 	return ic
 }
 
-// pixelFont — шрифт приложения заданного размера и начертания.
+// pixelFont — шрифт приложения заданного размера и начертания (общий: не менять).
 func pixelFont(px int, weight qt.QFont__Weight) *qt.QFont {
+	return cachedFont([]string{theme.SansFamily, theme.EmojiFamily}, px, weight)
+}
+
+// cachedFont — шрифт семейств families размером px: один объект на сочетание
+// на всё время работы (их немного), его отдают всем — менять нельзя.
+// Новый QFont на каждую строку сайдбара и кадр анимации оставался в памяти:
+// MIQT не удаляет созданное конструктором.
+func cachedFont(families []string, px int, weight qt.QFont__Weight) *qt.QFont {
+	key := fmt.Sprintf("%s|%d|%d", strings.Join(families, ","), px, weight)
+	if f := style.qfonts[key]; f != nil {
+		return f
+	}
 	f := qt.NewQFont()
-	f.SetFamilies([]string{theme.SansFamily, theme.EmojiFamily})
+	f.SetFamilies(families)
 	f.SetPixelSize(px)
 	f.SetWeight(weight)
+	style.qfonts[key] = f
 	return f
 }
 
@@ -210,7 +231,7 @@ func repolish(w *qt.QWidget) {
 
 // setProp ставит динамическое свойство для QSS ([error="true"] и т. п.) и перерисовывает.
 func setProp(w *qt.QWidget, name string, value string) {
-	w.SetProperty(name, qt.NewQVariant11(value))
+	w.SetProperty(name, tmp(qt.NewQVariant11(value)))
 	repolish(w)
 }
 

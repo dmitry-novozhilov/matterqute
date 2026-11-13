@@ -50,12 +50,12 @@ func (m *MainWindow) setupSidebar() {
 	})
 	d.OnSizeHint(func(super func(*qt.QStyleOptionViewItem, *qt.QModelIndex) *qt.QSize, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) *qt.QSize {
 		// По дизайну 28; крупный шрифт — выше строка.
-		return qt.NewQSize2(opt.Rect().Width(), max(28, qt.NewQFontMetrics(sidebarFont(0, qt.QFont__Normal)).Height()+10))
+		return tmp(qt.NewQSize2(tmp(opt.Rect()).Width(), max(28, tmp(qt.NewQFontMetrics(sidebarFont(0, qt.QFont__Normal))).Height()+10))) // Qt копирует ответ
 	})
 	t.SetItemDelegate(d.QAbstractItemDelegate)
 
 	t.OnItemClicked(func(it *qt.QTreeWidgetItem, _ int) {
-		if it.Data(0, channelIDRole).ToString() == "" && it.Data(0, groupRole).ToString() != "" {
+		if tmp(it.Data(0, channelIDRole)).ToString() == "" && tmp(it.Data(0, groupRole)).ToString() != "" {
 			m.toggleCategory(it)
 		}
 	})
@@ -125,7 +125,7 @@ func (m *MainWindow) fillSidebar() {
 		} else {
 			it = qt.NewQTreeWidgetItem6(parent)
 		}
-		it.SetData(0, channelIDRole, qt.NewQVariant11(id))
+		it.SetData(0, channelIDRole, tmp(qt.NewQVariant11(id)))
 		flags := qt.ItemIsEnabled | qt.ItemIsSelectable
 		if drag {
 			flags |= qt.ItemIsDragEnabled
@@ -155,22 +155,22 @@ func (m *MainWindow) fillSidebar() {
 			l := qt.NewQTreeWidgetItem()
 			for _, t := range m.st.Teams() {
 				if t.Id == sec.Team {
-					l.SetData(0, teamLabelRole, qt.NewQVariant11(t.DisplayName))
+					l.SetData(0, teamLabelRole, tmp(qt.NewQVariant11(t.DisplayName)))
 				}
 			}
-			l.SetData(0, teamRole, qt.NewQVariant11(sec.Team))
+			l.SetData(0, teamRole, tmp(qt.NewQVariant11(sec.Team)))
 			l.SetFlags(qt.ItemIsEnabled)
 			m.sidebar.AddTopLevelItem(l)
 		}
 		group := qt.NewQTreeWidgetItem()
-		group.SetData(0, groupRole, qt.NewQVariant11(sec.Title))
-		group.SetData(0, teamRole, qt.NewQVariant11(sec.Team))
+		group.SetData(0, groupRole, tmp(qt.NewQVariant11(sec.Title)))
+		group.SetData(0, teamRole, tmp(qt.NewQVariant11(sec.Team)))
 		flags := qt.ItemIsEnabled
 		if c != nil {
-			group.SetData(0, categoryRole, qt.NewQVariant11(c.Id))
+			group.SetData(0, categoryRole, tmp(qt.NewQVariant11(c.Id)))
 			flags |= qt.ItemIsDropEnabled
 		}
-		group.SetData(0, collapsedRole, qt.NewQVariant8(sec.Collapsed || c == nil && collapsed[sec.Title]))
+		group.SetData(0, collapsedRole, tmp(qt.NewQVariant8(sec.Collapsed || c == nil && collapsed[sec.Title])))
 		group.SetFlags(flags)
 		m.sidebar.AddTopLevelItem(group)
 		for _, id := range sec.Channels {
@@ -245,7 +245,7 @@ func (m *MainWindow) applyCollapsed() {
 		collapsed := g.Data(0, collapsedRole).ToBool()
 		for j := range g.ChildCount() {
 			it := g.Child(j)
-			id := it.Data(0, channelIDRole).ToString()
+			id := tmp(it.Data(0, channelIDRole)).ToString()
 			unread, mentions := m.st.Unread(id)
 			if hide := collapsed && !unread && mentions == 0 && id != m.current; it.IsHidden() != hide {
 				it.SetHidden(hide)
@@ -266,39 +266,39 @@ func (m *MainWindow) updateCounts() {
 
 func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, it *qt.QTreeWidgetItem) {
 	pal := Pal()
-	r := opt.Rect()
+	r := tmp(opt.Rect())
 	x, y, w, h := r.X()+12, r.Y(), r.Width()-24, r.Height()
 	cy := y + h/2
 	selected := opt.State()&qt.QStyle__State_Selected != 0
-	id := it.Data(0, channelIDRole).ToString()
+	id := tmp(it.Data(0, channelIDRole)).ToString()
 
 	text := func(s string, x, width int, color string, weight qt.QFont__Weight) int {
 		f := sidebarFont(0, weight)
-		fm := qt.NewQFontMetrics(f)
+		fm := tmp(qt.NewQFontMetrics(f))
 		s = fm.ElidedText(s, qt.ElideRight, width)
 		p.SetFont(f)
-		p.SetPen(qt.NewQColor6(color))
+		p.SetPen(qcolor(color))
 		p.DrawText7(x, y, width, h, int(qt.AlignVCenter|qt.AlignLeft), s)
 		return fm.HorizontalAdvance(s)
 	}
 
-	if team := it.Data(0, teamLabelRole).ToString(); team != "" { // команда (при нескольких)
+	if team := tmp(it.Data(0, teamLabelRole)).ToString(); team != "" { // команда (при нескольких)
 		f := sidebarFont(0, qt.QFont__DemiBold)
 		p.SetFont(f)
-		p.SetPen(qt.NewQColor6(pal.Tx))
-		p.DrawText7(x-2, y, w+2, h, int(qt.AlignBottom|qt.AlignLeft), qt.NewQFontMetrics(f).ElidedText(team, qt.ElideRight, w))
+		p.SetPen(qcolor(pal.Tx))
+		p.DrawText7(x-2, y, w+2, h, int(qt.AlignBottom|qt.AlignLeft), tmp(qt.NewQFontMetrics(f)).ElidedText(team, qt.ElideRight, w))
 		return
 	}
 	if id == "" { // группа
 		chev := "chevron-down"
-		if it.Data(0, collapsedRole).ToBool() {
+		if tmp(it.Data(0, collapsedRole)).ToBool() {
 			chev = "chevron-right"
 		}
 		p.DrawPixmap9(x-2, cy-6, iconPixmap(chev, pal.Tx2, 12))
 		f := sidebarFont(-2, qt.QFont__DemiBold)
 		p.SetFont(f)
-		p.SetPen(qt.NewQColor6(pal.Tx2))
-		p.DrawText7(x+14, y, w-14, h, int(qt.AlignVCenter|qt.AlignLeft), it.Data(0, groupRole).ToString())
+		p.SetPen(qcolor(pal.Tx2))
+		p.DrawText7(x+14, y, w-14, h, int(qt.AlignVCenter|qt.AlignLeft), tmp(it.Data(0, groupRole)).ToString())
 		return
 	}
 
@@ -386,7 +386,7 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 	if mentions > 0 {
 		badge := fmt.Sprint(mentions)
 		bf := pixelFont(11, qt.QFont__DemiBold)
-		bw := max(18, qt.NewQFontMetrics(bf).HorizontalAdvance(badge)+12)
+		bw := max(18, tmp(qt.NewQFontMetrics(bf)).HorizontalAdvance(badge)+12)
 		bg, fg := pal.Acc, pal.OnAcc
 		if muted {
 			bg, fg = pal.Line2, pal.Tx
@@ -394,10 +394,10 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 		p.Save()
 		p.SetRenderHint(qt.QPainter__Antialiasing)
 		p.SetPenWithStyle(qt.NoPen)
-		p.SetBrush(qt.NewQBrush3(qt.NewQColor6(bg)))
-		p.DrawRoundedRect(qt.NewQRectF4(float64(right-bw), float64(cy-9), float64(bw), 18), 9, 9)
+		p.SetBrush(qbrush(bg))
+		p.DrawRoundedRect(tmp(qt.NewQRectF4(float64(right-bw), float64(cy-9), float64(bw), 18)), 9, 9)
 		p.SetFont(bf)
-		p.SetPen(qt.NewQColor6(fg))
+		p.SetPen(qcolor(fg))
 		p.DrawText7(right-bw, cy-9, bw, 18, int(qt.AlignCenter), badge)
 		p.Restore()
 		right -= bw + 6
@@ -427,7 +427,7 @@ func (m *MainWindow) paintSidebarRow(p *qt.QPainter, opt *qt.QStyleOptionViewIte
 func (m *MainWindow) sidebarOrder() []string {
 	var out []string
 	add := func(it *qt.QTreeWidgetItem) {
-		if id := it.Data(0, channelIDRole).ToString(); id != "" && !it.IsHidden() {
+		if id := tmp(it.Data(0, channelIDRole)).ToString(); id != "" && !it.IsHidden() {
 			out = append(out, id)
 		}
 	}

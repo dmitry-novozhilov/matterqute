@@ -258,7 +258,7 @@ func NewComposer() *Composer {
 	setName(c.attach.QObject, "attach")
 	c.attach.SetToolTip("Прикрепить файлы")
 	c.attach.SetFixedSize2(28, 28)
-	c.attach.SetIconSize(qt.NewQSize2(18, 18))
+	c.attach.SetIconSize(tmp(qt.NewQSize2(18, 18)))
 	c.attach.OnClicked(func() {
 		c.AddFiles(qt.QFileDialog_GetOpenFileNames2(c.w, "Прикрепить файлы"))
 	})
@@ -276,7 +276,7 @@ func NewComposer() *Composer {
 	c.later = qt.NewQToolButton2()
 	setName(c.later.QObject, "later")
 	c.later.SetFixedSize2(28, 28)
-	c.later.SetIconSize(qt.NewQSize2(18, 18))
+	c.later.SetIconSize(tmp(qt.NewQSize2(18, 18)))
 	c.later.SetFocusPolicy(qt.NoFocus)
 	c.later.SetToolTip("Отправить позже (Ctrl+Shift+Enter)")
 	c.later.OnClicked(func() {
@@ -287,18 +287,18 @@ func NewComposer() *Composer {
 	c.emojiBtn = qt.NewQToolButton2()
 	setName(c.emojiBtn.QObject, "emoji")
 	c.emojiBtn.SetFixedSize2(28, 28)
-	c.emojiBtn.SetIconSize(qt.NewQSize2(18, 18))
+	c.emojiBtn.SetIconSize(tmp(qt.NewQSize2(18, 18)))
 	c.emojiBtn.SetFocusPolicy(qt.NoFocus)
 	c.emojiBtn.SetToolTip("Эмодзи")
 	c.emojiBtn.OnClicked(func() {
 		if c.OnEmoji != nil {
-			c.OnEmoji(c.emojiBtn.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0)))
+			c.OnEmoji(c.emojiBtn.MapToGlobalWithQPoint(tmp(qt.NewQPoint2(0, 0))))
 		}
 	})
 	c.sendBtn = qt.NewQToolButton2()
 	setName(c.sendBtn.QObject, "send")
 	c.sendBtn.SetFixedSize2(28, 28)
-	c.sendBtn.SetIconSize(qt.NewQSize2(18, 18))
+	c.sendBtn.SetIconSize(tmp(qt.NewQSize2(18, 18)))
 	c.sendBtn.SetFocusPolicy(qt.NoFocus)
 	c.sendBtn.OnClicked(c.send)
 
@@ -325,7 +325,7 @@ func NewComposer() *Composer {
 	fl.AddLayout(row.QLayout)
 
 	c.hint = qt.NewQLabel3("Дождитесь загрузки файлов. Сообщение осталось в поле ввода.")
-	c.hint.SetProperty("role", qt.NewQVariant11("hint"))
+	c.hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	c.hint.SetVisible(false)
 
 	c.buildEditBar()
@@ -335,7 +335,7 @@ func NewComposer() *Composer {
 	lay.SetSpacing(4)
 	c.schedNote = qt.NewQLabel2()
 	c.schedNote.SetTextFormat(qt.RichText)
-	c.schedNote.SetProperty("role", qt.NewQVariant11("hint"))
+	c.schedNote.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	c.schedNote.OnLinkActivated(func(string) {
 		if c.OnShowScheduled != nil {
 			c.OnShowScheduled()
@@ -379,7 +379,7 @@ func (c *Composer) restyle() {
 		if !c.empty() {
 			pos := c.edit.TextCursor().Position()
 			c.setBlocks(readBlocks(c.edit.Document()))
-			cur := c.edit.TextCursor()
+			cur := tmp(c.edit.TextCursor())
 			cur.SetPosition(min(pos, c.edit.Document().CharacterCount()-1))
 			c.edit.SetTextCursor(cur)
 		}
@@ -394,7 +394,7 @@ func (c *Composer) empty() bool { return strings.TrimSpace(c.edit.ToPlainText())
 // setBlocks — поле с абзацами blocks, курсор в конце.
 func (c *Composer) setBlocks(blocks []markdown.Block) {
 	c.edit.Clear()
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	writeBlocks(cur, blocks)
 	c.edit.SetTextCursor(cur)
 	c.leaveCodeAndLink()
@@ -405,7 +405,7 @@ func (c *Composer) setBlocks(blocks []markdown.Block) {
 // размера документа и окна.
 func (c *Composer) fitHeight() {
 	c.watchWindow()
-	line := qt.NewQFontMetrics(c.edit.Font()).LineSpacing()
+	line := tmp(qt.NewQFontMetrics(c.edit.Font())).LineSpacing()
 	docH := int(math.Ceil(c.edit.Document().Size().Height()))
 	// Всё, кроме текста: ряд кнопок, плашки, панель оформления, поля.
 	others := c.w.SizeHint().Height() - c.editH
@@ -746,7 +746,7 @@ func (c *Composer) chip(a *attachment) *qt.QWidget {
 	f := qt.NewQFrame2()
 	setName(f.QObject, "fileChip")
 	if a.err != nil {
-		f.SetProperty("error", qt.NewQVariant11("true"))
+		f.SetProperty("error", tmp(qt.NewQVariant11("true")))
 		f.SetToolTip(a.err.Error())
 	}
 	ic := qt.NewQLabel2()
@@ -949,7 +949,7 @@ func joinBlocks(first, then []markdown.Block) []markdown.Block {
 
 // token — слово под курсором для подсказок и позиция его начала.
 func (c *Composer) token() (complete.Token, int, bool) {
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	if cur.HasSelection() {
 		return complete.Token{}, 0, false
 	}
@@ -1048,7 +1048,7 @@ func (c *Composer) InsertEmoji(name string) {
 	if ch, ok := emoji.Char(name); ok {
 		text = ch
 	}
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	cur.InsertText(text)
 	c.edit.SetTextCursor(cur)
 	c.edit.SetFocus()
@@ -1061,7 +1061,7 @@ func (c *Composer) acceptSuggestion(s Suggestion) {
 	if !ok {
 		return
 	}
-	cur := c.edit.TextCursor()
+	cur := tmp(c.edit.TextCursor())
 	cur.MovePosition3(qt.QTextCursor__PreviousCharacter, qt.QTextCursor__KeepAnchor, tok.Len)
 	cur.InsertText(s.Insert)
 	c.edit.SetTextCursor(cur)
@@ -1083,7 +1083,7 @@ func (c *Composer) buildEditBar() {
 	cancel := qt.NewQToolButton2()
 	setName(cancel.QObject, "editCancel")
 	cancel.SetFixedSize2(24, 24)
-	cancel.SetIconSize(qt.NewQSize2(14, 14))
+	cancel.SetIconSize(tmp(qt.NewQSize2(14, 14)))
 	cancel.SetFocusPolicy(qt.NoFocus)
 	cancel.SetToolTip("Отменить правку (Esc)")
 	cancel.OnClicked(func() {

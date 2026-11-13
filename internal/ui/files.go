@@ -105,7 +105,7 @@ func (m *MainWindow) handleLink(link string) {
 		}
 		// Ссылку на сообщение, ушедшую в браузер, по логу видно: какой адрес не узнали.
 		m.log.Debug("open in browser", "url", truncate(link, 200), "own_server", own, "path", truncate(path, 200))
-		qt.QDesktopServices_OpenUrl(qt.NewQUrl3(link))
+		qt.QDesktopServices_OpenUrl(tmp(qt.NewQUrl3(link)))
 	}
 }
 

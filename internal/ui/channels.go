@@ -151,7 +151,7 @@ func (m *MainWindow) channelMenu() {
 	menu := qt.NewQMenu(m.w)
 	defer menu.DeleteLater()
 	fillMenu(menu, items)
-	menu.ExecWithPos(m.head.title.MapToGlobalWithQPoint(qt.NewQPoint2(0, m.head.title.Height()+4)))
+	menu.ExecWithPos(m.head.title.MapToGlobalWithQPoint(tmp(qt.NewQPoint2(0, m.head.title.Height()+4))))
 }
 
 // channelLink — ссылка на канал, как у веб-клиента; у личек — пусто.
@@ -332,7 +332,7 @@ func (m *MainWindow) showBrowseChannels(team string) {
 	list := qt.NewQListWidget2()
 	setName(list.QObject, "channelList")
 	hint := qt.NewQLabel3("Загружаем…")
-	hint.SetProperty("role", qt.NewQVariant11("hint"))
+	hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	hint.SetWordWrap(true)
 	// Вкладки: открытые каналы (войти) и архивные (открыть для чтения).
 	archived := false
@@ -341,7 +341,7 @@ func (m *MainWindow) showBrowseChannels(team string) {
 	var tabBtns []*qt.QPushButton
 	for _, title := range []string{"Открытые", "Архивные"} {
 		b := qt.NewQPushButton3(title)
-		b.SetProperty("role", qt.NewQVariant11("tab"))
+		b.SetProperty("role", tmp(qt.NewQVariant11("tab")))
 		b.SetCheckable(true)
 		b.SetAutoExclusive(true)
 		tabs.AddWidget(b.QWidget)
@@ -370,7 +370,7 @@ func (m *MainWindow) showBrowseChannels(team string) {
 				text += " · вы здесь"
 			}
 			it := qt.NewQListWidgetItem7(text, list)
-			it.SetData(int(qt.UserRole), qt.NewQVariant11(ch.Id))
+			it.SetData(int(qt.UserRole), tmp(qt.NewQVariant11(ch.Id)))
 			it.SetToolTip(ch.Purpose)
 		}
 		if list.Count() > 0 {
@@ -418,7 +418,7 @@ func (m *MainWindow) showBrowseChannels(team string) {
 	cancel := qt.NewQPushButton3("Закрыть")
 	cancel.OnClicked(func() { d.w.Close() })
 	ok := qt.NewQPushButton3("Войти")
-	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	ok.SetDefault(true)
 	ok.OnClicked(join)
 	d.bottom.AddWidget(cancel.QWidget)
@@ -505,7 +505,7 @@ func (m *MainWindow) showCreateChannel(team string) {
 	purpose := qt.NewQLineEdit2()
 	purpose.SetPlaceholderText("Необязательно")
 	hint := qt.NewQLabel2()
-	hint.SetProperty("role", qt.NewQVariant11("hint"))
+	hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	hint.SetWordWrap(true)
 	hint.SetVisible(false)
 	for _, w := range []struct {
@@ -533,7 +533,7 @@ func (m *MainWindow) showCreateChannel(team string) {
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
 	ok := qt.NewQPushButton3("Создать")
-	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	ok.SetDefault(true)
 	ok.OnClicked(func() {
 		display, url := strings.TrimSpace(name.Text()), strings.TrimSpace(addr.Text())
@@ -608,7 +608,7 @@ func (m *MainWindow) showChannelSettings(channelID string) {
 	head.SetPlaceholderText("Ссылки, @упоминания, разметка — как в сообщениях")
 	head.SetFixedHeight(head.FontMetrics().LineSpacing()*4 + 12)
 	hint := qt.NewQLabel2()
-	hint.SetProperty("role", qt.NewQVariant11("hint"))
+	hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	hint.SetWordWrap(true)
 	hint.SetVisible(false)
 	if !group {
@@ -628,7 +628,7 @@ func (m *MainWindow) showChannelSettings(channelID string) {
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
 	ok := qt.NewQPushButton3("Сохранить")
-	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	ok.SetDefault(true)
 	ok.OnClicked(func() {
 		var patch model.ChannelPatch

@@ -72,7 +72,7 @@ func (m *MainWindow) showProfile() *profileForm {
 	top.SetSpacing(12)
 	top.AddWidget(avatar.QWidget)
 	name := qt.NewQLabel3("@" + me.Username)
-	name.SetProperty("role", qt.NewQVariant11("hint"))
+	name.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	top.AddWidget2(name.QWidget, 1)
 	top.AddLayout(photo.QLayout)
 	pl.AddLayout(top.QLayout)
@@ -132,7 +132,7 @@ func (m *MainWindow) showProfile() *profileForm {
 	tabs.AddTab(page, "Уведомления")
 
 	d.lay.AddWidget(tabs.QWidget)
-	f.hint.SetProperty("role", qt.NewQVariant11("hint"))
+	f.hint.SetProperty("role", tmp(qt.NewQVariant11("hint")))
 	f.hint.SetWordWrap(true)
 	d.lay.AddWidget(f.hint.QWidget)
 
@@ -162,7 +162,7 @@ func (m *MainWindow) showProfile() *profileForm {
 		case len(data) > maxAvatar:
 			f.hint.SetText(fmt.Sprintf("Файл больше %d МБ", maxAvatar>>20))
 			return
-		case len(data) == 0 || !qt.NewQImage().LoadFromData2(&data[0], len(data)):
+		case len(data) == 0 || !tmp(qt.NewQImage()).LoadFromData2(&data[0], len(data)):
 			f.hint.SetText("Это не картинка: " + path)
 			return
 		}
@@ -216,7 +216,7 @@ func (m *MainWindow) showProfile() *profileForm {
 	cancel := qt.NewQPushButton3("Отмена")
 	cancel.OnClicked(func() { d.w.Close() })
 	ok := qt.NewQPushButton3("Сохранить")
-	ok.SetProperty("primary", qt.NewQVariant11("true"))
+	ok.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	ok.SetDefault(true)
 	f.save = func() {
 		patch, changed := f.patch(m.me(), m.st.CRT())

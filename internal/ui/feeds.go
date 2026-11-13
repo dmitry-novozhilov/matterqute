@@ -2,6 +2,7 @@ package ui
 
 import (
 	"slices"
+	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mattermost/mattermost/server/public/model"
@@ -37,6 +38,35 @@ func (m *MainWindow) initFeeds(deps FeedDeps) {
 	m.blank = NewFeed(deps)
 	m.feedStack.AddWidget(m.blank.Widget())
 	m.feed = m.blank
+	rebuild := qt.NewQTimer2(m.w.QObject)
+	rebuild.OnTimeout(m.rebuildFeeds)
+	rebuild.Start(int(feedRebuildCheck / time.Millisecond))
+}
+
+// Пересборка документов скрытых лент (Feed.Rebuild): документ собран час
+// назад или раньше и держит хотя бы feedRebuildMin фреймов, оставшихся от
+// перерисованных постов (~2 КБ каждый; меньше — разбирать HTML всей ленты
+// заново дороже, чем держать). Проверка — раз в feedRebuildCheck.
+const (
+	feedRebuildEvery = time.Hour
+	feedRebuildCheck = 10 * time.Minute
+	feedRebuildMin   = 100
+)
+
+// rebuildFeeds — скрытые ленты, которым пора, — заново, фоном (buildStep).
+func (m *MainWindow) rebuildFeeds() {
+	if m.closed {
+		return
+	}
+	for _, id := range m.feedOrder {
+		f := m.feeds[id]
+		if f == m.feed || time.Since(f.built) < feedRebuildEvery {
+			continue
+		}
+		if n := f.orphans(); n >= feedRebuildMin && f.Rebuild() {
+			m.log.Debug("feed rebuilt", "channel", id, "orphan_frames", n, "posts", len(f.pending))
+		}
+	}
 }
 
 // feedFor — лента канала id; нет — новая, скрытая.

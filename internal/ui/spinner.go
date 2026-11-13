@@ -58,6 +58,7 @@ func spinnerFrame(color string, size, frame int) *qt.QPixmap {
 		return pm
 	}
 	img := qt.NewQImage3(size*resourceDPR, size*resourceDPR, qt.QImage__Format_ARGB32_Premultiplied)
+	defer free(img)
 	img.SetDevicePixelRatio(resourceDPR)
 	img.Fill2(qt.Transparent)
 	p := qt.NewQPainter2(img.QPaintDevice)
@@ -68,7 +69,7 @@ func spinnerFrame(color string, size, frame int) *qt.QPixmap {
 	p.Rotate(float64(frame) * 360 / spinFrames)
 	p.Translate2(-c, -c)
 	p.DrawPixmap9(0, 0, iconPixmap("loader-circle", color, size))
-	p.End()
+	free(p)
 	pm := qt.QPixmap_FromImage(img)
 	pm.SetDevicePixelRatio(resourceDPR)
 	style.icons[key] = pm

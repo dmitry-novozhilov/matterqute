@@ -300,15 +300,15 @@ func (m *MainWindow) setupThreadsList() {
 		noFocusFrame(opt)
 		super(p, opt, idx)
 		if it := l.ItemFromIndex(idx); it != nil {
-			m.paintThreadRow(p, opt, it.Data(threadIDRole).ToString())
+			m.paintThreadRow(p, opt, tmp(it.Data(threadIDRole)).ToString())
 		}
 	})
 	d.OnSizeHint(func(super func(*qt.QStyleOptionViewItem, *qt.QModelIndex) *qt.QSize, opt *qt.QStyleOptionViewItem, idx *qt.QModelIndex) *qt.QSize {
-		return qt.NewQSize2(opt.Rect().Width(), 80)
+		return tmp(qt.NewQSize2(tmp(opt.Rect()).Width(), 80)) // Qt копирует ответ
 	})
 	l.SetItemDelegate(d.QAbstractItemDelegate)
 	l.OnItemClicked(func(it *qt.QListWidgetItem) {
-		if id := it.Data(threadIDRole).ToString(); id != "" {
+		if id := tmp(it.Data(threadIDRole)).ToString(); id != "" {
 			m.openThread(id)
 		}
 	})
@@ -325,7 +325,7 @@ func (m *MainWindow) refreshThreads() {
 	}
 	selected := ""
 	if it := m.threadsList.CurrentItem(); it != nil {
-		selected = it.Data(threadIDRole).ToString()
+		selected = tmp(it.Data(threadIDRole)).ToString()
 	}
 	m.threadsList.Clear()
 	threads := m.st.Threads()
@@ -337,7 +337,7 @@ func (m *MainWindow) refreshThreads() {
 	}
 	for _, t := range threads {
 		it := qt.NewQListWidgetItem()
-		it.SetData(threadIDRole, qt.NewQVariant11(t.PostId))
+		it.SetData(threadIDRole, tmp(qt.NewQVariant11(t.PostId)))
 		m.threadsList.AddItemWithItem(it)
 		if t.PostId == selected {
 			m.threadsList.SetCurrentItem(it)
@@ -357,13 +357,13 @@ func threadMeta(t *model.ThreadResponse) string {
 
 func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem, id string) {
 	pal := Pal()
-	r := opt.Rect()
+	r := tmp(opt.Rect())
 	x, y, w := r.X()+16, r.Y(), r.Width()-32
 	text := func(s string, x, y, width, h int, f *qt.QFont, color string, align qt.AlignmentFlag) int {
-		fm := qt.NewQFontMetrics(f)
+		fm := tmp(qt.NewQFontMetrics(f))
 		s = fm.ElidedText(s, qt.ElideRight, width)
 		p.SetFont(f)
-		p.SetPen(qt.NewQColor6(color))
+		p.SetPen(qcolor(color))
 		p.DrawText7(x, y, width, h, int(align|qt.AlignVCenter), s)
 		return fm.HorizontalAdvance(s)
 	}
@@ -374,8 +374,7 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 	}
 	unread := t.UnreadReplies > 0 || t.UnreadMentions > 0
 	small := pixelFont(12, qt.QFont__Normal)
-	mono := pixelFont(12, qt.QFont__Normal)
-	mono.SetFamilies([]string{monoFamily()})
+	mono := cachedFont([]string{monoFamily()}, 12, qt.QFont__Normal)
 
 	head, msg := "", ""
 	if root := t.Post; root != nil {
@@ -404,7 +403,7 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 		p.Save()
 		p.SetRenderHint(qt.QPainter__Antialiasing)
 		p.SetPenWithStyle(qt.NoPen)
-		p.SetBrush(qt.NewQBrush3(qt.NewQColor6(pal.Acc)))
+		p.SetBrush(qbrush(pal.Acc))
 		p.DrawEllipse2(mx, y+55, 6, 6)
 		p.Restore()
 		mx += 12
@@ -413,14 +412,14 @@ func (m *MainWindow) paintThreadRow(p *qt.QPainter, opt *qt.QStyleOptionViewItem
 	if t.UnreadMentions > 0 {
 		badge := fmt.Sprintf("@ %d", t.UnreadMentions)
 		bf := pixelFont(11, qt.QFont__DemiBold)
-		bw := qt.NewQFontMetrics(bf).HorizontalAdvance(badge) + 14
+		bw := tmp(qt.NewQFontMetrics(bf)).HorizontalAdvance(badge) + 14
 		p.Save()
 		p.SetRenderHint(qt.QPainter__Antialiasing)
 		p.SetPenWithStyle(qt.NoPen)
-		p.SetBrush(qt.NewQBrush3(qt.NewQColor6(pal.Acc)))
-		p.DrawRoundedRect(qt.NewQRectF4(float64(right-bw), float64(y+49), float64(bw), 18), 9, 9)
+		p.SetBrush(qbrush(pal.Acc))
+		p.DrawRoundedRect(tmp(qt.NewQRectF4(float64(right-bw), float64(y+49), float64(bw), 18)), 9, 9)
 		p.SetFont(bf)
-		p.SetPen(qt.NewQColor6(pal.OnAcc))
+		p.SetPen(qcolor(pal.OnAcc))
 		p.DrawText7(right-bw, y+49, bw, 18, int(qt.AlignCenter), badge)
 		p.Restore()
 		right -= bw + 8
@@ -449,7 +448,7 @@ func drawRichLine(p *qt.QPainter, rich string, x, y, w, h int, f *qt.QFont) {
 	defer doc.Delete()
 	p.Save()
 	p.Translate2(float64(x), float64(y)+(float64(h)-doc.Size().Height())/2)
-	doc.DrawContents2(p, qt.NewQRectF4(0, 0, float64(w), float64(h)))
+	doc.DrawContents2(p, tmp(qt.NewQRectF4(0, 0, float64(w), float64(h))))
 	p.Restore()
 }
 
@@ -468,9 +467,10 @@ func richLineDoc(rich string, w int, f *qt.QFont) *qt.QTextDocument {
 		return doc
 	}
 	const ell = "…"
-	at := float64(w - qt.NewQFontMetrics(f).HorizontalAdvance(ell))
-	pos := doc.DocumentLayout().HitTest(qt.NewQPointF3(at, doc.Size().Height()/2), qt.FuzzyHit)
+	at := float64(w - tmp(qt.NewQFontMetrics(f)).HorizontalAdvance(ell))
+	pos := doc.DocumentLayout().HitTest(tmp(qt.NewQPointF3(at, doc.Size().Height()/2)), qt.FuzzyHit)
 	cur := qt.NewQTextCursor2(doc)
+	defer free(cur)
 	for ; pos > 0; pos-- {
 		cur.SetPosition(pos)
 		cur.MovePosition2(qt.QTextCursor__End, qt.QTextCursor__KeepAnchor)

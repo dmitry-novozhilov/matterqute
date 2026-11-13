@@ -117,7 +117,7 @@ func trayColors(c config.Tray, dark bool) config.Tray {
 		pal, red = theme.Dark, "#e54d43"
 	}
 	pick := func(set, def string) string {
-		if set != "" && qt.NewQColor6(set).IsValid() {
+		if set != "" && qcolor(set).IsValid() {
 			return set
 		}
 		return def
@@ -170,8 +170,10 @@ const trayDigitsMin = 30
 // каждый нарисован отдельно и по пикселям, без DPR (SNI шлёт их как есть).
 var traySizes = []int{16, 20, 22, 24, 32, 40, 44, 48, 64}
 
+// trayIcon — значок трея всех размеров (временный, см. tmp: для SetIcon).
+// Рисуется заново при каждой смене счётчика.
 func trayIcon(color, text string, digits int) *qt.QIcon {
-	ic := qt.NewQIcon()
+	ic := tmp(qt.NewQIcon())
 	for _, size := range traySizes {
 		ic.AddPixmap(trayPixmap(size, color, text, digits))
 	}
@@ -207,19 +209,20 @@ func trayPixmap(size int, color, text string, digits int) *qt.QPixmap {
 // bubblePixmap — облачко цвета bubble во всю ширину и в нём «#» (или text —
 // число) цвета glyph; glyph пустой — знак вырезан насквозь. size — в
 // физических пикселях: «#» — прямоугольниками по сетке, без сглаживания и
-// масштабирования.
+// масштабирования. Картинка временная (tmp).
 func bubblePixmap(size int, bubble, glyph, text string, digits int) *qt.QPixmap {
 	img := qt.NewQImage3(size, size, qt.QImage__Format_ARGB32_Premultiplied)
+	defer free(img)
 	img.Fill2(qt.Transparent)
 	p := qt.NewQPainter2(img.QPaintDevice)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
 	b := trayLayout(size)
 	h := float64(b.h)
 	drawBubble(p, 0, float64(b.top), float64(size), h, h/2, max(1, math.Round(h*0.11)), bubble)
-	ink := qt.NewQColor6(glyph)
+	ink := qcolor(glyph)
 	if glyph == "" {
 		p.SetCompositionMode(qt.QPainter__CompositionMode_Clear)
-		ink = qt.NewQColor2(qt.Black) // цвет не важен: режим Clear
+		ink = tmp(qt.NewQColor2(qt.Black)) // цвет не важен: режим Clear
 	}
 	if text == "" {
 		// «#» прямоугольниками по сетке: две стойки и две перекладины.
@@ -231,8 +234,8 @@ func bubblePixmap(size int, bubble, glyph, text string, digits int) *qt.QPixmap 
 	} else {
 		cutText(p, size, b, text, ink, digits)
 	}
-	p.End()
-	return qt.QPixmap_FromImage(img)
+	free(p)
+	return tmp(qt.QPixmap_FromImage(img))
 }
 
 // cutText — число по центру облачка: шрифт Plex жирный размером digits %
@@ -241,7 +244,7 @@ func bubblePixmap(size int, bubble, glyph, text string, digits int) *qt.QPixmap 
 // режиме (Clear — вырезает). Хинтинг — по умолчанию: полный ломал форму цифр
 // (у «7» вылезала засечка), а клетками «1» походила на «i».
 func cutText(p *qt.QPainter, size int, b trayBox, text string, ink *qt.QColor, digits int) {
-	f := qt.NewQFont()
+	f := tmp(qt.NewQFont())
 	f.SetFamilies([]string{theme.SansFamily})
 	f.SetWeight(qt.QFont__Bold)
 	maxW := size - 2*max(2, size/7)
@@ -252,7 +255,7 @@ func cutText(p *qt.QPainter, size int, b trayBox, text string, ink *qt.QColor, d
 	var r *qt.QRect
 	for px := start; px >= 6; px-- {
 		f.SetPixelSize(px)
-		r = qt.NewQFontMetrics(f).TightBoundingRect(text)
+		r = tmp(qt.NewQFontMetrics(f)).TightBoundingRect(text)
 		if r.Width() <= maxW && r.Height() <= maxH {
 			break
 		}
@@ -266,7 +269,7 @@ func cutText(p *qt.QPainter, size int, b trayBox, text string, ink *qt.QColor, d
 // drawBubble — облачко: прямоугольник со скруглением r, у левого нижнего угла
 // маленькое скругление tail — это хвостик.
 func drawBubble(p *qt.QPainter, x, y, w, h, r, tail float64, color string) {
-	path := qt.NewQPainterPath()
+	path := tmp(qt.NewQPainterPath())
 	path.MoveTo2(x+r, y)
 	path.LineTo2(x+w-r, y)
 	path.ArcTo2(x+w-2*r, y, 2*r, 2*r, 90, -90)
@@ -278,7 +281,7 @@ func drawBubble(p *qt.QPainter, x, y, w, h, r, tail float64, color string) {
 	path.ArcTo2(x, y, 2*r, 2*r, 180, -90)
 	path.CloseSubpath()
 	p.SetPenWithStyle(qt.NoPen)
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(color)))
+	p.SetBrush(qbrush(color))
 	p.DrawPath(path)
 }
 
@@ -307,7 +310,7 @@ func showTrayDialog(parent *qt.QWidget, colors config.Tray, onChange func(config
 				text += " · по умолчанию"
 			}
 			buttons[i].SetText(text)
-			buttons[i].SetIcon(qt.NewQIcon2(swatch(c, 14)))
+			buttons[i].SetIcon(tmp(qt.NewQIcon2(swatch(c, 14))))
 		}
 		preview.SetPixmap(trayPreview(eff, dark, max(1, int(math.Round(d.w.DevicePixelRatioF())))))
 	}
@@ -320,7 +323,7 @@ func showTrayDialog(parent *qt.QWidget, colors config.Tray, onChange func(config
 		b.OnClicked(func() {
 			cur := trayColors(colors, trayPanelDark())
 			start := []string{cur.Idle, cur.Unread, cur.Mentions}[i]
-			c := qt.QColorDialog_GetColor3(qt.NewQColor6(start), d.w.QWidget, r.title)
+			c := qt.QColorDialog_GetColor3(qcolor(start), d.w.QWidget, r.title)
 			if d.closed || !c.IsValid() {
 				return
 			}
@@ -368,7 +371,7 @@ func showTrayDialog(parent *qt.QWidget, colors config.Tray, onChange func(config
 	d.bottom.AddWidget(reset.QWidget)
 	d.bottom.AddStretch()
 	done := qt.NewQPushButton3("Готово")
-	done.SetProperty("primary", qt.NewQVariant11("true"))
+	done.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	done.SetDefault(true)
 	done.OnClicked(func() { d.w.Close() })
 	d.bottom.AddWidget(done.QWidget)
@@ -377,37 +380,38 @@ func showTrayDialog(parent *qt.QWidget, colors config.Tray, onChange func(config
 	return d
 }
 
-// swatch — квадратик цвета для кнопки.
+// swatch — квадратик цвета для кнопки (временный, см. tmp).
 func swatch(color string, size int) *qt.QPixmap {
-	pm := qt.NewQPixmap2(size*resourceDPR, size*resourceDPR)
+	pm := tmp(qt.NewQPixmap2(size*resourceDPR, size*resourceDPR))
 	pm.SetDevicePixelRatio(resourceDPR)
-	pm.FillWithFillColor(qt.NewQColor2(qt.Transparent))
+	pm.FillWithFillColor(tmp(qt.NewQColor2(qt.Transparent)))
 	p := qt.NewQPainter2(pm.QPaintDevice)
 	p.SetRenderHint(qt.QPainter__Antialiasing)
-	p.SetPen(qt.NewQColor6(Pal().Line2))
-	p.SetBrush(qt.NewQBrush3(qt.NewQColor6(color)))
-	p.DrawRoundedRect(qt.NewQRectF4(0.5, 0.5, float64(size)-1, float64(size)-1), 3, 3)
-	p.End()
+	p.SetPen(qcolor(Pal().Line2))
+	p.SetBrush(qbrush(color))
+	p.DrawRoundedRect(tmp(qt.NewQRectF4(0.5, 0.5, float64(size)-1, float64(size)-1)), 3, 3)
+	free(p)
 	return pm
 }
 
 // trayPreview — три состояния значка на полоске цвета панели, как в трее;
-// значки — тех же пикселей, что уйдут в трей при масштабе dpr.
+// значки — тех же пикселей, что уйдут в трей при масштабе dpr. Картинка
+// временная (tmp).
 func trayPreview(c config.Tray, dark bool, dpr int) *qt.QPixmap {
 	const size, gap = 22, 16
 	bg := "#f0efed"
 	if dark {
 		bg = "#1c1b1a"
 	}
-	pm := qt.NewQPixmap2((3*size+4*gap)*dpr, (size+12)*dpr)
+	pm := tmp(qt.NewQPixmap2((3*size+4*gap)*dpr, (size+12)*dpr))
 	pm.SetDevicePixelRatio(float64(dpr))
-	pm.FillWithFillColor(qt.NewQColor6(bg))
+	pm.FillWithFillColor(qcolor(bg))
 	p := qt.NewQPainter2(pm.QPaintDevice)
 	for i, v := range []struct{ color, text string }{{c.Idle, ""}, {c.Unread, "5"}, {c.Mentions, "9+"}} {
 		icon := trayPixmap(size*dpr, v.color, v.text, c.Digits)
 		icon.SetDevicePixelRatio(float64(dpr))
 		p.DrawPixmap9(gap+i*(size+gap), 6, icon)
 	}
-	p.End()
+	free(p)
 	return pm
 }

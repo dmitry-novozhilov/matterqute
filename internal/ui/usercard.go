@@ -45,10 +45,10 @@ func (m *MainWindow) openUserCard(u *model.User, pos *qt.QPoint) {
 	avatar := qt.NewQLabel2()
 	drawAvatar := func() {
 		pm := avatarPixmap(m.assets, u, u.Username, u.IsBot, 56, nil)
-		withDot := qt.NewQPixmap5(pm)
+		withDot := tmp(qt.NewQPixmap5(pm))
 		p := qt.NewQPainter2(withDot.QPaintDevice)
 		drawStatusDot(p, 56-14, 56-14, 12, presence, pal.Surf)
-		p.End()
+		free(p)
 		avatar.SetPixmap(withDot)
 	}
 	drawAvatar()
@@ -86,7 +86,7 @@ func (m *MainWindow) openUserCard(u *model.User, pos *qt.QPoint) {
 	if me {
 		write.SetText("Написать себе")
 	} else {
-		write.SetProperty("primary", qt.NewQVariant11("true"))
+		write.SetProperty("primary", tmp(qt.NewQVariant11("true")))
 	}
 	write.SetIcon(icon("message-circle", map[bool]string{true: pal.Tx, false: pal.OnAcc}[me], 16))
 	write.OnClicked(func() {
@@ -237,9 +237,9 @@ func (c *card) place(pos *qt.QPoint, above bool) {
 // roundCorners — скругление углов маской окна. Не прозрачностью: без
 // композитора (X11) прозрачное рисуется чёрным.
 func (c *card) roundCorners(w, h, r int) {
-	region := qt.NewQRegion2(r, 0, w-2*r, h).United(qt.NewQRegion2(0, r, w, h-2*r))
+	region := tmp(qt.NewQRegion2(r, 0, w-2*r, h)).United(tmp(qt.NewQRegion2(0, r, w, h-2*r)))
 	for _, xy := range [][2]int{{0, 0}, {w - 2*r, 0}, {0, h - 2*r}, {w - 2*r, h - 2*r}} {
-		region = region.United(qt.NewQRegion6(xy[0], xy[1], 2*r, 2*r, qt.QRegion__Ellipse))
+		region = region.United(tmp(qt.NewQRegion6(xy[0], xy[1], 2*r, 2*r, qt.QRegion__Ellipse)))
 	}
 	c.w.SetMaskWithMask(region)
 }
